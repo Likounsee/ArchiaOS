@@ -45,7 +45,7 @@ extern "C" void paging_run_tests()
         for (;;) asm volatile("cli; hlt");
     }
 
-    test_str("PAGING IDENTITY MAP PASS\n");
+    test_str("PAGING IDENTITY MAP PASS (LOW 4 GiB)\n");
 
     if (!paging_is_enabled())
     {
