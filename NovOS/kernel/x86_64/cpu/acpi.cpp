@@ -1,6 +1,7 @@
 #include "acpi.hpp"
 
 static AcpiInfo acpi_info = {};
+static AcpiStatus acpi_status = ACPI_STATUS_OK;
 
 static inline unsigned char read8(unsigned long long address)
 {
@@ -57,9 +58,15 @@ static bool checksum_ok(unsigned long long address, unsigned int length)
     return sum == 0;
 }
 
+/*
+ * Early paging currently identity-maps the first 4 GiB.
+ * ACPI firmware structures and MMIO used during early boot must
+ * therefore stay inside that range until a full virtual-memory
+ * manager is available.
+ */
 static bool address_is_mapped(unsigned long long address)
 {
-    return address != 0 && address < 0x40000000ULL;
+    return address != 0 && address < 0x100000000ULL;
 }
 
 static unsigned long long find_rsdp_in_range(
@@ -99,14 +106,9 @@ static unsigned long long find_rsdp_in_range(
 
 static unsigned long long find_rsdp()
 {
-    /*
-     * The EBDA pointer is located in the BIOS data area at 0x40E.
-     * ACPI also permits the RSDP to be located in the 0xE0000-0xFFFFF
-     * region. These areas are identity-mapped by the current early
-     * paging setup.
-     */
     unsigned int ebda_segment = read16(0x40E);
-    unsigned long long ebda = static_cast<unsigned long long>(ebda_segment) << 4;
+    unsigned long long ebda =
+        static_cast<unsigned long long>(ebda_segment) << 4;
 
     if (ebda >= 0x80000ULL && ebda < 0xA0000ULL)
     {
@@ -144,10 +146,14 @@ static unsigned long long find_madt(
     for (unsigned int i = 0; i < entries; ++i)
     {
         unsigned long long entry =
-            root_address + 36ULL + static_cast<unsigned long long>(i) * entry_size;
+            root_address +
+            36ULL +
+            static_cast<unsigned long long>(i) * entry_size;
 
         unsigned long long table_address =
-            xsdt ? read64(entry) : static_cast<unsigned long long>(read32(entry));
+            xsdt
+                ? read64(entry)
+                : static_cast<unsigned long long>(read32(entry));
 
         if (!address_is_mapped(table_address))
             continue;
@@ -159,14 +165,23 @@ static unsigned long long find_madt(
     return 0;
 }
 
-static void parse_madt(unsigned long long madt)
+static bool parse_madt(unsigned long long madt)
 {
-    acpi_info.local_apic_address = read32(madt + 36);
+    if (!address_is_mapped(madt))
+        return false;
+
+    if (!signature4(madt, "APIC"))
+        return false;
 
     unsigned int length = read32(madt + 4);
 
     if (length < 44 || length > 0x100000)
-        return;
+        return false;
+
+    if (!checksum_ok(madt, length))
+        return false;
+
+    acpi_info.local_apic_address = read32(madt + 36);
 
     unsigned long long current = madt + 44;
     unsigned long long end = madt + length;
@@ -177,7 +192,7 @@ static void parse_madt(unsigned long long madt)
         unsigned char entry_length = read8(current + 1);
 
         if (entry_length < 2 || current + entry_length > end)
-            break;
+            return false;
 
         if (type == 0 && entry_length >= 8)
         {
@@ -207,16 +222,22 @@ static void parse_madt(unsigned long long madt)
 
         current += entry_length;
     }
+
+    return acpi_info.local_apic_address != 0;
 }
 
 extern "C" bool acpi_initialize()
 {
     acpi_info = {};
+    acpi_status = ACPI_STATUS_OK;
 
     unsigned long long rsdp = find_rsdp();
 
     if (rsdp == 0)
+    {
+        acpi_status = ACPI_STATUS_RSDP_NOT_FOUND;
         return false;
+    }
 
     acpi_info.rsdp_address = rsdp;
 
@@ -226,43 +247,95 @@ extern "C" bool acpi_initialize()
 
     if (revision >= 2)
     {
-        root_address = read64(rsdp + 24);
+        unsigned long long candidate = read64(rsdp + 24);
 
-        if (address_is_mapped(root_address))
+        if (address_is_mapped(candidate) &&
+            signature4(candidate, "XSDT"))
+        {
+            root_address = candidate;
             xsdt = true;
+        }
     }
 
     if (root_address == 0)
     {
-        root_address = read32(rsdp + 16);
-        xsdt = false;
+        unsigned long long candidate =
+            static_cast<unsigned long long>(read32(rsdp + 16));
+
+        if (address_is_mapped(candidate) &&
+            signature4(candidate, "RSDT"))
+        {
+            root_address = candidate;
+            xsdt = false;
+        }
     }
 
     if (root_address == 0)
+    {
+        acpi_status = ACPI_STATUS_ROOT_NOT_FOUND;
         return false;
+    }
 
     acpi_info.root_table_address = root_address;
 
+    /*
+     * Validate the selected root table before looking for MADT.
+     */
+    unsigned int root_length = read32(root_address + 4);
+
+    if (root_length < 36 ||
+        root_length > 0x100000 ||
+        !checksum_ok(root_address, root_length))
+    {
+        acpi_status = ACPI_STATUS_ROOT_INVALID;
+        return false;
+    }
+
     unsigned long long madt = find_madt(root_address, xsdt);
 
+    /*
+     * Some firmware exposes a valid RSDT even when the XSDT path
+     * is unusable. Fall back cleanly.
+     */
     if (madt == 0 && xsdt)
     {
-        root_address = read32(rsdp + 16);
-        acpi_info.root_table_address = root_address;
-        madt = find_madt(root_address, false);
+        unsigned long long rsdt =
+            static_cast<unsigned long long>(read32(rsdp + 16));
+
+        if (address_is_mapped(rsdt) &&
+            signature4(rsdt, "RSDT"))
+        {
+            acpi_info.root_table_address = rsdt;
+            root_address = rsdt;
+            xsdt = false;
+            madt = find_madt(root_address, false);
+        }
     }
 
     if (madt == 0)
+    {
+        acpi_status = ACPI_STATUS_MADT_NOT_FOUND;
         return false;
+    }
 
     acpi_info.madt_address = madt;
 
-    parse_madt(madt);
+    if (!parse_madt(madt))
+    {
+        acpi_status = ACPI_STATUS_MADT_INVALID;
+        return false;
+    }
 
+    acpi_status = ACPI_STATUS_OK;
     return true;
 }
 
 extern "C" const AcpiInfo* acpi_get_info()
 {
     return &acpi_info;
+}
+
+extern "C" AcpiStatus acpi_get_status()
+{
+    return acpi_status;
 }
