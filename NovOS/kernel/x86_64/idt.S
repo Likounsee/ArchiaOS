@@ -221,8 +221,9 @@ idt_set_gate0:
     movb $0x8E, 5(%rdi)
     ret
 
-.global idt_test_exception
-.type idt_test_exception, @function
-idt_test_exception:
-    ud2
+.global idt_test_double_fault
+.type idt_test_double_fault, @function
+idt_test_double_fault:
+    xorq %rax, %rax
+    movq (%rax), %rax
     ret
