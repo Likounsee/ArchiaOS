@@ -67,7 +67,9 @@ UEFI is the primary target during early development. BIOS / Legacy / CSM support
 
 ### Validated boot foundation
 
-The current x86-64 path has been tested in QEMU with OVMF:
+The current x86-64 path has been tested in QEMU with OVMF.
+
+> **Current debugging status (2026-09-26):** The bootloader correctly writes `BootInfo.version = 2` and the ACPI RSDP address before `ExitBootServices`, and the rebuilt binaries are transferred to the test ESP with matching SHA-256 hashes. The kernel currently stops during BootInfo validation with `BOOT INFO BAD VERSION`. The next session will investigate the BootInfo handoff and memory contents across the bootloader → kernel transition before making further architectural changes.
 
 ```text
 UEFI
