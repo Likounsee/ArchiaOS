@@ -1,4 +1,5 @@
 #include "uefi.h"
+#include "../../common/boot_info.h"
 
 static void print(EFI_SYSTEM_TABLE* SystemTable, const char* text)
 {
@@ -125,18 +126,27 @@ static void debug_hex64(UINT64 value)
     for (int i = 0; i < 16; ++i)
         debug_char(digits[(value >> ((15 - i) * 4)) & 0xF]);
 }
-[[noreturn]] static void jump_to_kernel(UINT64 entry)
+
+/*
+ * jump_to_kernel_with_bootinfo
+ * 
+ * Jumps to kernel entry point with BootInfo* in RDI (x86-64 ABI)
+ */
+[[noreturn]] static void jump_to_kernel_with_bootinfo(UINT64 entry, BootInfo* bootInfo)
 {
     debug_str("JUMP STUB\n");
 
     asm volatile (
-        "jmp *%0"
+        "mov %0, %%rdi\n\t"  /* RDI = bootInfo (first argument) */
+        "jmp *%1\n\t"        /* Jump to kernel entry */
         :
-        : "r"(entry)
+        : "r"(bootInfo),
+          "r"(entry)
     );
 
     __builtin_unreachable();
 }
+
 extern "C" EFI_STATUS efi_main(
     EFI_HANDLE ImageHandle,
     EFI_SYSTEM_TABLE* SystemTable)
@@ -492,7 +502,7 @@ extern "C" EFI_STATUS efi_main(
         }
     }
 
-    print(SystemTable, "NOVOS PT_LOAD LOADED\r\n");
+    print(SystemTable, "NOVOS PT_LOAD LOADED\\r\\n");
 
     status = SetPosition(
         kernelFile,
@@ -637,6 +647,29 @@ extern "C" EFI_STATUS efi_main(
     print(SystemTable, "MEMMAP BUFFER OK\r\n");
     debug_str("A\n");
 
+    /*
+     * Allocate BootInfo structure
+     * Must be a full page to remain valid after ExitBootServices
+     */
+    UINT64 bootInfoAddress = 0x1000;  /* Allocate at 0x1000 (second page) */
+    status = AllocatePages(
+        EFI_ALLOCATE_ADDRESS,
+        EFI_LOADER_DATA,
+        1,  /* 1 page */
+        &bootInfoAddress
+    );
+
+    if (status != EFI_SUCCESS)
+    {
+        print(SystemTable, "BOOTINFO ALLOC FAIL\r\n");
+        halt();
+    }
+
+    BootInfo* bootInfo = reinterpret_cast<BootInfo*>(bootInfoAddress);
+    debug_str("BOOTINFO ALLOCATED AT: ");
+    debug_hex64(reinterpret_cast<UINT64>(bootInfo));
+    debug_str("\n");
+
     int retryCount = 0;
 
     for (;;)
@@ -683,6 +716,33 @@ extern "C" EFI_STATUS efi_main(
 
         debug_str("D\n");
 
+        /*
+         * Fill BootInfo before ExitBootServices
+         */
+        bootInfo->magic = NOVOS_BOOT_INFO_MAGIC;
+        bootInfo->version = NOVOS_BOOT_INFO_VERSION;
+        bootInfo->memory_map_address = reinterpret_cast<UINT64>(memoryMapBuffer);
+        bootInfo->memory_map_size = memoryMapSize;
+        bootInfo->memory_descriptor_size = descriptorSize;
+        bootInfo->memory_descriptor_count = memoryMapSize / descriptorSize;
+
+        debug_str("BOOTINFO FILLED\n");
+        debug_str("  magic: ");
+        debug_hex64(bootInfo->magic);
+        debug_str("\n");
+        debug_str("  memory_map_address: ");
+        debug_hex64(bootInfo->memory_map_address);
+        debug_str("\n");
+        debug_str("  memory_map_size: ");
+        debug_hex64(bootInfo->memory_map_size);
+        debug_str("\n");
+        debug_str("  descriptor_size: ");
+        debug_hex64(bootInfo->memory_descriptor_size);
+        debug_str("\n");
+        debug_str("  descriptor_count: ");
+        debug_hex64(bootInfo->memory_descriptor_count);
+        debug_str("\n");
+
         status = ExitBootServices(
             ImageHandle,
             memoryMapKey
@@ -715,7 +775,7 @@ extern "C" EFI_STATUS efi_main(
     debug_str("F\n");
     debug_str("JUMPING TO KERNEL\n");
 
-    jump_to_kernel(elfHeader.e_entry);
+    jump_to_kernel_with_bootinfo(elfHeader.e_entry, bootInfo);
 
     halt();
 }
