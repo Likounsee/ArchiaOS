@@ -63,49 +63,49 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         for (;;) asm volatile ("hlt");
     }
 
-    debug_str("BOOT INFO VALID\n");
+    debug_str("[BOOT] Boot information validated\n");
 
-    debug_str("MEMORY MAP ADDRESS: ");
+    debug_str("[BOOT] Memory map address: ");
     debug_hex64(bootInfo->memory_map_address);
     debug_str("\n");
 
-    debug_str("MEMORY MAP SIZE: ");
+    debug_str("[BOOT] Memory map size: ");
     debug_hex64(bootInfo->memory_map_size);
     debug_str("\n");
 
-    debug_str("MEMORY MAP DESCRIPTOR SIZE: ");
+    debug_str("[BOOT] Descriptor size: ");
     debug_hex64(bootInfo->memory_descriptor_size);
     debug_str("\n");
 
-    debug_str("MEMORY MAP ENTRIES: ");
+    debug_str("[BOOT] Memory map entries: ");
     debug_hex64(bootInfo->memory_descriptor_count);
     debug_str("\n");
 
-    debug_str("INITIALIZING PMM\n");
+    debug_str("\n[NOVOS] === MEMORY ===\n");\n    debug_str("[PMM] Initializing physical memory manager\n");
     pmm_run_tests(bootInfo);
 
-    debug_str("INITIALIZING PAGING\n");
+    debug_str("[MMU] Initializing paging\n");
     paging_run_tests();
 
-    debug_str("INITIALIZING GDT\n");
+    debug_str("\n[NOVOS] === CPU ===\n");\n    debug_str("[GDT] Initializing descriptor tables\n");
     gdt_initialize();
-    debug_str("GDT INITIALIZED\n");
+    debug_str("[GDT] Ready\n");
 
-    debug_str("INITIALIZING TSS\n");
+    debug_str("[TSS] Initializing task state segment\n");
     tss_initialize();
-    debug_str("TSS INITIALIZED\n");
-    debug_str("DOUBLE FAULT IST1 CONFIGURED\n");
+    debug_str("[TSS] Ready\n");
+    debug_str("[TSS] Double-fault IST1 configured\n");
 
-    debug_str("INITIALIZING IDT\n");
+    debug_str("[IDT] Installing exception and IRQ gates\n");
     idt_initialize();
-    debug_str("IDT INITIALIZED\n");
+    debug_str("[IDT] Ready\n");
 
-    debug_str("INITIALIZING ACPI\n");
+    debug_str("\n[NOVOS] === PLATFORM ===\n");\n    debug_str("[ACPI] Discovering firmware tables\n");
     if (acpi_initialize())
     {
         const AcpiInfo* acpi = acpi_get_info();
 
-        debug_str("ACPI INITIALIZED\n");
+        debug_str("[ACPI] Ready\n");
         debug_str("RSDP: ");
         debug_hex64(acpi->rsdp_address);
         debug_str("\nMADT: ");
@@ -124,32 +124,32 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     }
     else
     {
-        debug_str("ACPI INITIALIZATION FAILED\n");
+        debug_str("[ACPI] Initialization failed, status: ");\n        debug_hex64(static_cast<u64>(acpi_get_status()));\n        debug_str("\n");
     }
 
-    debug_str("INITIALIZING IRQ / LOCAL APIC\n");
+    debug_str("[APIC] Initializing interrupt controller\n");
     if (!irq_initialize())
     {
-        debug_str("IRQ / LOCAL APIC INITIALIZATION FAILED\n");
+        debug_str("[APIC] Initialization failed\n");
         for (;;)
             asm volatile ("cli; hlt");
     }
-    debug_str("IRQ / LOCAL APIC INITIALIZED\n");
+    debug_str("[APIC] Ready\n");
 
-    debug_str("TESTING LOCAL APIC TIMER IRQ\n");
+    debug_str("[IRQ] Testing Local APIC timer\n");
     if (irq_test_timer())
-        debug_str("LOCAL APIC TIMER IRQ TEST PASS\n");
+        debug_str("[IRQ] Timer interrupt test passed\n");
     else
-        debug_str("LOCAL APIC TIMER IRQ TEST FAIL\n");
+        debug_str("[IRQ] Timer interrupt test FAILED\n");
 
-    debug_str("TESTING #UD EXCEPTION RETURN\n");
+    debug_str("\n[NOVOS] === EXCEPTION HANDLING ===\n");\n    debug_str("[EXC] Testing invalid-opcode recovery\n");
     idt_test_invalid_opcode();
-    debug_str("#UD RETURNED SUCCESSFULLY\n");
+    debug_str("[EXC] Invalid-opcode recovery passed\n");
 
-    debug_str("TESTING DOUBLE FAULT IST1\n");
+    debug_str("[EXC] Testing double-fault IST1\n");
     idt_test_double_fault();
 
-    debug_str("DOUBLE FAULT TEST RETURNED\n");
+    debug_str("[EXC] Double-fault test returned unexpectedly\n");
 
     volatile unsigned short* vga =
         reinterpret_cast<volatile unsigned short*>(0xB8000);
