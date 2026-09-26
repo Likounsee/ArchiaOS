@@ -1,5 +1,5 @@
 #include "uefi.h"
-#include "../../common/boot_info.h"
+#include "../../../common/boot_info.h"
 
 static void print(EFI_SYSTEM_TABLE* SystemTable, const char* text)
 {
