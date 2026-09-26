@@ -133,6 +133,7 @@ idt_initialize:
     lea isr8(%rip), %rax
     add $16, %rdi
     call idt_set_gate0
+    movb $0x01, 4(%rdi)
     lea isr9(%rip), %rax
     add $16, %rdi
     call idt_set_gate0
