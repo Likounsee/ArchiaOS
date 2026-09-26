@@ -81,6 +81,7 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     debug_str("INITIALIZING TSS\n");
     tss_initialize();
     debug_str("TSS INITIALIZED\n");
+    debug_str("DOUBLE FAULT IST1 CONFIGURED\n");
 
     debug_str("INITIALIZING IDT\n");
     idt_initialize();
