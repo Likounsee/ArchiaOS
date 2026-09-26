@@ -81,6 +81,10 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     debug_hex64(bootInfo->memory_descriptor_count);
     debug_str("\n");
 
+    debug_str("[BOOT] ACPI RSDP address: ");
+    debug_hex64(bootInfo->acpi_rsdp_address);
+    debug_str("\n");
+
     debug_str("\n[NOVOS] === MEMORY ===\n");
     debug_str("[PMM] Initializing physical memory manager\n");
     pmm_run_tests(bootInfo);
@@ -104,7 +108,7 @@ extern "C" void kernel_main(BootInfo* bootInfo)
 
     debug_str("\n[NOVOS] === PLATFORM ===\n");
     debug_str("[ACPI] Discovering firmware tables\n");
-    if (acpi_initialize())
+    if (acpi_initialize(bootInfo->acpi_rsdp_address))
     {
         const AcpiInfo* acpi = acpi_get_info();
 
