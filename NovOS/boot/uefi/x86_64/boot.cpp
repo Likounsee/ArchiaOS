@@ -169,6 +169,7 @@ static inline void debug_char(char c)
         :
         : "a"(c),
           "Nd"(static_cast<unsigned short>(0xE9))
+        : "memory"
     );
 }
 
