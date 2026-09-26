@@ -23,6 +23,6 @@ enum AcpiStatus
     ACPI_STATUS_MADT_INVALID
 };
 
-extern "C" bool acpi_initialize();
+extern "C" bool acpi_initialize(unsigned long long rsdp_address);
 extern "C" const AcpiInfo* acpi_get_info();
 extern "C" AcpiStatus acpi_get_status();
