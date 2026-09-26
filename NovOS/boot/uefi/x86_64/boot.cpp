@@ -792,6 +792,9 @@ extern "C" EFI_STATUS efi_main(
          */
         bootInfo->magic = NOVOS_BOOT_INFO_MAGIC;
         bootInfo->version = NOVOS_BOOT_INFO_VERSION;
+        debug_str("  version: ");
+        debug_hex64(bootInfo->version);
+        debug_str("\n");
         bootInfo->memory_map_address = reinterpret_cast<UINT64>(memoryMapBuffer);
         bootInfo->memory_map_size = memoryMapSize;
         bootInfo->memory_descriptor_size = descriptorSize;
