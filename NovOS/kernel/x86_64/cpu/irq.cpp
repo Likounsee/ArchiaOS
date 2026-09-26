@@ -1,13 +1,9 @@
 #include "irq.hpp"
 #include "lapic.hpp"
 
-extern "C" void irq_initialize()
+extern "C" bool irq_initialize()
 {
-    if (!lapic_initialize())
-    {
-        for (;;)
-            asm volatile ("cli; hlt");
-    }
+    return lapic_initialize();
 }
 
 extern "C" void irq_dispatch(ExceptionFrame* frame)
