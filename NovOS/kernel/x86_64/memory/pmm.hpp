@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../common/boot_info.h"
+#include "../../../common/boot_info.h"
 
 constexpr u64 NOVOS_PAGE_SIZE = 0x1000ULL;
 constexpr u64 NOVOS_PMM_MAX_PHYSICAL_ADDRESS = 0x1000000000ULL; /* 64 GiB */
