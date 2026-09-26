@@ -90,6 +90,8 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     debug_str("TESTING DOUBLE FAULT IST1\n");
     idt_test_double_fault();
 
+    debug_str("DOUBLE FAULT TEST RETURNED\n");
+
     volatile unsigned short* vga =
         reinterpret_cast<volatile unsigned short*>(0xB8000);
 
