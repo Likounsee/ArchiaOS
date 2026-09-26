@@ -224,6 +224,6 @@ idt_set_gate0:
 .global idt_test_double_fault
 .type idt_test_double_fault, @function
 idt_test_double_fault:
-    movabsq $0x0000400000000000, %rax
-    movq (%rax), %rax
+    movabsq $0x0000400000000000, %rsp
+    movq (%rsp), %rax
     ret
