@@ -270,7 +270,7 @@ idt_initialize:
     lea isr47(%rip), %rax
     add $16, %rdi
     call idt_set_gate0
-    add $3328, %rdi
+    add $3584, %rdi
     lea isr255(%rip), %rax
     call idt_set_gate0
 
