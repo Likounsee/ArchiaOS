@@ -140,8 +140,9 @@ static void debug_hex64(UINT64 value)
         "mov %0, %%rdi\n\t"  /* RDI = bootInfo (first argument) */
         "jmp *%1\n\t"        /* Jump to kernel entry */
         :
-        : "r"(bootInfo),
+        : "D"(bootInfo),
           "r"(entry)
+        : "memory"
     );
 
     __builtin_unreachable();
