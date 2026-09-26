@@ -39,8 +39,8 @@ extern "C" void exception_dispatch(ExceptionFrame* frame)
     {
         debug_str("NESTED #PF -> EXPECTING #DF ON IST1\n");
         asm volatile (
-            "xor %%rax, %%rax\n\t"
-            "mov (%%rax), %%rax"
+            "mov $0x28, %%ax\n\t"
+            "mov %%ax, %%ds"
             :
             :
             : "rax", "memory"
