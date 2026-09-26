@@ -4,6 +4,7 @@
 #include "tss.hpp"
 #include "pmm.hpp"
 #include "paging.hpp"
+#include "irq.hpp"
 
 static inline void debug_char(char c)
 {
@@ -97,6 +98,16 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     debug_str("INITIALIZING IDT\n");
     idt_initialize();
     debug_str("IDT INITIALIZED\n");
+
+    debug_str("INITIALIZING IRQ / LOCAL APIC\n");
+    irq_initialize();
+    debug_str("IRQ / LOCAL APIC INITIALIZED\n");
+
+    debug_str("TESTING LOCAL APIC TIMER IRQ\n");
+    if (irq_test_timer())
+        debug_str("LOCAL APIC TIMER IRQ TEST PASS\n");
+    else
+        debug_str("LOCAL APIC TIMER IRQ TEST FAIL\n");
 
     debug_str("TESTING #UD EXCEPTION RETURN\n");
     idt_test_invalid_opcode();
