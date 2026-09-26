@@ -138,10 +138,10 @@ static void debug_hex64(UINT64 value)
 
     asm volatile (
         "mov %0, %%rdi\n\t"  /* RDI = bootInfo (first argument) */
-        "jmp *%1\n\t"        /* Jump to kernel entry */
+        "jmp *%%rax\n\t"      /* Jump to kernel entry */
         :
         : "D"(bootInfo),
-          "r"(entry)
+          "a"(entry)
         : "memory"
     );
 
