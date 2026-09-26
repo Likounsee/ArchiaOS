@@ -1,7 +1,5 @@
 #pragma once
 
-#include <cstdint>
-
 /*
  * BootInfo Structure
  * 
@@ -9,28 +7,42 @@
  * Contains essential information needed for kernel initialization.
  * 
  * No UEFI dependencies in kernel code — only basic types.
+ * Completely freestanding — no libc, no cstdint, no OS headers.
  */
 
-#define NOVOS_BOOT_INFO_MAGIC   0x4E4F564F  // "NOVO" in hex
-#define NOVOS_BOOT_INFO_VERSION 1
+/* Freestanding integer types */
+typedef unsigned char      u8;
+typedef unsigned short     u16;
+typedef unsigned int       u32;
+typedef unsigned long long u64;
+
+#define NOVOS_BOOT_INFO_MAGIC   0x4E4F564Fu  /* "NOVO" */
+#define NOVOS_BOOT_INFO_VERSION 1u
 
 struct BootInfo
 {
     /* Magic signature for validation */
-    uint32_t magic;
+    u32 magic;
     
     /* Structure version */
-    uint32_t version;
+    u32 version;
     
     /* UEFI Memory Map Information */
-    /* (This is the raw buffer from GetMemoryMap) */
-    uint64_t memory_map_address;    // Physical address of EFI_MEMORY_DESCRIPTOR array
-    uint64_t memory_map_size;       // Total size in bytes
-    uint32_t memory_descriptor_size; // Size of each descriptor
-    uint32_t memory_descriptor_count; // Number of descriptors
+    /* Physical address of EFI_MEMORY_DESCRIPTOR array */
+    u64 memory_map_address;
+    
+    /* Total size in bytes */
+    u64 memory_map_size;
+    
+    /* Size of each descriptor in the array */
+    u32 memory_descriptor_size;
+    
+    /* Number of descriptors in the array */
+    u32 memory_descriptor_count;
     
     /* Reserved for future use */
-    uint8_t reserved[128];
+    u8 reserved[128];
 };
 
-static_assert(sizeof(BootInfo) <= 4096, "BootInfo must fit in a single page");
+/* Static assertion: BootInfo must fit in a single page */
+static_assert(sizeof(struct BootInfo) <= 4096, "BootInfo must fit in a single page");
