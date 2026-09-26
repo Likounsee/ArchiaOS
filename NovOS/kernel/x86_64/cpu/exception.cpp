@@ -35,6 +35,12 @@ extern "C" void exception_dispatch(ExceptionFrame* frame)
     debug_hex64(frame->rflags);
     debug_str("\n");
 
+    if (frame->vector >= 0x20)
+    {
+        irq_dispatch(frame);
+        return;
+    }
+
     if (frame->vector == 6)
     {
         /* UD2 is a 2-byte instruction. Advance RIP so iretq resumes
