@@ -27,7 +27,7 @@ tss_initialize:
     mov %rax, tss64+4(%rip)
 
     lea tss_ist1_stack_top(%rip), %rax
-    mov %rax, tss64+28(%rip)
+    mov %rax, tss64+36(%rip)
 
     /* 104-byte TSS: I/O bitmap starts immediately after the TSS,
        so no I/O-permission bitmap is present. */
