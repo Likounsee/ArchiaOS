@@ -3,8 +3,12 @@
 
 static inline void pic_mask_all()
 {
-    asm volatile ("outb %0, %1" : : "a"(0xFF), "Nd"(static_cast<unsigned short>(0x21)));
-    asm volatile ("outb %0, %1" : : "a"(0xFF), "Nd"(static_cast<unsigned short>(0xA1)));
+    const unsigned char mask = 0xFF;
+    const unsigned short master_pic = 0x21;
+    const unsigned short slave_pic = 0xA1;
+
+    asm volatile ("outb %0, %1" : : "a"(mask), "Nd"(master_pic));
+    asm volatile ("outb %0, %1" : : "a"(mask), "Nd"(slave_pic));
 }
 
 extern "C" bool irq_initialize()
