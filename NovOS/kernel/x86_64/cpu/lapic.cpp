@@ -4,7 +4,7 @@ static constexpr unsigned int IA32_APIC_BASE_MSR = 0x1B;
 static constexpr unsigned long long APIC_BASE_MASK = 0xFFFFF000ULL;
 static constexpr unsigned long long APIC_ENABLE = 1ULL << 11;
 
-static constexpr unsigned long long LAPIC_BASE = 0xFEE00000ULL;
+static volatile unsigned char* lapic_base = nullptr;
 
 static constexpr unsigned long long LAPIC_ID = 0x020;
 static constexpr unsigned long long LAPIC_EOI = 0x0B0;
@@ -62,7 +62,7 @@ static inline unsigned int cpuid_edx(unsigned int leaf)
 
 static inline volatile unsigned int* lapic_register(unsigned long long offset)
 {
-    return reinterpret_cast<volatile unsigned int*>(LAPIC_BASE + offset);
+    return reinterpret_cast<volatile unsigned int*>(lapic_base + offset);
 }
 
 extern "C" bool lapic_initialize()
@@ -77,6 +77,11 @@ extern "C" bool lapic_initialize()
         apic_base |= APIC_ENABLE;
         wrmsr(IA32_APIC_BASE_MSR, apic_base);
     }
+
+    lapic_base = reinterpret_cast<volatile unsigned char*>(apic_base & APIC_BASE_MASK);
+
+    if (lapic_base == nullptr)
+        return false;
 
     *lapic_register(LAPIC_SVR) =
         (*lapic_register(LAPIC_SVR) & 0xFFFFFF00U) |
