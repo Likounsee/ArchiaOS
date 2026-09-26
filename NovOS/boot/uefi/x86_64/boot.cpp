@@ -605,6 +605,34 @@ extern "C" EFI_STATUS efi_main(
         halt();
     }
 
+    /*
+     * Step 1: Allocate BootInfo FIRST (before GetMemoryMap final)
+     * This avoids MapKey invalidation from page allocation
+     */
+    BootInfo* bootInfo = nullptr;
+    UINT64 bootInfoPageAddress = 0;
+    
+    status = AllocatePages(
+        EFI_ALLOCATE_ANY_PAGES,
+        EFI_LOADER_DATA,
+        1,  /* 1 page for BootInfo */
+        &bootInfoPageAddress
+    );
+
+    if (status != EFI_SUCCESS || bootInfoPageAddress == 0)
+    {
+        print(SystemTable, "BOOTINFO ALLOC FAIL\r\n");
+        halt();
+    }
+
+    bootInfo = reinterpret_cast<BootInfo*>(bootInfoPageAddress);
+    debug_str("BOOTINFO ALLOCATED AT: ");
+    debug_hex64(bootInfoPageAddress);
+    debug_str("\n");
+
+    /*
+     * Step 2: Get memory map size first (without buffer)
+     */
     UINTN memoryMapSize = 0;
     UINT64 memoryMapKey = 0;
     UINTN descriptorSize = 0;
@@ -626,6 +654,9 @@ extern "C" EFI_STATUS efi_main(
         halt();
     }
 
+    /*
+     * Step 3: Allocate memory map buffer
+     */
     UINTN memoryMapBufferSize =
         memoryMapSize + (descriptorSize * 8);
 
@@ -646,29 +677,6 @@ extern "C" EFI_STATUS efi_main(
 
     print(SystemTable, "MEMMAP BUFFER OK\r\n");
     debug_str("A\n");
-
-    /*
-     * Allocate BootInfo structure
-     * Must be a full page to remain valid after ExitBootServices
-     */
-    UINT64 bootInfoAddress = 0x1000;  /* Allocate at 0x1000 (second page) */
-    status = AllocatePages(
-        EFI_ALLOCATE_ADDRESS,
-        EFI_LOADER_DATA,
-        1,  /* 1 page */
-        &bootInfoAddress
-    );
-
-    if (status != EFI_SUCCESS)
-    {
-        print(SystemTable, "BOOTINFO ALLOC FAIL\r\n");
-        halt();
-    }
-
-    BootInfo* bootInfo = reinterpret_cast<BootInfo*>(bootInfoAddress);
-    debug_str("BOOTINFO ALLOCATED AT: ");
-    debug_hex64(reinterpret_cast<UINT64>(bootInfo));
-    debug_str("\n");
 
     int retryCount = 0;
 
