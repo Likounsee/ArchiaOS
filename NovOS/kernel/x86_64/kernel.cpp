@@ -87,7 +87,9 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     idt_initialize();
     debug_str("IDT INITIALIZED\n");
 
-    debug_str("IDT INITIALIZED\n");
+    debug_str("TESTING #UD EXCEPTION RETURN\n");
+    idt_test_exception();
+    debug_str("#UD RETURNED SUCCESSFULLY\n");
 
     volatile unsigned short* vga =
         reinterpret_cast<volatile unsigned short*>(0xB8000);
