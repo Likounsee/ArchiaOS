@@ -134,7 +134,7 @@ static void debug_hex64(UINT64 value)
  */
 [[noreturn]] static void jump_to_kernel_with_bootinfo(UINT64 entry, BootInfo* bootInfo)
 {
-    debug_str("JUMP STUB\n");
+    debug_str("[BOOT] Entering kernel handoff\n");
 
     asm volatile (
         "mov %0, %%rdi\n\t"  /* RDI = bootInfo (first argument) */
@@ -152,7 +152,7 @@ extern "C" EFI_STATUS efi_main(
     EFI_HANDLE ImageHandle,
     EFI_SYSTEM_TABLE* SystemTable)
 {
-    print(SystemTable, "NOVOS BOOTLOADER STARTED\r\n");
+    print(SystemTable, "NOVOS UEFI BOOT\r\n");
 
     EFI_BOOT_SERVICES* bs = SystemTable->BootServices;
 
@@ -503,7 +503,7 @@ extern "C" EFI_STATUS efi_main(
         }
     }
 
-    print(SystemTable, "NOVOS PT_LOAD LOADED\\r\\n");
+    print(SystemTable, "NOVOS: KERNEL SEGMENTS LOADED\\r\\n");
 
     status = SetPosition(
         kernelFile,
