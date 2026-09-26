@@ -221,6 +221,12 @@ idt_set_gate0:
     movb $0x8E, 5(%rdi)
     ret
 
+.global idt_test_invalid_opcode
+.type idt_test_invalid_opcode, @function
+idt_test_invalid_opcode:
+    .byte 0x0F, 0x0B
+    ret
+
 .global idt_test_double_fault
 .type idt_test_double_fault, @function
 idt_test_double_fault:
