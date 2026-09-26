@@ -107,6 +107,9 @@ The current kernel foundation includes:
 - Local APIC initialization and software enable
 - Local APIC periodic timer IRQ
 - Interrupt acknowledgement through Local APIC EOI
+- Legacy 8259 PIC masking during APIC mode initialization
+- ACPI RSDP / XSDT / RSDT discovery
+- ACPI MADT discovery and basic processor / I/O APIC enumeration
 
 These components have been exercised through QEMU tests.
 
@@ -338,8 +341,12 @@ No hidden or forced telemetry is planned.
 - [x] Local APIC initialization
 - [x] Local APIC timer IRQ infrastructure
 - [x] Local APIC EOI handling
+- [x] Legacy PIC masking
+- [x] ACPI RSDP / XSDT / RSDT discovery
+- [x] ACPI MADT discovery
+- [x] Basic I/O APIC enumeration
 - [ ] QEMU validation of Local APIC timer IRQ
-- [ ] I/O APIC / ACPI interrupt routing
+- [ ] I/O APIC interrupt routing
 - [ ] IRQ registration / handler framework
 - [ ] Kernel allocator
 - [ ] CPU initialization
