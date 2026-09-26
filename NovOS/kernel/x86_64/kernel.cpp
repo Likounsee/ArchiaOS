@@ -2,6 +2,7 @@
 #include "gdt.hpp"
 #include "idt.hpp"
 #include "tss.hpp"
+#include "pmm.hpp"
 
 static inline void debug_char(char c)
 {
@@ -27,6 +28,8 @@ static void debug_hex64(u64 value)
     for (int i = 0; i < 16; ++i)
         debug_char(digits[(value >> ((15 - i) * 4)) & 0xF]);
 }
+
+extern "C" void pmm_run_tests(BootInfo* bootInfo);
 
 extern "C" void kernel_main(BootInfo* bootInfo)
 {
@@ -73,6 +76,9 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     debug_str("MEMORY MAP ENTRIES: ");
     debug_hex64(bootInfo->memory_descriptor_count);
     debug_str("\n");
+
+    debug_str("INITIALIZING PMM\n");
+    pmm_run_tests(bootInfo);
 
     debug_str("INITIALIZING GDT\n");
     gdt_initialize();
