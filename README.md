@@ -103,6 +103,10 @@ The current kernel foundation includes:
 - CPU exception entry stubs
 - #UD exception handling and return
 - Double Fault handling through IST1
+- External IRQ vector infrastructure (32–47)
+- Local APIC initialization and software enable
+- Local APIC periodic timer IRQ
+- Interrupt acknowledgement through Local APIC EOI
 
 These components have been exercised through QEMU tests.
 
@@ -330,7 +334,13 @@ No hidden or forced telemetry is planned.
 
 ### Phase 2 — Kernel foundation
 - [ ] Complete exception handling
-- [ ] IRQ / interrupt controller support
+- [x] IDT external IRQ vectors 32–47
+- [x] Local APIC initialization
+- [x] Local APIC timer IRQ infrastructure
+- [x] Local APIC EOI handling
+- [ ] QEMU validation of Local APIC timer IRQ
+- [ ] I/O APIC / ACPI interrupt routing
+- [ ] IRQ registration / handler framework
 - [ ] Kernel allocator
 - [ ] CPU initialization
 - [ ] System calls
@@ -487,7 +497,7 @@ NovOs is **not production-ready**.
 
 It is an active early-stage operating-system project. The current milestone establishes a working UEFI → bootloader → kernel path and validates the first low-level kernel subsystems.
 
-The next development stage will continue from the exception and interrupt infrastructure. Development is intentionally paused here until the next implementation session.
+The next development stage will continue by validating the new Local APIC timer IRQ path, then adding ACPI/MADT and I/O APIC routing for device interrupts.
 
 ---
 
