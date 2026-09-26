@@ -7,6 +7,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_executable(novos_kernel
     kernel/x86_64/core/kernel.cpp
     kernel/x86_64/cpu/exception.cpp
+    kernel/x86_64/cpu/irq.cpp
+    kernel/x86_64/cpu/lapic.cpp
     kernel/x86_64/cpu/gdt.S
     kernel/x86_64/cpu/idt.S
     kernel/x86_64/cpu/tss.S
