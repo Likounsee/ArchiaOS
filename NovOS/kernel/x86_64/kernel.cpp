@@ -1,4 +1,5 @@
 #include "../../common/boot_info.h"
+#include "gdt.hpp"
 
 static inline void debug_char(char c)
 {
@@ -19,14 +20,10 @@ static void debug_str(const char* s)
 static void debug_hex64(u64 value)
 {
     const char* digits = "0123456789ABCDEF";
-
     debug_char('0');
     debug_char('x');
-
     for (int i = 0; i < 16; ++i)
-    {
         debug_char(digits[(value >> ((15 - i) * 4)) & 0xF]);
-    }
 }
 
 extern "C" void kernel_main(BootInfo* bootInfo)
@@ -74,6 +71,10 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     debug_str("MEMORY MAP ENTRIES: ");
     debug_hex64(bootInfo->memory_descriptor_count);
     debug_str("\n");
+
+    debug_str("INITIALIZING GDT\n");
+    gdt_initialize();
+    debug_str("GDT INITIALIZED\n");
 
     volatile unsigned short* vga =
         reinterpret_cast<volatile unsigned short*>(0xB8000);
