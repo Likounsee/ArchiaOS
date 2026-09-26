@@ -225,3 +225,4 @@ idt_set_gate0:
 .type idt_test_exception, @function
 idt_test_exception:
     ud2
+    ret
