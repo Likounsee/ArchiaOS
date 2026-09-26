@@ -65,6 +65,67 @@ static void halt()
         asm volatile ("hlt");
 }
 
+static bool guid_equal(
+    const EFI_GUID& left,
+    const EFI_GUID& right)
+{
+    if (left.Data1 != right.Data1 ||
+        left.Data2 != right.Data2 ||
+        left.Data3 != right.Data3)
+        return false;
+
+    for (int i = 0; i < 8; ++i)
+    {
+        if (left.Data4[i] != right.Data4[i])
+            return false;
+    }
+
+    return true;
+}
+
+static UINT64 find_acpi_rsdp(EFI_SYSTEM_TABLE* SystemTable)
+{
+    if (SystemTable == nullptr ||
+        SystemTable->ConfigurationTable == nullptr)
+        return 0;
+
+    static const EFI_GUID acpi20Guid = {
+        0x8868e871,
+        0xe4f1,
+        0x11d3,
+        { 0xbc, 0x22, 0x00, 0x80, 0xc7, 0x3c, 0x88, 0x81 }
+    };
+
+    static const EFI_GUID acpi10Guid = {
+        0xeb9d2d30,
+        0x2d88,
+        0x11d3,
+        { 0x9a, 0x16, 0x00, 0x90, 0x27, 0x3f, 0xc1, 0x4d }
+    };
+
+    auto* tables =
+        reinterpret_cast<EFI_CONFIGURATION_TABLE*>(
+            SystemTable->ConfigurationTable);
+
+    UINT64 acpi10 = 0;
+
+    for (UINTN i = 0; i < SystemTable->NumberOfTableEntries; ++i)
+    {
+        if (guid_equal(tables[i].VendorGuid, acpi20Guid))
+        {
+            return reinterpret_cast<UINT64>(tables[i].VendorTable);
+        }
+
+        if (guid_equal(tables[i].VendorGuid, acpi10Guid))
+        {
+            acpi10 =
+                reinterpret_cast<UINT64>(tables[i].VendorTable);
+        }
+    }
+
+    return acpi10;
+}
+
 struct Elf64Header
 {
     UINT8  e_ident[16];
@@ -734,6 +795,11 @@ extern "C" EFI_STATUS efi_main(
         bootInfo->memory_map_size = memoryMapSize;
         bootInfo->memory_descriptor_size = descriptorSize;
         bootInfo->memory_descriptor_count = memoryMapSize / descriptorSize;
+        bootInfo->acpi_rsdp_address = find_acpi_rsdp(SystemTable);
+
+        debug_str("  acpi_rsdp_address: ");
+        debug_hex64(bootInfo->acpi_rsdp_address);
+        debug_str("\n");
 
         debug_str("BOOTINFO FILLED\n");
         debug_str("  magic: ");
