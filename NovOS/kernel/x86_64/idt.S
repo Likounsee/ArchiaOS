@@ -17,3 +17,9 @@ idt_initialize:
     lea idt_pointer(%rip), %rax
     lidt (%rax)
     ret
+
+.global idt_test_exception
+.type idt_test_exception, @function
+
+idt_test_exception:
+    ud2
