@@ -28,3 +28,4 @@ extern "C" void idt_initialize();
 extern "C" void idt_test_invalid_opcode();
 extern "C" void idt_test_double_fault();
 extern "C" void exception_dispatch(ExceptionFrame* frame);
+extern "C" void irq_dispatch(ExceptionFrame* frame);
