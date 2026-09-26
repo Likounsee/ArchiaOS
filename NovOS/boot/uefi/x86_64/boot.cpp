@@ -432,7 +432,79 @@ extern "C" EFI_STATUS efi_main(
             kernelFile,
             &programHeaderSize,
             &programHeader
-        );    for (UINT16 i = 0; i < elfHeader.e_phnum; ++i)
+        );
+
+        if (status != EFI_SUCCESS ||
+            programHeaderSize != sizeof(Elf64ProgramHeader))
+        {
+            halt();
+        }
+
+        if (programHeader.p_type != ELF_PT_LOAD)
+        {
+            continue;
+        }
+
+        if (programHeader.p_filesz == 0)
+        {
+            continue;
+        }
+
+        if (programHeader.p_filesz >
+            0xFFFFFFFFFFFFFFFFULL - programHeader.p_offset)
+        {
+            halt();
+        }
+
+        status = SetPosition(
+            kernelFile,
+            programHeader.p_offset
+        );
+
+        if (status != EFI_SUCCESS)
+        {
+            halt();
+        }
+
+        UINTN segmentSize =
+            static_cast<UINTN>(programHeader.p_filesz);
+
+        if (static_cast<UINT64>(segmentSize) !=
+            programHeader.p_filesz)
+        {
+            halt();
+        }
+
+        void* segmentAddress =
+            reinterpret_cast<void*>(programHeader.p_vaddr);
+
+        status = kernelFile->Read(
+            kernelFile,
+            &segmentSize,
+            segmentAddress
+        );
+
+        if (status != EFI_SUCCESS ||
+            static_cast<UINT64>(segmentSize) !=
+                programHeader.p_filesz)
+        {
+            halt();
+        }
+    }
+
+    print(SystemTable, "NOVOS PT_LOAD LOADED\\r\\n");
+
+    status = SetPosition(
+        kernelFile,
+        elfHeader.e_phoff
+    );
+
+    if (status != EFI_SUCCESS)
+    {
+        halt();
+    }
+
+    for (UINT16 i = 0; i < elfHeader.e_phnum; ++i)
     {
         status = SetPosition(
             kernelFile,
