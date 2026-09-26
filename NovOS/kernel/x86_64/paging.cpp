@@ -94,7 +94,3 @@ extern "C" bool paging_is_enabled()
     return (cr0 & (1ULL << 31)) != 0;
 }
 
-extern "C" void paging_run_tests()
-{
-    debug_char('x');
-}
