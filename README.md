@@ -106,7 +106,7 @@ The current kernel foundation includes:
 
 These components have been exercised through QEMU tests.
 
-The current test sequence reaches:
+The current test sequence reaches the following validated end state:
 
 ```text
 PMM TEST PASS
@@ -425,6 +425,7 @@ NovOs/
 ├── kernel/
 │   └── x86_64/
 │       ├── core/
+│       │   ├── entry.S
 │       │   ├── kernel.cpp
 │       │   └── kernel.ld
 │       ├── cpu/
@@ -444,6 +445,8 @@ NovOs/
 ```
 
 Generated build outputs are not part of the source tree.
+
+The source tree was recently reorganized by responsibility and the reorganized layout has been rebuilt and validated successfully in QEMU.
 
 ---
 
@@ -484,7 +487,7 @@ NovOs is **not production-ready**.
 
 It is an active early-stage operating-system project. The current milestone establishes a working UEFI → bootloader → kernel path and validates the first low-level kernel subsystems.
 
-The next development stage will continue from the exception and interrupt infrastructure.
+The next development stage will continue from the exception and interrupt infrastructure. Development is intentionally paused here until the next implementation session.
 
 ---
 
