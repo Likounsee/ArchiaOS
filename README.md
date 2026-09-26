@@ -2,22 +2,18 @@
 
 **NovOs** is a completely independent operating system built from scratch.
 
-It is not based on Linux, Windows, or another existing operating system. The project aims to build its own kernel, boot process, system services, graphics stack, filesystem, driver architecture, compatibility layers, security model, and user experience.
+It is not based on Linux, Windows, or another existing operating system. The project is intended to develop its own kernel, boot process, memory management, interrupt infrastructure, drivers, filesystem, system services, security model, compatibility layers, and user experience.
 
 > **Status:** Early development / experimental  
-> **Current milestone:** Boot chain established; BootInfo is the next kernel/boot interface milestone.
+> **Current milestone:** x86-64 boot and kernel foundation validated in QEMU.
 
 ---
 
 ## Vision
 
-NovOs is designed around a simple idea:
+NovOs aims to be a practical, lightweight, secure, configurable operating system with its own architecture and identity.
 
-**Build an operating system that is powerful, lightweight, understandable, configurable, and respectful of its users.**
-
-The goal is not to reproduce another operating system feature-for-feature. NovOs is intended to have its own architecture and identity while remaining practical for everyday computing.
-
-### Core principles
+Core principles:
 
 - Built from scratch
 - No Linux kernel
@@ -32,102 +28,98 @@ The goal is not to reproduce another operating system feature-for-feature. NovOs
 - No mandatory online account
 - No advertising inside the operating system
 - No mandatory web browser
-- Centralized system settings
-- Centralized system updates
+- Centralized system settings and updates
 - Recoverable and maintainable system architecture
 
 ---
 
 ## Architecture
 
-### Supported architectures
-
-NovOs is planned to support:
-
-| Architecture | Support |
+| Architecture | Planned support |
 |---|---|
 | x86-64 | Native |
 | ARM64 | Native |
-| x86-32 | Compatibility on x86-64 |
+| x86-32 | Application compatibility on x86-64 |
 | ARM32 | Application compatibility layer on ARM64 |
 
-The architecture is designed so that platform-specific low-level code can remain isolated while higher-level operating system components can be shared.
+Architecture-specific code is kept separate from shared operating-system components.
 
 ---
 
-## Boot process
+## Boot
 
-The initial boot path is:
+The long-term boot path is:
 
-~~~text
-Firmware
-   │
-   ├── UEFI
-   │
-   └── BIOS / Legacy / CSM (planned)
-          │
-          ▼
-   NovOs Bootloader
-          │
-          ▼
-   ELF Kernel
-          │
-          ▼
-   NovOs Kernel
-~~~
+```text
+UEFI / BIOS / CSM
+        |
+        v
+NovOs Bootloader
+        |
+        v
+ELF64 Kernel
+        |
+        v
+NovOs Kernel
+```
 
-UEFI is the primary target during early development.
+UEFI is the primary target during early development. BIOS / Legacy / CSM support is planned for a later stage.
 
-BIOS / Legacy / CSM support is planned for a later stage.
+### Validated boot foundation
 
-### Current boot milestone
+The current x86-64 path has been tested in QEMU with OVMF:
 
-The project has already demonstrated the following working chain:
-
-~~~text
+```text
 UEFI
   ↓
 BOOTX64.EFI
   ↓
 ELF loader
   ↓
-NovOs kernel
-  ↓
 ExitBootServices
+  ↓
+BootInfo
   ↓
 kernel_entry
   ↓
 kernel_main
-  ↓
-NOVOS KERNEL STARTED
-~~~
+```
 
-The next boot/kernel interface milestone is **BootInfo**, which will allow the bootloader to pass structured firmware information to the kernel.
+The bootloader successfully loads the kernel ELF, obtains the final UEFI memory map, exits boot services, and transfers control to the kernel.
 
 ---
 
-## Kernel
+## Kernel foundation
 
-The NovOs kernel is being developed from scratch.
+The current kernel foundation includes:
 
-The kernel will eventually provide the fundamental services required by the rest of the operating system, including:
+- BootInfo validation
+- UEFI memory-map handoff
+- Physical memory manager (PMM)
+- Page-table creation and identity mapping
+- GDT initialization
+- TSS initialization
+- IDT initialization
+- CPU exception entry stubs
+- #UD exception handling and return
+- Double Fault handling through IST1
 
-- CPU and architecture initialization
-- Memory management
-- Virtual memory
-- Interrupt management
-- Process and thread management
-- Scheduling
-- Inter-process communication
-- Kernel object/resource management
-- Hardware abstraction
-- Security primitives
-- System calls
-- Driver management
-- Power management
-- Storage management
+These components have been exercised through QEMU tests.
 
-The kernel will remain deliberately separated from higher-level system services whenever possible.
+The current test sequence reaches:
+
+```text
+PMM TEST PASS
+PAGING TEST PASS
+GDT INITIALIZED
+TSS INITIALIZED
+IDT INITIALIZED
+#UD RETURNED SUCCESSFULLY
+DOUBLE FAULT HANDLER RUNNING
+IST1 STACK VALIDATED
+```
+
+The Double Fault test intentionally stops in the fatal handler after validating the IST1 stack.
 
 ---
 
@@ -135,49 +127,30 @@ The kernel will remain deliberately separated from higher-level system services 
 
 NovOs primarily uses:
 
-- **C++** for most operating system components
+- **C++** for most operating-system components
 - **Assembly** for architecture-specific low-level operations
 
-Assembly will be kept focused on areas where direct CPU control is required, such as:
-
-- Boot entry
-- CPU context handling
-- Interrupt entry/exit
-- Context switching
-- Architecture-specific primitives
+Assembly is kept focused on areas requiring direct CPU control, such as boot entry, interrupt entry/exit, context switching, and architecture-specific primitives.
 
 ---
 
 ## Memory and resource goals
 
-NovOs is intended to remain lightweight.
-
-The long-term target is approximately:
+The long-term design target is approximately:
 
 **≤ 3 GB RAM for the kernel, essential services, and core system applications under normal operation.**
 
-This is a design target rather than a claim about the current development build.
+This is a design target, not a claim about the current development build.
 
-The project will prioritize:
-
-- Small core components
-- Explicit resource ownership
-- Limited background services
-- Avoiding unnecessary resident software
-- Efficient system services
-- Configurable features
+The project prioritizes explicit resource ownership, small core components, limited background services, and configurable features.
 
 ---
 
 ## User experience
 
-NovOs will use a single operating system edition rather than splitting the platform into multiple artificial editions.
+NovOs is planned as a single operating-system edition. Profiles and settings will control behavior instead of splitting the platform into multiple editions.
 
-Instead, users will be able to configure their system through profiles and settings.
-
-### System configuration
-
-The operating system is planned to provide centralized management for:
+Planned centralized management includes:
 
 - System settings
 - Hardware configuration
@@ -190,17 +163,13 @@ The operating system is planned to provide centralized management for:
 - Applications
 - Compatibility features
 
-The objective is to keep system administration understandable without scattering configuration across unrelated tools.
-
 ---
 
-## Accounts and privacy
+## Privacy
 
-NovOs is designed as a **local-first operating system**.
+NovOs is designed as a local-first operating system.
 
-A local account should be sufficient for normal use.
-
-The operating system will not require:
+A local account should be sufficient for normal use. The platform is not intended to require:
 
 - A mandatory online account
 - Mandatory cloud synchronization
@@ -208,17 +177,17 @@ The operating system will not require:
 - Advertising
 - A mandatory browser
 
-Telemetry, where applicable in future components, should be explicitly controlled by the user.
+Future reporting features should remain explicitly controlled by the user.
 
 ---
 
 ## Security
 
-Security is intended to be part of the architecture rather than an afterthought.
+Security is intended to be part of the architecture.
 
-Planned security features include:
+Planned areas include:
 
-- Secure Boot support
+- Secure Boot
 - Signed drivers
 - Driver isolation
 - Process isolation
@@ -228,160 +197,15 @@ Planned security features include:
 - Firewall functionality
 - Recovery mechanisms
 - Protected system components
-- Secure boot and recovery paths
-
-Security decisions will be implemented progressively as the kernel and system architecture mature.
+- System integrity mechanisms
 
 ---
 
-## Driver architecture
+## Drivers and hardware
 
-NovOs will have its own driver framework.
+NovOs will use its own driver framework.
 
-The long-term goal is to provide a centralized hardware and driver management system capable of:
-
-- Detecting hardware
-- Loading appropriate drivers
-- Managing driver versions
-- Reporting hardware status
-- Handling driver failures
-- Controlling permissions
-- Supporting signed drivers
-
-The driver architecture will be designed around NovOs rather than attempting to directly reuse another operating system's driver model.
-
----
-
-## Filesystem
-
-NovOs is planned to use its own native filesystem.
-
-The filesystem will be designed specifically for NovOs rather than simply adopting an existing desktop filesystem as the final native format.
-
-Planned areas include:
-
-- Files and directories
-- Permissions
-- Metadata
-- Journaling / crash consistency
-- Storage management
-- Recovery support
-- Snapshots
-- System integrity
-
-The final filesystem design will be developed as the storage architecture matures.
-
----
-
-## Recovery and reliability
-
-NovOs is planned to include native recovery mechanisms.
-
-These include:
-
-- System recovery
-- Safe Mode
-- Snapshots
-- Rollback
-- System repair
-- Recoverable updates
-- Failure isolation
-
-The goal is to make system failures recoverable without requiring a complete reinstall whenever possible.
-
-Dynamic system changes should also avoid unnecessary reinstallations.
-
----
-
-## Updates
-
-System updates will be centrally managed.
-
-The update architecture is planned to support:
-
-- Centralized update management
-- Secure update verification
-- Signed system components
-- Recovery from failed updates
-- Rollback where possible
-- Minimal unnecessary disruption
-
-Updates should not silently compromise system integrity or user control.
-
----
-
-## Compatibility
-
-Compatibility is a long-term goal, but it will not define the core architecture.
-
-### Windows compatibility
-
-NovOs plans to provide a **WinCompat** environment in the future.
-
-The intended approach is:
-
-~~~text
-Windows application
-       ↓
-PE / COFF loader
-       ↓
-WinCompat
-       ↓
-NovOs implementation of required Windows APIs
-       ↓
-NovOs kernel/services
-~~~
-
-This is intended to be an API compatibility layer, **not CPU emulation**.
-
-The objective is to execute compatible Windows applications while keeping the NovOs kernel independent.
-
-### Linux compatibility
-
-A Linux compatibility environment is also planned for a later stage.
-
-The current long-term direction is a subsystem and/or virtualized environment rather than incorporating the Linux kernel into NovOs itself.
-
----
-
-## System applications
-
-NovOs will eventually provide native system applications for core tasks such as:
-
-- System Settings
-- File management
-- Hardware management
-- Driver management
-- Update management
-- Security management
-- Recovery
-- Terminal
-- System monitoring
-
-These applications are intended to be native NovOs software rather than mandatory third-party bundles.
-
----
-
-## Error reporting
-
-NovOs is intended to keep crash/error reporting simple and explicit.
-
-When an error report can be sent, the user should have two clear choices:
-
-- **Do not send**
-- **Send report**
-
-There should be no forced telemetry hidden behind unrelated settings.
-
----
-
-## Hardware support
-
-The long-term goal is broad hardware support across supported architectures.
-
-Initial development focuses on establishing the architecture and boot chain before expanding hardware support.
-
-Planned areas include:
+The long-term hardware architecture is intended to cover:
 
 - CPU
 - Memory
@@ -394,64 +218,145 @@ Planned areas include:
 - Input devices
 - Power management
 
-Hardware support will be added progressively through the NovOs driver framework.
+A native hardware and driver management center is planned. Driver support will be added progressively rather than assuming manufacturers provide NovOs-specific drivers.
 
 ---
 
-## Project roadmap
+## Filesystem
 
-The roadmap is intentionally incremental.
+NovOs is planned to use its own native filesystem rather than adopting an existing desktop filesystem as its final native format.
+
+Planned capabilities include:
+
+- Files and directories
+- Permissions
+- Metadata
+- Journaling / crash consistency
+- Storage management
+- Recovery support
+- Snapshots
+- System integrity
+
+The filesystem design will be developed as the storage architecture matures.
+
+---
+
+## Recovery and updates
+
+Native recovery is planned to include:
+
+- Safe Mode
+- Snapshots
+- Rollback
+- System repair
+- Recoverable updates
+- Failure isolation
+
+System updates will be centrally managed with signed components, verification, and rollback where possible.
+
+---
+
+## Compatibility
+
+### Windows
+
+A future **WinCompat** environment is planned:
+
+```text
+Windows application
+       ↓
+PE / COFF loader
+       ↓
+WinCompat
+       ↓
+NovOs Windows API implementation
+       ↓
+NovOs kernel / services
+```
+
+The intended model is API compatibility, not CPU emulation.
+
+### Linux
+
+A Linux compatibility environment is planned for a later stage, using a subsystem and/or virtualized environment rather than incorporating the Linux kernel into NovOs.
+
+---
+
+## System applications
+
+Planned native NovOs applications include:
+
+- Settings
+- File manager
+- Hardware management
+- Driver management
+- Update management
+- Security management
+- Recovery
+- Terminal
+- System monitoring
+
+---
+
+## Error reporting
+
+Future error reporting is intended to provide two explicit choices:
+
+- **Do not send**
+- **Send report**
+
+No hidden or forced telemetry is planned.
+
+---
+
+## Roadmap
 
 ### Phase 1 — Boot foundation
-
 - [x] Repository and project structure
-- [x] x86-64 bootloader foundation
-- [x] UEFI boot path
+- [x] x86-64 UEFI boot path
 - [x] ELF64 kernel loading
 - [x] Kernel entry point
 - [x] ExitBootServices
-- [x] Kernel execution in QEMU
-- [ ] BootInfo contract
-- [ ] Reliable firmware memory-map handoff
+- [x] BootInfo handoff
+- [x] Firmware memory-map handoff
+- [x] PMM foundation
+- [x] Paging foundation
+- [x] GDT
+- [x] TSS
+- [x] IDT
+- [x] CPU exception entry
+- [x] #UD return test
+- [x] Double Fault / IST1 test
 
 ### Phase 2 — Kernel foundation
-
-- [ ] GDT
-- [ ] IDT
-- [ ] TSS
-- [ ] Exception handling
-- [ ] Interrupt handling
-- [ ] Physical memory management
-- [ ] Virtual memory
+- [ ] Complete exception handling
+- [ ] IRQ / interrupt controller support
 - [ ] Kernel allocator
 - [ ] CPU initialization
-- [ ] Basic system calls
+- [ ] System calls
+- [ ] User/kernel separation
 
 ### Phase 3 — Process and execution model
-
 - [ ] Processes
 - [ ] Threads
 - [ ] Scheduler
 - [ ] Context switching
-- [ ] User/kernel separation
 - [ ] IPC
 - [ ] Permissions
 
 ### Phase 4 — Hardware and drivers
-
-- [ ] PCI/PCIe
+- [ ] PCI / PCIe
 - [ ] ACPI
 - [ ] USB
 - [ ] Storage controllers
-- [ ] Network devices
-- [ ] Input devices
-- [ ] Graphics hardware
+- [ ] Network
+- [ ] Input
+- [ ] Graphics
 - [ ] Audio
 - [ ] Power management
 - [ ] Native driver framework
 
 ### Phase 5 — Storage
-
 - [ ] Native NovOs filesystem
 - [ ] Storage manager
 - [ ] File APIs
@@ -461,7 +366,6 @@ The roadmap is intentionally incremental.
 - [ ] Recovery support
 
 ### Phase 6 — System services
-
 - [ ] Service manager
 - [ ] Device management
 - [ ] Networking stack
@@ -471,37 +375,33 @@ The roadmap is intentionally incremental.
 - [ ] Recovery environment
 
 ### Phase 7 — Graphics and desktop
-
 - [ ] Graphics subsystem
-- [ ] Window management
+- [ ] Window manager
 - [ ] Input system
-- [ ] Desktop environment
+- [ ] Desktop
 - [ ] Native system UI
-- [ ] Settings application
+- [ ] Settings
 - [ ] File manager
 - [ ] System management tools
 
 ### Phase 8 — Security hardening
-
 - [ ] Secure Boot integration
 - [ ] Signed drivers
 - [ ] Sandboxing
 - [ ] Permission system
 - [ ] Secure updates
-- [ ] Recovery/rollback
-- [ ] System integrity mechanisms
+- [ ] Recovery / rollback
+- [ ] System integrity
 
 ### Phase 9 — Compatibility
-
-- [ ] x86-32 application compatibility
+- [ ] x86-32 compatibility
 - [ ] ARM32 compatibility layer
 - [ ] WinCompat
-- [ ] PE/COFF support
+- [ ] PE / COFF support
 - [ ] Windows API compatibility
 - [ ] Linux compatibility environment
 
 ### Phase 10 — Platform expansion
-
 - [ ] Native ARM64 boot
 - [ ] Native ARM64 kernel
 - [ ] Additional hardware platforms
@@ -510,26 +410,46 @@ The roadmap is intentionally incremental.
 
 ---
 
-## Development philosophy
+## Repository structure
 
-NovOs is developed incrementally.
+The repository is organized by responsibility and architecture:
 
-Each major subsystem should be:
+```text
+NovOs/
+├── boot/
+│   └── uefi/
+│       ├── include/
+│       └── x86_64/
+├── common/
+│   └── boot_info.h
+├── kernel/
+│   └── x86_64/
+│       ├── core/
+│       │   ├── kernel.cpp
+│       │   └── kernel.ld
+│       ├── cpu/
+│       │   ├── gdt.*
+│       │   ├── idt.*
+│       │   ├── tss.*
+│       │   └── exception.cpp
+│       └── memory/
+│           ├── pmm.*
+│           ├── pmm_test.cpp
+│           ├── paging.*
+│           └── paging_test.cpp
+└── tools/
+    └── firmware/
+        └── x86_64/
+            └── ovmf/
+```
 
-1. Designed
-2. Implemented
-3. Built
-4. Tested
-5. Validated in an emulator or on real hardware
-6. Only then used as a foundation for the next subsystem
-
-The project prioritizes correctness and understanding of the underlying system over rapidly accumulating features.
+Generated build outputs are not part of the source tree.
 
 ---
 
-## Current development environment
+## Development environment
 
-The project currently uses:
+Current development uses:
 
 - **C++20**
 - **LLVM / Clang**
@@ -537,39 +457,24 @@ The project currently uses:
 - **CMake**
 - **Ninja**
 - **QEMU**
-- **OVMF** for UEFI testing
+- **OVMF**
 
-Development is currently focused on **x86-64**.
-
----
-
-## Repository structure
-
-The project is organized around independent operating system components.
-
-~~~text
-NovOs/
-├── boot/
-│   └── uefi/
-├── common/
-├── kernel/
-│   └── x86_64/
-├── tools/
-│   └── firmware/
-└── build/
-~~~
-
-The structure will evolve as additional architectures and subsystems are introduced.
+Development is currently focused on x86-64.
 
 ---
 
-## Testing
+## Testing philosophy
 
-NovOs is currently tested primarily through QEMU and OVMF.
+Every major subsystem should be:
 
-The project uses virtualized boot testing to validate early kernel and bootloader changes before moving functionality to physical hardware.
+1. Designed
+2. Implemented
+3. Built
+4. Tested
+5. Validated in QEMU or on real hardware
+6. Used as a foundation only after validation
 
-Early milestones focus on proving each stage of the boot chain rather than attempting to boot a complete desktop environment immediately.
+The project currently uses QEMU + OVMF for early boot and kernel validation.
 
 ---
 
@@ -577,11 +482,9 @@ Early milestones focus on proving each stage of the boot chain rather than attem
 
 NovOs is **not production-ready**.
 
-It is an active early-stage operating system project.
+It is an active early-stage operating-system project. The current milestone establishes a working UEFI → bootloader → kernel path and validates the first low-level kernel subsystems.
 
-At the current stage, the most important achievement is establishing a real boot path from UEFI to independently executing NovOs kernel code.
-
-The project will continue to grow from this minimal foundation toward a complete operating system.
+The next development stage will continue from the exception and interrupt infrastructure.
 
 ---
 
