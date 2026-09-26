@@ -83,10 +83,24 @@ isr_common:
     mov %rsp, %rdi
     call exception_dispatch
 
-.Lexception_halt:
-    cli
-    hlt
-    jmp .Lexception_halt
+    popq %r15
+    popq %r14
+    popq %r13
+    popq %r12
+    popq %r11
+    popq %r10
+    popq %r9
+    popq %r8
+    popq %rsi
+    popq %rdi
+    popq %rbp
+    popq %rdx
+    popq %rcx
+    popq %rbx
+    popq %rax
+
+    add $16, %rsp
+    iretq
 
 .global idt_initialize
 .type idt_initialize, @function
