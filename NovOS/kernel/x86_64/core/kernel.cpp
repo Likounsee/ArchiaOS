@@ -81,13 +81,15 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     debug_hex64(bootInfo->memory_descriptor_count);
     debug_str("\n");
 
-    debug_str("\n[NOVOS] === MEMORY ===\n");\n    debug_str("[PMM] Initializing physical memory manager\n");
+    debug_str("\n[NOVOS] === MEMORY ===\n");
+    debug_str("[PMM] Initializing physical memory manager\n");
     pmm_run_tests(bootInfo);
 
     debug_str("[MMU] Initializing paging\n");
     paging_run_tests();
 
-    debug_str("\n[NOVOS] === CPU ===\n");\n    debug_str("[GDT] Initializing descriptor tables\n");
+    debug_str("\n[NOVOS] === CPU ===\n");
+    debug_str("[GDT] Initializing descriptor tables\n");
     gdt_initialize();
     debug_str("[GDT] Ready\n");
 
@@ -100,7 +102,8 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     idt_initialize();
     debug_str("[IDT] Ready\n");
 
-    debug_str("\n[NOVOS] === PLATFORM ===\n");\n    debug_str("[ACPI] Discovering firmware tables\n");
+    debug_str("\n[NOVOS] === PLATFORM ===\n");
+    debug_str("[ACPI] Discovering firmware tables\n");
     if (acpi_initialize())
     {
         const AcpiInfo* acpi = acpi_get_info();
@@ -124,7 +127,9 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     }
     else
     {
-        debug_str("[ACPI] Initialization failed, status: ");\n        debug_hex64(static_cast<u64>(acpi_get_status()));\n        debug_str("\n");
+        debug_str("[ACPI] Initialization failed, status: ");
+        debug_hex64(static_cast<u64>(acpi_get_status()));
+        debug_str("\n");
     }
 
     debug_str("[APIC] Initializing interrupt controller\n");
@@ -142,7 +147,8 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     else
         debug_str("[IRQ] Timer interrupt test FAILED\n");
 
-    debug_str("\n[NOVOS] === EXCEPTION HANDLING ===\n");\n    debug_str("[EXC] Testing invalid-opcode recovery\n");
+    debug_str("\n[NOVOS] === EXCEPTION HANDLING ===\n");
+    debug_str("[EXC] Testing invalid-opcode recovery\n");
     idt_test_invalid_opcode();
     debug_str("[EXC] Invalid-opcode recovery passed\n");
 
