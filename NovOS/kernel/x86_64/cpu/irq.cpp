@@ -3,7 +3,11 @@
 
 extern "C" void irq_initialize()
 {
-    (void)lapic_initialize();
+    if (!lapic_initialize())
+    {
+        for (;;)
+            asm volatile ("cli; hlt");
+    }
 }
 
 extern "C" void irq_dispatch(ExceptionFrame* frame)
@@ -55,6 +59,8 @@ extern "C" bool irq_test_timer()
             lapic_stop_timer();
             return true;
         }
+
+        asm volatile ("pause");
     }
 
     irq_disable();
