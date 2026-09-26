@@ -1,5 +1,6 @@
 #include "../../common/boot_info.h"
 #include "gdt.hpp"
+#include "idt.hpp"
 
 static inline void debug_char(char c)
 {
@@ -75,6 +76,10 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     debug_str("INITIALIZING GDT\n");
     gdt_initialize();
     debug_str("GDT INITIALIZED\n");
+
+    debug_str("INITIALIZING IDT\n");
+    idt_initialize();
+    debug_str("IDT INITIALIZED\n");
 
     volatile unsigned short* vga =
         reinterpret_cast<volatile unsigned short*>(0xB8000);
