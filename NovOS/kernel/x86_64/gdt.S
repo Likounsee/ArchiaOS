@@ -19,18 +19,13 @@ gdt_initialize:
     lea tss64(%rip), %rax
 
     mov %rax, %rdx
-    mov %dx, gdt_table+24(%rip)
-
-    shr $16, %rdx
     mov %dx, gdt_table+26(%rip)
 
     shr $16, %rdx
     mov %dl, gdt_table+28(%rip)
 
-    shr $8, %rdx
-    mov %dl, gdt_table+29(%rip)
-
-    movb $0x89, gdt_table+29(%rip)
+    movb $0x89, gdt_table+28(%rip)
+    movb $0x00, gdt_table+29(%rip)
     movb $0x00, gdt_table+30(%rip)
 
     mov %rax, %rdx
