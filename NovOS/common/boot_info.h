@@ -40,6 +40,9 @@ struct BootInfo
     /* Number of descriptors in the array */
     u32 memory_descriptor_count;
     
+    /* Physical address of the ACPI RSDP supplied by UEFI */
+    u64 acpi_rsdp_address;
+    
     /* Reserved for future use */
     u8 reserved[128];
 };
