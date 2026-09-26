@@ -61,6 +61,24 @@ ISR_ERR   29
 ISR_ERR   30
 ISR_NOERR 31
 
+ISR_NOERR 32
+ISR_NOERR 33
+ISR_NOERR 34
+ISR_NOERR 35
+ISR_NOERR 36
+ISR_NOERR 37
+ISR_NOERR 38
+ISR_NOERR 39
+ISR_NOERR 40
+ISR_NOERR 41
+ISR_NOERR 42
+ISR_NOERR 43
+ISR_NOERR 44
+ISR_NOERR 45
+ISR_NOERR 46
+ISR_NOERR 47
+ISR_NOERR 255
+
 .global isr_common
 .type isr_common, @function
 isr_common:
@@ -202,6 +220,58 @@ idt_initialize:
     call idt_set_gate0
     lea isr31(%rip), %rax
     add $16, %rdi
+    call idt_set_gate0
+
+    lea isr32(%rip), %rax
+    add $16, %rdi
+    call idt_set_gate0
+    lea isr33(%rip), %rax
+    add $16, %rdi
+    call idt_set_gate0
+    lea isr34(%rip), %rax
+    add $16, %rdi
+    call idt_set_gate0
+    lea isr35(%rip), %rax
+    add $16, %rdi
+    call idt_set_gate0
+    lea isr36(%rip), %rax
+    add $16, %rdi
+    call idt_set_gate0
+    lea isr37(%rip), %rax
+    add $16, %rdi
+    call idt_set_gate0
+    lea isr38(%rip), %rax
+    add $16, %rdi
+    call idt_set_gate0
+    lea isr39(%rip), %rax
+    add $16, %rdi
+    call idt_set_gate0
+    lea isr40(%rip), %rax
+    add $16, %rdi
+    call idt_set_gate0
+    lea isr41(%rip), %rax
+    add $16, %rdi
+    call idt_set_gate0
+    lea isr42(%rip), %rax
+    add $16, %rdi
+    call idt_set_gate0
+    lea isr43(%rip), %rax
+    add $16, %rdi
+    call idt_set_gate0
+    lea isr44(%rip), %rax
+    add $16, %rdi
+    call idt_set_gate0
+    lea isr45(%rip), %rax
+    add $16, %rdi
+    call idt_set_gate0
+    lea isr46(%rip), %rax
+    add $16, %rdi
+    call idt_set_gate0
+    lea isr47(%rip), %rax
+    add $16, %rdi
+    call idt_set_gate0
+    add $3328, %rdi
+    lea isr255(%rip), %rax
     call idt_set_gate0
 
     lea idt_pointer(%rip), %rax
