@@ -25,13 +25,13 @@ extern "C" unsigned char tss_ist1_stack_top[];
 
 extern "C" void exception_dispatch(ExceptionFrame* frame)
 {
-    debug_str("EXCEPTION VECTOR: ");
+    debug_str("[EXC] Vector: ");
     debug_hex64(frame->vector);
-    debug_str("\nERROR CODE: ");
+    debug_str("  Error: ");
     debug_hex64(frame->error_code);
-    debug_str("\nRIP: ");
+    debug_str("  RIP: ");
     debug_hex64(frame->rip);
-    debug_str("\nRFLAGS: ");
+    debug_str("  RFLAGS: ");
     debug_hex64(frame->rflags);
     debug_str("\n");
 
@@ -46,7 +46,7 @@ extern "C" void exception_dispatch(ExceptionFrame* frame)
         /* UD2 is a 2-byte instruction. Advance RIP so iretq resumes
            after the test instruction instead of executing UD2 again. */
         frame->rip += 2;
-        debug_str("#UD RIP ADVANCED BY 2\n");
+        debug_str("[EXC] Invalid-opcode RIP advanced by 2\n");
         return;
     }
 
@@ -59,19 +59,19 @@ extern "C" void exception_dispatch(ExceptionFrame* frame)
         unsigned long long ist1_top =
             reinterpret_cast<unsigned long long>(tss_ist1_stack_top);
 
-        debug_str("DOUBLE FAULT HANDLER RUNNING\n");
-        debug_str("EXCEPTION FRAME: ");
+        debug_str("[EXC] Double-fault handler entered\n");
+        debug_str("[EXC] Frame: ");
         debug_hex64(frame_address);
-        debug_str("\nIST1 BASE: ");
+        debug_str("  IST1 base: ");
         debug_hex64(ist1_base);
-        debug_str("\nIST1 TOP: ");
+        debug_str("  IST1 top: ");
         debug_hex64(ist1_top);
         debug_str("\n");
 
         if (frame_address >= ist1_base && frame_address < ist1_top)
-            debug_str("IST1 STACK VALIDATED\n");
+            debug_str("[EXC] IST1 stack validation passed\n");
         else
-            debug_str("IST1 STACK VALIDATION FAILED\n");
+            debug_str("[EXC] IST1 stack validation FAILED\n");
 
         for (;;)
             asm volatile ("cli; hlt");
