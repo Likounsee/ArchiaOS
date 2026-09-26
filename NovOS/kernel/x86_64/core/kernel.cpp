@@ -100,7 +100,12 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     debug_str("IDT INITIALIZED\n");
 
     debug_str("INITIALIZING IRQ / LOCAL APIC\n");
-    irq_initialize();
+    if (!irq_initialize())
+    {
+        debug_str("IRQ / LOCAL APIC INITIALIZATION FAILED\n");
+        for (;;)
+            asm volatile ("cli; hlt");
+    }
     debug_str("IRQ / LOCAL APIC INITIALIZED\n");
 
     debug_str("TESTING LOCAL APIC TIMER IRQ\n");
