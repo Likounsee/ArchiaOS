@@ -24,8 +24,7 @@ gdt_initialize:
     shr $16, %rdx
     mov %dl, gdt_table+28(%rip)
 
-    movb $0x89, gdt_table+28(%rip)
-    movb $0x00, gdt_table+29(%rip)
+    movb $0x89, gdt_table+29(%rip)
     movb $0x00, gdt_table+30(%rip)
 
     mov %rax, %rdx
