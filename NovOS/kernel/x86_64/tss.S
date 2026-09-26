@@ -29,7 +29,7 @@ tss_initialize:
     lea tss_ist1_stack_top(%rip), %rax
     mov %rax, tss64+28(%rip)
 
-    movw $104, tss64+102(%rip)
+    movw $103, tss64+102(%rip)
 
     mov $0x18, %ax
     ltr %ax
