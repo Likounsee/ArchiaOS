@@ -226,12 +226,46 @@ static bool parse_madt(unsigned long long madt)
     return acpi_info.local_apic_address != 0;
 }
 
-extern "C" bool acpi_initialize()
+extern "C" bool acpi_initialize(unsigned long long rsdp_address)
 {
     acpi_info = {};
     acpi_status = ACPI_STATUS_OK;
 
-    unsigned long long rsdp = find_rsdp();
+    unsigned long long rsdp = 0;
+
+    /*
+     * On UEFI systems the ACPI specification requires the loader
+     * to obtain the RSDP from the EFI Configuration Table before
+     * ExitBootServices(). BootInfo carries that physical address.
+     *
+     * Keep the legacy memory scan as a fallback for older firmware
+     * and future BIOS/CSM support.
+     */
+    if (address_is_mapped(rsdp_address) &&
+        signature8(rsdp_address, "RSD PTR ") &&
+        checksum_ok(rsdp_address, 20))
+    {
+        unsigned char revision = read8(rsdp_address + 15);
+
+        if (revision < 2)
+        {
+            rsdp = rsdp_address;
+        }
+        else
+        {
+            unsigned int length = read32(rsdp_address + 20);
+
+            if (length >= 36 &&
+                length <= 4096 &&
+                checksum_ok(rsdp_address, length))
+            {
+                rsdp = rsdp_address;
+            }
+        }
+    }
+
+    if (rsdp == 0)
+        rsdp = find_rsdp();
 
     if (rsdp == 0)
     {
