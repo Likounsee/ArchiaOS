@@ -5,6 +5,7 @@
 #include "pmm.hpp"
 #include "paging.hpp"
 #include "irq.hpp"
+#include "acpi.hpp"
 
 static inline void debug_char(char c)
 {
@@ -98,6 +99,33 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     debug_str("INITIALIZING IDT\n");
     idt_initialize();
     debug_str("IDT INITIALIZED\n");
+
+    debug_str("INITIALIZING ACPI\n");
+    if (acpi_initialize())
+    {
+        const AcpiInfo* acpi = acpi_get_info();
+
+        debug_str("ACPI INITIALIZED\n");
+        debug_str("RSDP: ");
+        debug_hex64(acpi->rsdp_address);
+        debug_str("\nMADT: ");
+        debug_hex64(acpi->madt_address);
+        debug_str("\nLOCAL APIC: ");
+        debug_hex64(acpi->local_apic_address);
+        debug_str("\nIO APIC: ");
+        debug_hex64(acpi->ioapic_address);
+        debug_str("\nPROCESSORS: ");
+        debug_hex64(acpi->processor_count);
+        debug_str("\nIO APICS: ");
+        debug_hex64(acpi->ioapic_count);
+        debug_str("\nINTERRUPT OVERRIDES: ");
+        debug_hex64(acpi->interrupt_override_count);
+        debug_str("\n");
+    }
+    else
+    {
+        debug_str("ACPI INITIALIZATION FAILED\n");
+    }
 
     debug_str("INITIALIZING IRQ / LOCAL APIC\n");
     if (!irq_initialize())
