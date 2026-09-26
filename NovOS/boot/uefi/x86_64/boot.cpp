@@ -492,7 +492,7 @@ extern "C" EFI_STATUS efi_main(
         }
     }
 
-    print(SystemTable, "NOVOS PT_LOAD LOADED\\r\\n");
+    print(SystemTable, "NOVOS PT_LOAD LOADED\r\n");
 
     status = SetPosition(
         kernelFile,
