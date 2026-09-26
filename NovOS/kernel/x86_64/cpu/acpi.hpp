@@ -13,5 +13,16 @@ struct AcpiInfo
     unsigned int interrupt_override_count;
 };
 
+enum AcpiStatus
+{
+    ACPI_STATUS_OK = 0,
+    ACPI_STATUS_RSDP_NOT_FOUND,
+    ACPI_STATUS_ROOT_NOT_FOUND,
+    ACPI_STATUS_ROOT_INVALID,
+    ACPI_STATUS_MADT_NOT_FOUND,
+    ACPI_STATUS_MADT_INVALID
+};
+
 extern "C" bool acpi_initialize();
 extern "C" const AcpiInfo* acpi_get_info();
+extern "C" AcpiStatus acpi_get_status();
