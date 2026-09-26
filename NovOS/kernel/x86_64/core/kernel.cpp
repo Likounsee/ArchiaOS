@@ -50,6 +50,10 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         for (;;) asm volatile ("hlt");
     }
 
+    debug_str("[BOOT] BootInfo version read: ");
+    debug_hex64(bootInfo->version);
+    debug_str("\n");
+
     if (bootInfo->version != NOVOS_BOOT_INFO_VERSION)
     {
         debug_str("BOOT INFO BAD VERSION\n");
