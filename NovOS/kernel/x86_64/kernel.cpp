@@ -3,6 +3,7 @@
 #include "idt.hpp"
 #include "tss.hpp"
 #include "pmm.hpp"
+#include "paging.hpp"
 
 static inline void debug_char(char c)
 {
@@ -30,6 +31,7 @@ static void debug_hex64(u64 value)
 }
 
 extern "C" void pmm_run_tests(BootInfo* bootInfo);
+extern "C" void paging_run_tests();
 
 extern "C" void kernel_main(BootInfo* bootInfo)
 {
@@ -79,6 +81,9 @@ extern "C" void kernel_main(BootInfo* bootInfo)
 
     debug_str("INITIALIZING PMM\n");
     pmm_run_tests(bootInfo);
+
+    debug_str("INITIALIZING PAGING\n");
+    paging_run_tests();
 
     debug_str("INITIALIZING GDT\n");
     gdt_initialize();
