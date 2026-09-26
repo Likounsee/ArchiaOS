@@ -15,23 +15,23 @@ idt_pointer:
 
 idt_initialize:
     lea idt_table(%rip), %rdi
+    add $96, %rdi
     lea idt_exception6(%rip), %rax
 
     mov %rax, %rdx
-    and $0xFFFF, %edx
-    movw %dx, 0(%rdi,%rcx,1)
+    mov %dx, 0(%rdi)
 
     mov %rax, %rdx
     shr $16, %rdx
-    movw %dx, 6(%rdi,%rcx,1)
+    mov %dx, 6(%rdi)
 
     mov %rax, %rdx
     shr $32, %rdx
-    movl %edx, 8(%rdi,%rcx,1)
+    mov %edx, 8(%rdi)
 
-    movw $0x0008, 2(%rdi,%rcx,1)
-    movb $0x00, 4(%rdi,%rcx,1)
-    movb $0x8E, 5(%rdi,%rcx,1)
+    movw $0x0008, 2(%rdi)
+    movb $0x00, 4(%rdi)
+    movb $0x8E, 5(%rdi)
 
     lea idt_pointer(%rip), %rax
     lidt (%rax)
