@@ -35,30 +35,6 @@ extern "C" void exception_dispatch(ExceptionFrame* frame)
     debug_hex64(frame->rflags);
     debug_str("\n");
 
-    if (frame->vector == 14)
-    {
-        debug_str("NESTED #PF -> EXPECTING #DF ON IST1\n");
-        asm volatile (
-            "mov $0x28, %%ax\n\t"
-            "mov %%ax, %%ds"
-            :
-            :
-            : "rax", "memory"
-        );
-    }
-
-    if (frame->vector == 13)
-    {
-        debug_str("NESTED #GP -> EXPECTING #DF ON IST1\n");
-        asm volatile (
-            "movabs $0x0000400000000000, %%rax\n\t"
-            "mov (%%rax), %%rax"
-            :
-            :
-            : "rax", "memory"
-        );
-    }
-
     if (frame->vector == 8)
     {
         unsigned long long frame_address =
