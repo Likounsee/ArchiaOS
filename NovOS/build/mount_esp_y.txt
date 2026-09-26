@@ -1,4 +1,0 @@
-select vdisk file="C:\Users\Likounsee\Documents\NovOS\build\esp.vhdx"
-select partition 1
-assign letter=Y
-exit

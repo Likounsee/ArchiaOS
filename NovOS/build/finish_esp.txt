@@ -1,5 +1,0 @@
-select vdisk file="C:\Users\Likounsee\Documents\MyOS\build\esp.vhdx"
-create partition efi
-format fs=fat32 quick label=MYOS
-assign letter=Y
-exit

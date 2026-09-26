@@ -1,7 +1,0 @@
-create vdisk file="C:\Users\Likounsee\Documents\MyOS\build\esp.vhdx" maximum=64 type=expandable
-select vdisk file="C:\Users\Likounsee\Documents\MyOS\build\esp.vhdx"
-attach vdisk
-create partition primary
-format fs=fat32 quick label=MYOS
-assign letter=Y
-exit

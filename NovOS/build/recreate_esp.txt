@@ -1,8 +1,0 @@
-select vdisk file="C:\Users\Likounsee\Documents\MyOS\build\esp.vhdx"
-attach vdisk
-clean
-convert gpt
-create partition efi size=64
-format fs=fat32 quick label=MYOS
-assign letter=Y
-exit

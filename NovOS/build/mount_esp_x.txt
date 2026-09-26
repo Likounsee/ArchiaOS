@@ -1,6 +1,0 @@
-select vdisk file="C:\Users\Likounsee\Documents\NovOS\build\esp.vhdx"
-attach vdisk
-list partition
-select partition 1
-assign letter=X
-exit
