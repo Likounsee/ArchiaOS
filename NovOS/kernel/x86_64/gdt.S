@@ -4,7 +4,8 @@ gdt_table:
     .quad 0x0000000000000000
     .quad 0x00AF9A000000FFFF
     .quad 0x00CF92000000FFFF
-    .quad 0x0000000000000000
+    /* 64-bit TSS descriptor, limit = 0x67 (104-byte TSS) */
+    .quad 0x0000000000000067
     .quad 0x0000000000000000
 
 gdt_pointer:
@@ -17,6 +18,9 @@ gdt_pointer:
 
 gdt_initialize:
     lea tss64(%rip), %rax
+
+    /* TSS descriptor limit must cover the full 104-byte TSS. */
+    movw $103, gdt_table+24(%rip)
 
     mov %rax, %rdx
     mov %dx, gdt_table+26(%rip)
