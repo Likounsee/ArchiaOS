@@ -1,4 +1,4 @@
-#include "../../common/boot_info.h"
+#include "../../../common/boot_info.h"
 #include "gdt.hpp"
 #include "idt.hpp"
 #include "tss.hpp"
