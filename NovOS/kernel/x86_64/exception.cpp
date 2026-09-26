@@ -35,6 +35,15 @@ extern "C" void exception_dispatch(ExceptionFrame* frame)
     debug_hex64(frame->rflags);
     debug_str("\n");
 
+    if (frame->vector == 6)
+    {
+        /* UD2 is a 2-byte instruction. Advance RIP so iretq resumes
+           after the test instruction instead of executing UD2 again. */
+        frame->rip += 2;
+        debug_str("#UD RIP ADVANCED BY 2\n");
+        return;
+    }
+
     if (frame->vector == 8)
     {
         unsigned long long frame_address =
