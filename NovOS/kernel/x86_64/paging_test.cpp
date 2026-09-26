@@ -47,11 +47,12 @@ extern "C" void paging_run_tests()
 
     test_str("PAGING IDENTITY MAP PASS\n");
 
-    if (paging_is_enabled())
+    if (!paging_is_enabled())
     {
-        test_str("PAGING TEST FAIL: ALREADY ENABLED\n");
+        test_str("PAGING TEST FAIL: PAGING DISABLED\n");
         for (;;) asm volatile("cli; hlt");
     }
 
+    test_str("UEFI PAGING ALREADY ENABLED\n");
     test_str("PAGING TEST PASS\n");
 }
