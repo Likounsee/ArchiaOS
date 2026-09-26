@@ -6,6 +6,13 @@ tss_stack:
 .global tss_stack_top
 tss_stack_top:
 
+.align 16
+.global tss_ist1_stack
+tss_ist1_stack:
+    .zero 4096
+.global tss_ist1_stack_top
+tss_ist1_stack_top:
+
 .section .data
 .align 16
 .global tss64
@@ -17,10 +24,13 @@ tss64:
 .type tss_initialize, @function
 tss_initialize:
     lea tss_stack_top(%rip), %rax
-    mov %rax, 4 + 4(%rip)
-    shr $32, %rax
-    mov %eax, 12 + 4(%rip)
+    mov %rax, tss64+4(%rip)
 
-    lea tss64(%rip), %rax
-    mov %ax, 2(%rip)
+    lea tss_ist1_stack_top(%rip), %rax
+    mov %rax, tss64+28(%rip)
+
+    movw $104, tss64+102(%rip)
+
+    mov $0x18, %ax
+    ltr %ax
     ret
