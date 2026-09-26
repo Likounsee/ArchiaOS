@@ -31,4 +31,8 @@ extern "C" void exception_dispatch(ExceptionFrame* frame)
     debug_str("\nRFLAGS: ");
     debug_hex64(frame->rflags);
     debug_str("\n");
+
+    /* Test-only: UD2 is 2 bytes and RIP points to the faulting instruction. */
+    if (frame->vector == 6)
+        frame->rip += 2;
 }
