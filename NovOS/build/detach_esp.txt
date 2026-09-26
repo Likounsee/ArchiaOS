@@ -1,0 +1,3 @@
+select vdisk file="C:\Users\Likounsee\Documents\NovOS\build\esp.vhdx"
+detach vdisk
+exit
