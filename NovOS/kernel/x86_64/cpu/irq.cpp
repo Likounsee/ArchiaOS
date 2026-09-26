@@ -1,8 +1,15 @@
 #include "irq.hpp"
 #include "lapic.hpp"
 
+static inline void pic_mask_all()
+{
+    asm volatile ("outb %0, %1" : : "a"(0xFF), "Nd"(static_cast<unsigned short>(0x21)));
+    asm volatile ("outb %0, %1" : : "a"(0xFF), "Nd"(static_cast<unsigned short>(0xA1)));
+}
+
 extern "C" bool irq_initialize()
 {
+    pic_mask_all();
     return lapic_initialize();
 }
 
