@@ -158,10 +158,10 @@ extern "C" void pmm_free_page(u64 physicalAddress)
 
     u64 frame = physicalAddress / NOVOS_PAGE_SIZE;
 
-    if (!bitmap_test(frame))
+    if (bitmap_test(frame))
     {
-        ++pmm_free_pages;
         bitmap_clear(frame);
+        ++pmm_free_pages;
     }
 }
 
