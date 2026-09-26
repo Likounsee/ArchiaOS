@@ -17,7 +17,7 @@ typedef unsigned int       u32;
 typedef unsigned long long u64;
 
 #define NOVOS_BOOT_INFO_MAGIC   0x4E4F564Fu  /* "NOVO" */
-#define NOVOS_BOOT_INFO_VERSION 1u
+#define NOVOS_BOOT_INFO_VERSION 2u
 
 struct BootInfo
 {
