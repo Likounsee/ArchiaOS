@@ -60,6 +60,20 @@ using EFI_EXIT_BOOT_SERVICES =
     );
 
 
+struct EFI_GUID
+{
+    UINT32 Data1;
+    UINT16 Data2;
+    UINT16 Data3;
+    UINT8 Data4[8];
+};
+
+struct EFI_CONFIGURATION_TABLE
+{
+    EFI_GUID VendorGuid;
+    void* VendorTable;
+};
+
 struct EFI_SYSTEM_TABLE;
 struct EFI_BOOT_SERVICES;
 struct EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL;
