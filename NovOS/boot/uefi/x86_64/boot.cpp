@@ -415,39 +415,10 @@ extern "C" EFI_STATUS efi_main(
 
     for (UINT16 i = 0; i < elfHeader.e_phnum; ++i)
     {
-        UINTN programHeaderSize = sizeof(Elf64ProgramHeader);
-
-        status = kernelFile->Read(
-            kernelFile,
-            &programHeaderSize,
-            &programHeader
-        );
-
-        if (status != EFI_SUCCESS ||
-            programHeaderSize != sizeof(Elf64ProgramHeader))
-        {
-            halt();
-        }
-
-        if (programHeader.p_type != ELF_PT_LOAD)
-        {
-            continue;
-        }
-
-        if (programHeader.p_filesz == 0)
-        {
-            continue;
-        }
-
-        if (programHeader.p_filesz >
-            0xFFFFFFFFFFFFFFFFULL - programHeader.p_offset)
-        {
-            halt();
-        }
-
         status = SetPosition(
             kernelFile,
-            programHeader.p_offset
+            elfHeader.e_phoff +
+                static_cast<UINT64>(i) * elfHeader.e_phentsize
         );
 
         if (status != EFI_SUCCESS)
@@ -455,46 +426,25 @@ extern "C" EFI_STATUS efi_main(
             halt();
         }
 
-        UINTN segmentSize =
-            static_cast<UINTN>(programHeader.p_filesz);
-
-        if (static_cast<UINT64>(segmentSize) !=
-            programHeader.p_filesz)
-        {
-            halt();
-        }
-
-        void* segmentAddress =
-            reinterpret_cast<void*>(programHeader.p_vaddr);
+        UINTN programHeaderSize = sizeof(Elf64ProgramHeader);
 
         status = kernelFile->Read(
             kernelFile,
-            &segmentSize,
-            segmentAddress
+            &programHeaderSize,
+            &programHeader
+        );    for (UINT16 i = 0; i < elfHeader.e_phnum; ++i)
+    {
+        status = SetPosition(
+            kernelFile,
+            elfHeader.e_phoff +
+                static_cast<UINT64>(i) * elfHeader.e_phentsize
         );
 
-        if (status != EFI_SUCCESS ||
-            static_cast<UINT64>(segmentSize) !=
-                programHeader.p_filesz)
+        if (status != EFI_SUCCESS)
         {
             halt();
         }
-    }
 
-    print(SystemTable, "NOVOS PT_LOAD LOADED\r\n");
-
-    status = SetPosition(
-        kernelFile,
-        elfHeader.e_phoff
-    );
-
-    if (status != EFI_SUCCESS)
-    {
-        halt();
-    }
-
-    for (UINT16 i = 0; i < elfHeader.e_phnum; ++i)
-    {
         UINTN programHeaderSize = sizeof(Elf64ProgramHeader);
 
         status = kernelFile->Read(
