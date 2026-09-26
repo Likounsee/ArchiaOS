@@ -224,6 +224,9 @@ idt_set_gate0:
 .global idt_test_double_fault
 .type idt_test_double_fault, @function
 idt_test_double_fault:
-    movabsq $0x0000400000000000, %rsp
+    /* Deliberately use a non-canonical stack address. The following access
+       raises #GP, and the CPU cannot push that exception frame, so #DF is
+       delivered on IST1. */
+    movabsq $0x0000800000000000, %rsp
     movq (%rsp), %rax
     ret
