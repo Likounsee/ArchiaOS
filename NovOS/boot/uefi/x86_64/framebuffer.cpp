@@ -41,6 +41,9 @@ EFI_STATUS discover_framebuffer(
         return EFI_INVALID_PARAMETER;
 
     const UINT64 pitch = static_cast<UINT64>(pixelsPerScanLine) * 4ULL;
+    if (height != 0 && pitch > (~0ULL / static_cast<UINT64>(height)))
+        return EFI_INVALID_PARAMETER;
+
     const UINT64 requiredSize = pitch * static_cast<UINT64>(height);
 
     if (requiredSize > gop->Mode->FrameBufferSize)
