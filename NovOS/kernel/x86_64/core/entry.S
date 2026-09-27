@@ -5,10 +5,9 @@
 kernel_entry:
     /* RDI contains BootInfo* (passed by bootloader) */
     /* Set up stack with System V AMD64 ABI alignment:
-       RSP must be 8 mod 16 immediately before CALL. */
+       RSP must be 16-byte aligned immediately before CALL. */
     lea kernel_stack_top(%rip), %rsp
     and $-16, %rsp
-    sub $8, %rsp
     xor %rbp, %rbp
     /* RDI still contains BootInfo* */
     call kernel_main
