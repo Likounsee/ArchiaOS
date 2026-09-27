@@ -168,15 +168,13 @@ EFI_STATUS load_kernel_elf(
             ph[i].p_paddr != ph[i].p_vaddr ||
             ph[i].p_vaddr == 0 ||
             (ph[i].p_vaddr & (PAGE - 1)) != 0 ||
-            ph[i].p_memsz == 0 ||
-            (ph[i].p_offset & (PAGE - 1)) != 0)
+            ph[i].p_memsz == 0)
         {
             freePool(image);
             return EFI_INVALID_PARAMETER;
         }
 
-        if (ph[i].p_align == 0 ||
-            (ph[i].p_align > 1 &&
+        if (ph[i].p_align > 1 &&
              ((ph[i].p_align & (ph[i].p_align - 1)) != 0 ||
               (ph[i].p_vaddr % ph[i].p_align) !=
               (ph[i].p_offset % ph[i].p_align))))
