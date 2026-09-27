@@ -81,7 +81,8 @@ static EFI_STATUS capture_final_memory_map(
         &descriptorSize,
         &descriptorVersion);
 
-    if (status != EFI_SUCCESS || descriptorSize == 0)
+    if (status != EFI_SUCCESS || descriptorSize < sizeof(EFI_MEMORY_DESCRIPTOR) ||
+        descriptorSize > 0xFFFFFFFFULL)
         return status != EFI_SUCCESS ? status : EFI_INVALID_PARAMETER;
 
     map->size = size;
@@ -89,7 +90,9 @@ static EFI_STATUS capture_final_memory_map(
     map->descriptorSize = descriptorSize;
     map->descriptorVersion = descriptorVersion;
 
-    if (size % descriptorSize != 0)
+    if (descriptorSize < sizeof(EFI_MEMORY_DESCRIPTOR) ||
+        descriptorSize > 0xFFFFFFFFULL ||
+        size == 0 || size % descriptorSize != 0)
         return EFI_INVALID_PARAMETER;
 
     *outKey = key;
