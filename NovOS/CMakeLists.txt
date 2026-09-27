@@ -18,6 +18,17 @@ set(NOVOS_BOOT_INC ${NOVOS_ROOT}/boot/uefi/include)
 set(NOVOS_COMMON ${NOVOS_ROOT}/common)
 set(NOVOS_KERNEL_DIR ${NOVOS_ROOT}/kernel/x86_64/core)
 
+set(NOVOS_BOOT_HEADERS
+    ${NOVOS_BOOT_INC}/uefi.h
+    ${NOVOS_BOOT_INC}/boot_debug.h
+    ${NOVOS_BOOT_INC}/filesystem.h
+    ${NOVOS_BOOT_INC}/elf_loader.h
+    ${NOVOS_BOOT_INC}/framebuffer.h
+    ${NOVOS_BOOT_INC}/memory_map.h
+    ${NOVOS_BOOT_INC}/handoff.h
+    ${NOVOS_COMMON}/boot_info.h
+)
+
 set(NOVOS_KERNEL_OBJ ${NOVOS_BUILD}/novos_kernel.obj)
 set(NOVOS_KERNEL_ENTRY_OBJ ${NOVOS_BUILD}/novos_kernel_entry.obj)
 set(NOVOS_KERNEL_ELF ${NOVOS_BUILD}/NOVOS_kernel.elf)
@@ -73,7 +84,7 @@ function(novos_boot_compile output source)
             -DNOVOS_BOOT_DEBUG=1
             -I"${NOVOS_BOOT_INC}" -I"${NOVOS_COMMON}"
             -c "${source}" -o "${output}"
-        DEPENDS ${source} ${NOVOS_BOOT_INC}/uefi.h ${NOVOS_COMMON}/boot_info.h
+        DEPENDS ${source} ${NOVOS_BOOT_HEADERS}
     )
 endfunction()
 
@@ -89,7 +100,7 @@ add_custom_command(
     COMMAND "${NOVOS_CLANG}" -target x86_64-pc-win32-coff
         -ffreestanding -c "${NOVOS_BOOT_DIR}/handoff.S"
         -o "${NOVOS_BOOT_HANDOFF_OBJ}"
-    DEPENDS ${NOVOS_BOOT_DIR}/handoff.S
+    DEPENDS ${NOVOS_BOOT_DIR}/handoff.S ${NOVOS_BOOT_HEADERS}
 )
 
 add_custom_command(
