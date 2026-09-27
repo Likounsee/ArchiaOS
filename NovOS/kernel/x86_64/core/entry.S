@@ -1,16 +1,16 @@
-.section .text
-.global kernel_entry
+.text
+.globl kernel_entry
+.type kernel_entry,@function
 .extern kernel_main
 
 kernel_entry:
-    /* RDI contains BootInfo* (passed by bootloader) */
-    /* Set up stack with System V AMD64 ABI alignment:
-       RSP must be 16-byte aligned immediately before CALL. */
+    /* SysV AMD64 ABI: RDI already contains BootInfo*. */
     lea kernel_stack_top(%rip), %rsp
-    and $-16, %rsp
-    xor %rbp, %rbp
-    /* RDI still contains BootInfo* */
+    andq $-16, %rsp
+    xorq %rbp, %rbp
     call kernel_main
-.Lhang:
+
+.Lhalt:
+    cli
     hlt
-    jmp .Lhang
+    jmp .Lhalt
