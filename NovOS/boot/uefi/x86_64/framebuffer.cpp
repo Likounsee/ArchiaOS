@@ -31,12 +31,26 @@ EFI_STATUS discover_framebuffer(
             PixelBlueGreenRedReserved8BitPerColor)
         return EFI_UNSUPPORTED;
 
+    const UINT32 width = gop->Mode->Info->HorizontalResolution;
+    const UINT32 height = gop->Mode->Info->VerticalResolution;
+    const UINT32 pixelsPerScanLine = gop->Mode->Info->PixelsPerScanLine;
+
+    if (gop->Mode->FrameBufferBase == 0 ||
+        width == 0 || height == 0 || pixelsPerScanLine < width ||
+        pixelsPerScanLine > 0x3FFFFFFFU)
+        return EFI_INVALID_PARAMETER;
+
+    const UINT64 pitch = static_cast<UINT64>(pixelsPerScanLine) * 4ULL;
+    const UINT64 requiredSize = pitch * static_cast<UINT64>(height);
+
+    if (requiredSize > gop->Mode->FrameBufferSize)
+        return EFI_INVALID_PARAMETER;
+
     info->framebuffer_base = gop->Mode->FrameBufferBase;
     info->framebuffer_size = gop->Mode->FrameBufferSize;
-    info->framebuffer_width = gop->Mode->Info->HorizontalResolution;
-    info->framebuffer_height = gop->Mode->Info->VerticalResolution;
-    info->framebuffer_pitch =
-        gop->Mode->Info->PixelsPerScanLine * 4;
+    info->framebuffer_width = width;
+    info->framebuffer_height = height;
+    info->framebuffer_pitch = static_cast<UINT32>(pitch);
     info->framebuffer_bpp = 32;
     info->framebuffer_pixel_format =
         static_cast<UINT32>(gop->Mode->Info->PixelFormat);
