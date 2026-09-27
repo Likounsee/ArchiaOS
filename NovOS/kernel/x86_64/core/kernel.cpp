@@ -20,7 +20,8 @@ static void fill_rect(volatile UINT32* fb,UINT32 pitch,UINT32 width,UINT32 heigh
 
 extern "C" void kernel_main(BootInfo* bootInfo)
 {
-    debug_str("[KERNEL] kernel_main entered\n");
+    debug_str("NOVOS KERNEL STARTED\n");
+    debug_str("Architecture: x86_64\n");
     if(!bootInfo){debug_str("[KERNEL] BootInfo NULL\n");halt();}
     if(bootInfo->magic!=NOVOS_BOOT_INFO_MAGIC){debug_str("[KERNEL] BootInfo BAD MAGIC\n");halt();}
     if(bootInfo->version!=NOVOS_BOOT_INFO_VERSION || bootInfo->size<sizeof(BootInfo))
@@ -32,9 +33,18 @@ extern "C" void kernel_main(BootInfo* bootInfo)
        bootInfo->framebuffer_pitch<bootInfo->framebuffer_width*4)
     {debug_str("[KERNEL] Framebuffer BAD\n");halt();}
 
-    debug_str("[KERNEL] BootInfo OK\n");
-    debug_str("[KERNEL] Memory Map OK\n");
-    debug_str("[KERNEL] Framebuffer OK\n");
+    debug_str("BootInfo: OK\n");
+    debug_str("Memory Map: OK\n");
+    debug_str("Framebuffer: OK\n");
+
+    const UINT64 requiredFramebufferBytes =
+        static_cast<UINT64>(bootInfo->framebuffer_pitch) *
+        static_cast<UINT64>(bootInfo->framebuffer_height);
+    if (requiredFramebufferBytes > bootInfo->framebuffer_size)
+    {
+        debug_str("Framebuffer: INVALID SIZE\n");
+        halt();
+    }
 
     volatile UINT32* fb=reinterpret_cast<volatile UINT32*>(bootInfo->framebuffer_base);
     UINT32 pitch=bootInfo->framebuffer_pitch/4;
@@ -43,6 +53,5 @@ extern "C" void kernel_main(BootInfo* bootInfo)
               bootInfo->framebuffer_width,bootInfo->framebuffer_height,bg);
     fill_rect(fb,pitch,bootInfo->framebuffer_width,bootInfo->framebuffer_height,48,48,640,96,0x00FFFFFFU);
     fill_rect(fb,pitch,bootInfo->framebuffer_width,bootInfo->framebuffer_height,60,60,616,72,bg);
-    debug_str("[KERNEL] NOVOS KERNEL STARTED\n");
     halt();
 }
