@@ -161,6 +161,10 @@ struct Elf64ProgramHeader
 };
 
 static constexpr UINT32 ELF_PT_LOAD = 1;
+static constexpr UINT32 ELF_PF_X = 0x1;
+static constexpr UINT64 ELF_PAGE_SIZE = 0x1000ULL;
+static constexpr UINT64 ELF_PAGE_MASK = ~(ELF_PAGE_SIZE - 1ULL);
+static UINT8 segmentVerifyBuffer[4096];
 
 static inline void debug_char(char c)
 {
@@ -335,7 +339,8 @@ extern "C" EFI_STATUS efi_main(
     }
 
     if (elfHeader.e_ident[4] != ELF_CLASS_64 ||
-        elfHeader.e_ident[5] != ELF_DATA_LSB)
+        elfHeader.e_ident[5] != ELF_DATA_LSB ||
+        elfHeader.e_ident[6] != 1)
     {
         halt();
     }
@@ -346,7 +351,9 @@ extern "C" EFI_STATUS efi_main(
         halt();
     }
 
-    if (elfHeader.e_phentsize != sizeof(Elf64ProgramHeader))
+    if (elfHeader.e_version != 1 ||
+        elfHeader.e_ehsize != sizeof(Elf64Header) ||
+        elfHeader.e_phentsize != sizeof(Elf64ProgramHeader))
     {
         halt();
     }
@@ -402,6 +409,20 @@ extern "C" EFI_STATUS efi_main(
                 halt();
             }
 
+            if (programHeader.p_filesz > 0 && programHeader.p_offset > 0xFFFFFFFFFFFFFFFFULL - programHeader.p_filesz)
+            {
+                halt();
+            }
+
+            if (programHeader.p_align != 0 && programHeader.p_align != 1)
+            {
+                UINT64 align = programHeader.p_align;
+                if ((align & (align - 1ULL)) != 0 || (programHeader.p_vaddr % align) != (programHeader.p_offset % align))
+                {
+                    halt();
+                }
+            }
+
             if (programHeader.p_vaddr == 0)
             {
                 halt();
@@ -430,12 +451,12 @@ extern "C" EFI_STATUS efi_main(
                 programHeader.p_vaddr + programHeader.p_memsz;
 
             UINT64 firstPage =
-                programHeader.p_vaddr & ~0xFFFULL;
+                programHeader.p_vaddr & ELF_PAGE_MASK;
 
             UINT64 lastPage =
-                (segmentEnd + 0xFFFULL) & ~0xFFFULL;
+                (segmentEnd + ELF_PAGE_SIZE - 1ULL) & ELF_PAGE_MASK;
 
-            if (lastPage < segmentEnd)
+            if (lastPage < segmentEnd || segmentEnd > 0x100000000ULL)
             {
                 halt();
             }
@@ -466,6 +487,38 @@ extern "C" EFI_STATUS efi_main(
     }
 
     if (loadSegmentCount == 0)
+    {
+        halt();
+    }
+
+    bool entryInExecutableSegment = false;
+
+    status = SetPosition(kernelFile, elfHeader.e_phoff);
+    if (status != EFI_SUCCESS)
+    {
+        halt();
+    }
+
+    for (UINT16 i = 0; i < elfHeader.e_phnum; ++i)
+    {
+        UINTN programHeaderSize = sizeof(Elf64ProgramHeader);
+        status = kernelFile->Read(kernelFile, &programHeaderSize, &programHeader);
+        if (status != EFI_SUCCESS || programHeaderSize != sizeof(Elf64ProgramHeader))
+        {
+            halt();
+        }
+
+        if (programHeader.p_type != ELF_PT_LOAD ||
+            (programHeader.p_flags & ELF_PF_X) == 0)
+            continue;
+
+        UINT64 segmentEnd = programHeader.p_vaddr + programHeader.p_memsz;
+        if (programHeader.p_vaddr <= elfHeader.e_entry &&
+            elfHeader.e_entry < segmentEnd)
+            entryInExecutableSegment = true;
+    }
+
+    if (!entryInExecutableSegment || elfHeader.e_entry >= 0x100000000ULL)
     {
         halt();
     }
@@ -518,60 +571,64 @@ extern "C" EFI_STATUS efi_main(
             continue;
         }
 
-        if (programHeader.p_filesz == 0)
+        if (programHeader.p_filesz > 0)
         {
-            continue;
+            status = SetPosition(kernelFile, programHeader.p_offset);
+            if (status != EFI_SUCCESS)
+            {
+                halt();
+            }
+
+            UINT64 remaining = programHeader.p_filesz;
+            UINT8* destination = reinterpret_cast<UINT8*>(programHeader.p_vaddr);
+
+            while (remaining != 0)
+            {
+                UINTN chunk = static_cast<UINTN>(remaining);
+                if (chunk > sizeof(segmentVerifyBuffer))
+                    chunk = sizeof(segmentVerifyBuffer);
+
+                UINTN readSize = chunk;
+                status = kernelFile->Read(kernelFile, &readSize, segmentVerifyBuffer);
+
+                if (status != EFI_SUCCESS || readSize != chunk)
+                {
+                    halt();
+                }
+
+                for (UINTN j = 0; j < chunk; ++j)
+                    destination[j] = segmentVerifyBuffer[j];
+
+                destination += chunk;
+                remaining -= chunk;
+            }
         }
 
-        if (programHeader.p_filesz >
-            0xFFFFFFFFFFFFFFFFULL - programHeader.p_offset)
+        UINT64 zeroSize = programHeader.p_memsz - programHeader.p_filesz;
+        UINT8* zeroDestination =
+            reinterpret_cast<UINT8*>(programHeader.p_vaddr + programHeader.p_filesz);
+
+        while (zeroSize != 0)
         {
-            halt();
-        }
+            UINT64 chunk = zeroSize;
+            if (chunk > sizeof(segmentVerifyBuffer))
+                chunk = sizeof(segmentVerifyBuffer);
 
-        status = SetPosition(
-            kernelFile,
-            programHeader.p_offset
-        );
+            for (UINT64 j = 0; j < chunk; ++j)
+                zeroDestination[j] = 0;
 
-        if (status != EFI_SUCCESS)
-        {
-            halt();
-        }
-
-        UINTN segmentSize =
-            static_cast<UINTN>(programHeader.p_filesz);
-
-        if (static_cast<UINT64>(segmentSize) !=
-            programHeader.p_filesz)
-        {
-            halt();
-        }
-
-        void* segmentAddress =
-            reinterpret_cast<void*>(programHeader.p_vaddr);
-
-        status = kernelFile->Read(
-            kernelFile,
-            &segmentSize,
-            segmentAddress
-        );
-
-        if (status != EFI_SUCCESS ||
-            static_cast<UINT64>(segmentSize) !=
-                programHeader.p_filesz)
-        {
-            halt();
+            zeroDestination += chunk;
+            zeroSize -= chunk;
         }
     }
 
     print(SystemTable, "NOVOS: KERNEL SEGMENTS LOADED\\r\\n");
 
-    status = SetPosition(
-        kernelFile,
-        elfHeader.e_phoff
-    );
-
+    /*
+     * Verify every PT_LOAD byte after loading. A one-byte check is not
+     * sufficient to prove that the in-memory image matches the ELF.
+     */
+    status = SetPosition(kernelFile, elfHeader.e_phoff);
     if (status != EFI_SUCCESS)
     {
         halt();
@@ -579,75 +636,57 @@ extern "C" EFI_STATUS efi_main(
 
     for (UINT16 i = 0; i < elfHeader.e_phnum; ++i)
     {
-        status = SetPosition(
-            kernelFile,
-            elfHeader.e_phoff +
-                static_cast<UINT64>(i) * elfHeader.e_phentsize
-        );
-
-        if (status != EFI_SUCCESS)
-        {
-            halt();
-        }
-
         UINTN programHeaderSize = sizeof(Elf64ProgramHeader);
+        status = kernelFile->Read(kernelFile, &programHeaderSize, &programHeader);
 
-        status = kernelFile->Read(
-            kernelFile,
-            &programHeaderSize,
-            &programHeader
-        );
-
-        if (status != EFI_SUCCESS ||
-            programHeaderSize != sizeof(Elf64ProgramHeader))
+        if (status != EFI_SUCCESS || programHeaderSize != sizeof(Elf64ProgramHeader))
         {
             halt();
         }
 
-        if (programHeader.p_type != ELF_PT_LOAD ||
-            programHeader.p_filesz == 0)
-        {
+        if (programHeader.p_type != ELF_PT_LOAD || programHeader.p_filesz == 0)
             continue;
-        }
 
-        UINT8 fileByte = 0;
-
-        status = SetPosition(
-            kernelFile,
-            programHeader.p_offset
-        );
-
+        status = SetPosition(kernelFile, programHeader.p_offset);
         if (status != EFI_SUCCESS)
         {
             halt();
         }
 
-        UINTN byteSize = 1;
+        UINT64 remaining = programHeader.p_filesz;
+        UINT8* loadedAddress = reinterpret_cast<UINT8*>(programHeader.p_vaddr);
 
-        status = kernelFile->Read(
-            kernelFile,
-            &byteSize,
-            &fileByte
-        );
-
-        if (status != EFI_SUCCESS ||
-            byteSize != 1)
+        while (remaining != 0)
         {
-            halt();
-        }
+            UINTN chunk = static_cast<UINTN>(remaining);
+            if (chunk > sizeof(segmentVerifyBuffer))
+                chunk = sizeof(segmentVerifyBuffer);
 
-        volatile UINT8* loadedByte =
-            reinterpret_cast<volatile UINT8*>(
-                programHeader.p_vaddr
-            );
+            UINTN readSize = chunk;
+            status = kernelFile->Read(kernelFile, &readSize, segmentVerifyBuffer);
 
-        if (*loadedByte != fileByte)
-        {
-            halt();
+            if (status != EFI_SUCCESS || readSize != chunk)
+            {
+                halt();
+            }
+
+            for (UINTN j = 0; j < chunk; ++j)
+            {
+                if (loadedAddress[j] != segmentVerifyBuffer[j])
+                {
+                    debug_str("[BOOT] PT_LOAD VERIFY FAILED at ");
+                    debug_hex64(programHeader.p_vaddr + (programHeader.p_filesz - remaining) + j);
+                    debug_str("\n");
+                    halt();
+                }
+            }
+
+            loadedAddress += chunk;
+            remaining -= chunk;
         }
     }
 
-    print(SystemTable, "NOVOS PT_LOAD VERIFIED\r\n");
+    debug_str("[BOOT] Full PT_LOAD verification passed\\n");
 
     print(SystemTable, "NOVOS MEMORY MAP START\r\n");
 
