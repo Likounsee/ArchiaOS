@@ -1,0 +1,43 @@
+name: NovOS build and UEFI smoke test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-boot:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain and VM tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld cmake llvm qemu-system-x86 ovmf dosfstools mtools
+      - name: Configure
+        run: |
+          cmake -S NovOS -B build -DNOVOS_CLANG="$(command -v clang++)" -DNOVOS_LLD="$(command -v ld.lld)" -DNOVOS_LLD_LINK="$(command -v lld-link)"
+      - name: Build
+        run: cmake --build build --target novos_uefi_artifacts --parallel
+      - name: Inspect ELF and EFI
+        run: |
+          llvm-readobj --file-headers build/NOVOS_kernel.elf
+          llvm-readobj --file-headers build/BOOTX64.EFI
+      - name: Create FAT32 ESP image
+        run: |
+          truncate -s 64M build/novos.img
+          mkfs.fat -F 32 build/novos.img
+          mmd -i build/novos.img ::/EFI
+          mmd -i build/novos.img ::/EFI/BOOT
+          mmd -i build/novos.img ::/EFI/NOVOS
+          mcopy -i build/novos.img build/BOOTX64.EFI ::/EFI/BOOT/BOOTX64.EFI
+          mcopy -i build/novos.img build/NOVOS_kernel.elf ::/EFI/NOVOS/NOVOS_kernel.elf
+      - name: QEMU + OVMF smoke test
+        run: |
+          cp /usr/share/OVMF/OVMF_VARS_4M.fd build/OVMF_VARS.fd
+          timeout 15s qemu-system-x86_64 -machine q35 -m 512M -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd -drive if=pflash,format=raw,file=build/OVMF_VARS.fd -drive format=raw,file=build/novos.img -display none -debugcon file:build/debug.log -global isa-debugcon.iobase=0xe9 || test $? -eq 124
+          cat build/debug.log
+          grep -F "NOVOS KERNEL STARTED" build/debug.log
+          grep -F "Architecture: x86_64" build/debug.log
+          grep -F "BootInfo: OK" build/debug.log
+          grep -F "Memory Map: OK" build/debug.log
+          grep -F "Framebuffer: OK" build/debug.log
