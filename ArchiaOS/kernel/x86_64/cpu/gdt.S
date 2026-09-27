@@ -1,0 +1,71 @@
+.section .rodata
+.align 8
+gdt_table:
+    .quad 0x0000000000000000
+    .quad 0x00AF9A000000FFFF
+    .quad 0x00CF92000000FFFF
+    /* 64-bit TSS descriptor, limit = 0x67 (104-byte TSS) */
+    .quad 0x0000000000000067
+    .quad 0x0000000000000000
+
+gdt_pointer:
+    .word (5 * 8) - 1
+    .quad gdt_table
+
+.section .text
+.global gdt_initialize
+.type gdt_initialize, @function
+
+gdt_initialize:
+    lea tss64(%rip), %rax
+
+    /* TSS descriptor limit must cover the full 104-byte TSS. */
+    movw $103, gdt_table+24(%rip)
+
+    /* TSS descriptor layout (16 bytes):
+       +0..1  limit
+       +2..3  base[15:0]
+       +4     base[23:16]
+       +5     access
+       +6     flags + limit[19:16]
+       +7     base[31:24]
+       +8..11 base[63:32]
+       +12..15 reserved */
+
+    movw $103, gdt_table+24(%rip)
+
+    mov %rax, %rdx
+    mov %dx, gdt_table+26(%rip)
+
+    shr $16, %rdx
+    mov %dl, gdt_table+28(%rip)
+
+    mov %rax, %rdx
+    shr $24, %rdx
+    mov %dl, gdt_table+31(%rip)
+
+    movb $0x89, gdt_table+29(%rip)
+    movb $0x00, gdt_table+30(%rip)
+
+    mov %rax, %rdx
+    shr $32, %rdx
+    mov %edx, gdt_table+32(%rip)
+
+    lea gdt_pointer(%rip), %rax
+    lgdt (%rax)
+
+    mov $0x10, %ax
+    mov %ax, %ds
+    mov %ax, %es
+    mov %ax, %ss
+    xor %eax, %eax
+    mov %ax, %fs
+    mov %ax, %gs
+
+    pushq $0x08
+    leaq .Lreload_cs(%rip), %rax
+    pushq %rax
+    lretq
+
+.Lreload_cs:
+    ret
