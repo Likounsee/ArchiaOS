@@ -129,7 +129,7 @@ EFI_STATUS load_kernel_elf(
         eh->e_version != 1 ||
         eh->e_ehsize != sizeof(Elf64Header) ||
         eh->e_phentsize != sizeof(Elf64ProgramHeader) ||
-        eh->e_phnum == 0)
+        eh->e_phnum == 0 || eh->e_phoff == 0)
     {
         freePool(image);
         return EFI_INVALID_PARAMETER;
@@ -168,16 +168,18 @@ EFI_STATUS load_kernel_elf(
             ph[i].p_paddr != ph[i].p_vaddr ||
             ph[i].p_vaddr == 0 ||
             (ph[i].p_vaddr & (PAGE - 1)) != 0 ||
-            ph[i].p_memsz == 0)
+            ph[i].p_memsz == 0 ||
+            (ph[i].p_offset & (PAGE - 1)) != 0)
         {
             freePool(image);
             return EFI_INVALID_PARAMETER;
         }
 
-        if (ph[i].p_align > 1 &&
-            ((ph[i].p_align & (ph[i].p_align - 1)) != 0 ||
-             (ph[i].p_vaddr % ph[i].p_align) !=
-             (ph[i].p_offset % ph[i].p_align)))
+        if (ph[i].p_align == 0 ||
+            (ph[i].p_align > 1 &&
+             ((ph[i].p_align & (ph[i].p_align - 1)) != 0 ||
+              (ph[i].p_vaddr % ph[i].p_align) !=
+              (ph[i].p_offset % ph[i].p_align))))
         {
             freePool(image);
             return EFI_INVALID_PARAMETER;
@@ -224,7 +226,13 @@ EFI_STATUS load_kernel_elf(
             continue;
 
         UINT64 segmentEnd = ph[i].p_vaddr + ph[i].p_memsz;
-        UINT64 last = (segmentEnd + PAGE - 1) & ~(PAGE - 1);
+        UINT64 last;
+        if (add_overflow(segmentEnd, PAGE - 1, &last))
+        {
+            freePool(image);
+            return EFI_INVALID_PARAMETER;
+        }
+        last &= ~(PAGE - 1);
         UINT64 pages = (last - ph[i].p_vaddr) / PAGE;
 
         if (last < segmentEnd || pages == 0 || pages > 0xFFFFFFFFULL)
