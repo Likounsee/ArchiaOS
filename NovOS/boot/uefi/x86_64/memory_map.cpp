@@ -33,11 +33,10 @@ EFI_STATUS prepare_memory_map(
     if (status != EFI_BUFFER_TOO_SMALL || descriptorSize == 0)
         return status;
 
-    UINTN extra;
-    if (descriptorSize > (~static_cast<UINTN>(0) / 64))
+    if (descriptorSize > (~static_cast<UINTN>(0) / 128))
         return EFI_OUT_OF_RESOURCES;
 
-    extra = descriptorSize * 64;
+    const UINTN extra = descriptorSize * 128;
     UINTN capacity;
     if (add_overflow(required, extra, &capacity))
         return EFI_OUT_OF_RESOURCES;
@@ -61,18 +60,14 @@ EFI_STATUS prepare_memory_map(
     return EFI_SUCCESS;
 }
 
-EFI_STATUS exit_boot_services(
-    EFI_HANDLE imageHandle,
+static EFI_STATUS capture_final_memory_map(
     EFI_SYSTEM_TABLE* st,
     FinalMemoryMap* map,
-    BootInfo* info)
+    UINTN* outKey)
 {
     auto getMemoryMap =
         reinterpret_cast<EFI_GET_MEMORY_MAP>(
             st->BootServices->GetMemoryMap);
-    auto exitBootServices =
-        reinterpret_cast<EFI_EXIT_BOOT_SERVICES>(
-            st->BootServices->ExitBootServices);
 
     UINTN size = map->capacity;
     UINTN key = 0;
@@ -86,15 +81,45 @@ EFI_STATUS exit_boot_services(
         &descriptorSize,
         &descriptorVersion);
 
+    if (status != EFI_SUCCESS || descriptorSize == 0)
+        return status != EFI_SUCCESS ? status : EFI_INVALID_PARAMETER;
+
+    map->size = size;
+    map->mapKey = key;
+    map->descriptorSize = descriptorSize;
+    map->descriptorVersion = descriptorVersion;
+
+    if (size % descriptorSize != 0)
+        return EFI_INVALID_PARAMETER;
+
+    *outKey = key;
+    return EFI_SUCCESS;
+}
+
+EFI_STATUS exit_boot_services(
+    EFI_HANDLE imageHandle,
+    EFI_SYSTEM_TABLE* st,
+    FinalMemoryMap* map,
+    BootInfo* info)
+{
+    if (!st || !st->BootServices || !map || !map->buffer || !info)
+        return EFI_INVALID_PARAMETER;
+
+    auto exitBootServices =
+        reinterpret_cast<EFI_EXIT_BOOT_SERVICES>(
+            st->BootServices->ExitBootServices);
+
+    UINTN key = 0;
+    EFI_STATUS status = capture_final_memory_map(st, map, &key);
     if (status != EFI_SUCCESS)
         return status;
 
     info->memory_map_address =
         reinterpret_cast<UINT64>(map->buffer);
-    info->memory_map_size = size;
-    info->memory_descriptor_size = descriptorSize;
-    info->memory_descriptor_version = descriptorVersion;
-    info->memory_descriptor_count = size / descriptorSize;
+    info->memory_map_size = map->size;
+    info->memory_descriptor_size = static_cast<UINT32>(map->descriptorSize);
+    info->memory_descriptor_version = map->descriptorVersion;
+    info->memory_descriptor_count = map->size / map->descriptorSize;
 
     status = exitBootServices(imageHandle, key);
 
@@ -105,27 +130,21 @@ EFI_STATUS exit_boot_services(
         return status;
 
     /*
-     * The retry is deliberately tiny: GetMemoryMap() immediately followed
-     * by ExitBootServices(). No allocation, free, console, filesystem or
-     * other Boot Service is permitted in this window.
+     * UEFI requires the map to be reacquired after EFI_INVALID_PARAMETER.
+     * This retry performs only GetMemoryMap followed immediately by
+     * ExitBootServices. No allocation, free, console, filesystem, GOP,
+     * or other Boot Service occurs between these calls.
      */
-    size = map->capacity;
-    status = getMemoryMap(
-        &size,
-        reinterpret_cast<EFI_MEMORY_DESCRIPTOR*>(map->buffer),
-        &key,
-        &descriptorSize,
-        &descriptorVersion);
-
+    status = capture_final_memory_map(st, map, &key);
     if (status != EFI_SUCCESS)
         return status;
 
     info->memory_map_address =
         reinterpret_cast<UINT64>(map->buffer);
-    info->memory_map_size = size;
-    info->memory_descriptor_size = descriptorSize;
-    info->memory_descriptor_version = descriptorVersion;
-    info->memory_descriptor_count = size / descriptorSize;
+    info->memory_map_size = map->size;
+    info->memory_descriptor_size = static_cast<UINT32>(map->descriptorSize);
+    info->memory_descriptor_version = map->descriptorVersion;
+    info->memory_descriptor_count = map->size / map->descriptorSize;
 
     return exitBootServices(imageHandle, key);
 }
