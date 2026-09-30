@@ -1,4 +1,5 @@
 #include "paging.hpp"
+#include "../cpu/idt.hpp"
 
 static inline void test_char(char c)
 {
