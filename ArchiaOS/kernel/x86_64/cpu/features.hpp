@@ -39,6 +39,7 @@ struct CpuFeatures
     bool fma;
 
     bool nx;
+    bool sgx;
     bool syscall_sysret;
     bool rdtscp;
     bool invariant_tsc;
