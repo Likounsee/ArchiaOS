@@ -3,6 +3,7 @@
 #include "../cpu/tss.hpp"
 #include "../cpu/idt.hpp"
 #include "../cpu/irq.hpp"
+#include "../cpu/acpi.hpp"
 #include "../memory/pmm.hpp"
 
 using UINT32 = unsigned int;
@@ -175,6 +176,28 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         halt();
     }
     debug_str("IRQ: TIMER TEST OK\n");
+
+    debug_str("ACPI: parsing RSDP/MADT\n");
+    if (!acpi_initialize(bootInfo->acpi_rsdp_address))
+    {
+        debug_str("[KERNEL] ACPI INIT FAILED\n");
+        halt();
+    }
+
+    const AcpiInfo* acpi = acpi_get_info();
+    if (!acpi ||
+        acpi->rsdp_address == 0 ||
+        acpi->root_table_address == 0 ||
+        acpi->madt_address == 0 ||
+        acpi->local_apic_address == 0 ||
+        acpi->processor_count == 0)
+    {
+        debug_str("[KERNEL] ACPI DATA INVALID\n");
+        halt();
+    }
+
+    debug_str("ACPI: RSDP/MADT OK\n");
+    debug_str("ACPI: CPU/IOAPIC tables parsed\n");
 
     volatile UINT32* fb =
         reinterpret_cast<volatile UINT32*>(bootInfo->framebuffer_base);
