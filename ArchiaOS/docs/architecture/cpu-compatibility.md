@@ -69,9 +69,12 @@ Vendor-specific code is allowed only where the architectural interface actually 
 
 The future scheduler will consume a common topology model rather than hard-coding an Intel-only or AMD-only scheduler.
 
+On Intel hybrid processors, CPUID.07H.0H:EDX[15] identifies the hybrid part and CPUID.1AH reports the core type for the executing logical processor. ArchiaOS currently records this capability and the current logical processor type; full per-CPU P-core/E-core enumeration will be completed with SMP/AP startup support.
+
 ## Official references
 
 - Intel Instruction Set Extensions Programming Reference: https://www.intel.com/content/dam/develop/external/us/en/documents/architecture-instruction-set-extensions-programming-reference-737410.pdf
 - Intel CPUID enumeration: https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/technical-documentation/cpuid-enumeration-and-architectural-msrs.html
 - AMD64 Architecture Programmer's Manual: https://docs.amd.com/api/khub/documents/68GKiN0gMEd6bMddsmhPwg/content
+- Intel hybrid architecture guidance: https://www.intel.com/content/www/us/en/developer/articles/guide/12th-gen-intel-core-processor-gamedev-guide.html
 - QEMU CPU model documentation: https://www.qemu.org/docs/master/system/qemu-cpu-models.html
