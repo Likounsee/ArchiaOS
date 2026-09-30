@@ -76,4 +76,9 @@ extern "C" void exception_dispatch(ExceptionFrame* frame)
         for (;;)
             asm volatile ("cli; hlt");
     }
+
+    /* All other CPU exceptions are not safely recoverable yet. */
+    debug_str("[EXC] Fatal exception; halting\n");
+    for (;;)
+        asm volatile ("cli; hlt");
 }
