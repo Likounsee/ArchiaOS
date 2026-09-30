@@ -212,7 +212,17 @@ extern "C" u64 paging_translate(u64 virtualAddress)
         return (pde & ~0x1FFFFFULL) |
                (virtualAddress & 0x1FFFFFULL);
 
-    return 0;
+    auto* table1 =
+        reinterpret_cast<u64*>(pde & ~0xFFFULL);
+
+    const u64 pte =
+        table1[(virtualAddress >> 12) & 0x1FF];
+
+    if ((pte & NOVOS_PAGE_PRESENT) == 0)
+        return 0;
+
+    return (pte & 0x000FFFFFFFFFF000ULL) |
+           (virtualAddress & 0xFFFULL);
 }
 
 extern "C" bool paging_map_identity(u64 physicalAddress)
