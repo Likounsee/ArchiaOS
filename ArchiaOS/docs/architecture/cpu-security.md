@@ -53,3 +53,19 @@ In particular:
 - Intel documents UMIP as CR4 bit 11 and SMEP/SMAP as CR4 bits 20/21.
 
 ArchiaOS deliberately treats these as architectural controls, not as vendor-specific shortcuts.
+
+## Memory-protection bootstrap implemented
+
+The paging layer now supports 4 KiB leaves in addition to the existing 2 MiB bootstrap leaves. When a 2 MiB PDE must be hardened, ArchiaOS splits it into a 512-entry 4 KiB page table while preserving the identity mapping.
+
+Each 4 KiB mapping can independently select:
+
+- supervisor/user (U/S);
+- writable/read-only (R/W);
+- executable/NX.
+
+The mapping path uses INVLPG after changing a leaf.
+
+The page-fault path now decodes CR2 and the architectural error-code bits. A controlled kernel test deliberately unmapped a PMM-owned page, accessed it, verified the #PF, and redirected only that armed test to a recovery label. This proves the exception path is live without leaving the kernel in a fault loop.
+
+SMEP/SMAP are still deferred until user address spaces exist.
