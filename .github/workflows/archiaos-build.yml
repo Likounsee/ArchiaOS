@@ -52,7 +52,7 @@ jobs:
       - name: QEMU UEFI CPU compatibility matrix
         run: |
           set +e
-          models="qemu64 Penryn Nehalem Haswell Skylake-Client"
+          models="qemu64 core2duo Penryn Nehalem Haswell Skylake-Client"
           for cpu in $models; do
             echo "===== QEMU CPU MODEL: $cpu ====="
             cp /usr/share/OVMF/OVMF_VARS_4M.fd "ArchiaOS/build/OVMF_VARS_${cpu}.fd"
