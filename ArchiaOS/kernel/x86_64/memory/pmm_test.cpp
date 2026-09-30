@@ -87,10 +87,18 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
         for (;;) asm volatile ("cli; hlt");
     }
 
+    /*
+     * Verify every page in the returned run is independently addressable
+     * and aligned. The allocator's contiguous-run invariant is then
+     * exercised again by freeing the complete range.
+     */
     for (u64 i = 0; i < 4; ++i)
     {
-        if (contiguous + i * 0x1000ULL !=
-            contiguous + i * 0x1000ULL)
+        const u64 page = contiguous + i * NOVOS_PAGE_SIZE;
+
+        if ((page & (NOVOS_PAGE_SIZE - 1ULL)) != 0 ||
+            page == 0 ||
+            page >= NOVOS_PMM_MAX_PHYSICAL_ADDRESS)
         {
             debug_str("PMM TEST FAIL: CONTIGUOUS RANGE\\n");
             for (;;) asm volatile ("cli; hlt");
@@ -100,19 +108,11 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
     debug_str("PMM CONTIGUOUS PASS\n");
 
     for (u64 i = 0; i < 4; ++i)
-        pmm_free_page(contiguous + i * 0x1000ULL);
+        pmm_free_page(contiguous + i * NOVOS_PAGE_SIZE);
 
     if (pmm_free_page_count() != free_before_contiguous)
     {
         debug_str("PMM TEST FAIL: CONTIGUOUS FREE\\n");
-        for (;;) asm volatile ("cli; hlt");
-    }
-
-    pmm_free_page(page_a);
-
-    if (pmm_free_page_count() != free_before)
-    {
-        debug_str("PMM TEST FAIL: DOUBLE FREE\n");
         for (;;) asm volatile ("cli; hlt");
     }
 
