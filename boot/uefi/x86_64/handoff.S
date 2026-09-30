@@ -12,8 +12,6 @@ archiaos_x86_64_handoff:
      */
     cli
     cld
-    movb $72, %al
-    outb %al, $0xE9
     movq %rcx, %rax
     movq %rdx, %rdi
     jmp *%rax
