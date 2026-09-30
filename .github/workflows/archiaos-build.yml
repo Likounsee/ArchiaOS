@@ -17,7 +17,7 @@ jobs:
       - name: Install toolchain and firmware
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang lld cmake ninja-build qemu-system-x86 ovmf
+          sudo apt-get install -y clang lld llvm cmake ninja-build qemu-system-x86 ovmf
 
       - name: Configure
         run: |
