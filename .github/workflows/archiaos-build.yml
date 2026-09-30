@@ -88,6 +88,7 @@ jobs:
               "PMM TEST PASS" \
               "PAGING TABLES CREATED" \
               "PAGING IDENTITY MAP PASS (64 GiB)" \
+              "PAGING HHDM 64GiB PASS" \
               "PAGING CR3 ACTIVATION PASS" \
               "PAGING 4K RO/NX PASS" \
               "PAGING PAGE FAULT RECOVERY PASS" \
