@@ -69,7 +69,7 @@ Le projet suit une règle simple : un sous-système n'est considéré comme stab
 | Firmware | UEFI |
 | Bootloader | ArchiaOS UEFI loader |
 | Kernel | Kernel ArchiaOS freestanding |
-| ABI UEFI | Microsoft x64 |
+| ABI UEFI | UEFI-defined x86_64 calling convention |
 | ABI kernel | SysV AMD64 |
 | Compilation | LLVM / Clang |
 | Linker | LLD |
@@ -97,7 +97,7 @@ Le bootloader effectue actuellement les étapes suivantes :
 11. handoff vers le kernel x86_64 ;
 12. entrée dans kernel_entry puis kernel_main.
 
-Le bootloader utilise l'ABI Microsoft x64 imposée par UEFI et le stub d'handoff adapte les arguments pour le kernel SysV AMD64.
+Le bootloader respecte la convention d'appel x86_64 définie par l'UEFI. Le stub d'handoff adapte ensuite les arguments pour le kernel SysV AMD64.
 
 Le chemin ExitBootServices gère également le cas EFI_INVALID_PARAMETER en récupérant une nouvelle memory map avant de réessayer.
 
@@ -419,7 +419,7 @@ Le test utilise QEMU installé ici :
 
 Depuis :
 
-    cd C:\Users\Likounsee\Documents\ArchiaOS\ArchiaOS
+    cd C:\Users\Likounsee\Documents\ArchiaOS
 
 Préparer les variables OVMF :
 
