@@ -73,6 +73,7 @@ set(ARCHIAOS_KERNEL_LAPIC_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_lapic.obj)
 set(ARCHIAOS_KERNEL_TSS_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_tss.obj)
 set(ARCHIAOS_KERNEL_PAGING_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_paging.obj)
 set(ARCHIAOS_KERNEL_PMM_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_pmm.obj)
+set(ARCHIAOS_KERNEL_PMM_TEST_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_pmm_test.obj)
 
 set(ARCHIAOS_KERNEL_ELF ${ARCHIAOS_BUILD}/ARCHIAOS_kernel.elf)
 
@@ -123,6 +124,7 @@ archiaos_kernel_compile(${ARCHIAOS_KERNEL_LAPIC_OBJ} ${ARCHIAOS_CPU_DIR}/lapic.c
 archiaos_kernel_asm_compile(${ARCHIAOS_KERNEL_TSS_OBJ} ${ARCHIAOS_CPU_DIR}/tss.S)
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_PAGING_OBJ} ${ARCHIAOS_MEMORY_DIR}/paging.cpp)
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_PMM_OBJ} ${ARCHIAOS_MEMORY_DIR}/pmm.cpp)
+archiaos_kernel_compile(${ARCHIAOS_KERNEL_PMM_TEST_OBJ} ${ARCHIAOS_MEMORY_DIR}/pmm_test.cpp)
 
 add_custom_command(
     OUTPUT ${ARCHIAOS_KERNEL_ELF}
@@ -140,6 +142,7 @@ add_custom_command(
         "${ARCHIAOS_KERNEL_TSS_OBJ}"
         "${ARCHIAOS_KERNEL_PAGING_OBJ}"
         "${ARCHIAOS_KERNEL_PMM_OBJ}"
+        "${ARCHIAOS_KERNEL_PMM_TEST_OBJ}"
         -o "${ARCHIAOS_KERNEL_ELF}"
     DEPENDS
         ${ARCHIAOS_KERNEL_OBJ} ${ARCHIAOS_KERNEL_ENTRY_OBJ}
