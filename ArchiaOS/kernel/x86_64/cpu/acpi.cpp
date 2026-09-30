@@ -201,6 +201,19 @@ static bool parse_madt(unsigned long long madt)
             if (flags & 1U)
                 ++acpi_info.processor_count;
         }
+        else if (type == 9 && entry_length >= 16)
+        {
+            /*
+             * Processor Local x2APIC structure:
+             * flags are at offset 8 and use the same enabled bit as
+             * the legacy Local APIC structure. This is required on
+             * systems whose MADT describes processors through x2APIC.
+             */
+            unsigned int flags = read32(current + 8);
+
+            if (flags & 1U)
+                ++acpi_info.processor_count;
+        }
         else if (type == 1 && entry_length >= 12)
         {
             if (acpi_info.ioapic_count == 0)
