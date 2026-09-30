@@ -74,8 +74,8 @@ static bool split_2m_pde(u64* pde)
     if (ptPhysical == 0)
         return false;
 
-    auto* pt = reinterpret_cast<u64*>(ptPhysical);
-    zero_page(ptPhysical);
+    auto* pt = table_pointer(ptPhysical);
+    zero_page(reinterpret_cast<u64>(pt));
 
     /*
      * Preserve the existing bootstrap mapping while replacing one 2 MiB
@@ -208,7 +208,7 @@ extern "C" u64 paging_translate(u64 virtualAddress)
         return 0;
 
     auto* table3 =
-        reinterpret_cast<u64*>(pml4e & ~0xFFFULL);
+        table_pointer(pml4e & ~0xFFFULL);
 
     const u64 pdpte =
         table3[(virtualAddress >> 30) & 0x1FF];
@@ -217,7 +217,7 @@ extern "C" u64 paging_translate(u64 virtualAddress)
         return 0;
 
     auto* table2 =
-        reinterpret_cast<u64*>(pdpte & ~0xFFFULL);
+        table_pointer(pdpte & ~0xFFFULL);
 
     const u64 pde =
         table2[(virtualAddress >> 21) & 0x1FF];
