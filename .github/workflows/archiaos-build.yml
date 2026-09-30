@@ -52,7 +52,6 @@ jobs:
       - name: QEMU UEFI smoke test
         run: |
           set +e
-          cp /usr/share/OVMF/OVMF_VARS_4M.fd build/OVMF_VARS_4M.fd
           timeout 15s qemu-system-x86_64             -machine q35             -m 256M             -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd             -drive if=pflash,format=raw,file=build/OVMF_VARS_4M.fd             -drive format=raw,file=fat:rw:build/esp             -display none             -serial none             -monitor none             -debugcon stdio             -global isa-debugcon.iobase=0xe9             -no-reboot             -no-shutdown             > qemu.log 2>&1
           status=$?
           cat qemu.log
