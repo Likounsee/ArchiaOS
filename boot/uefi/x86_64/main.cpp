@@ -178,6 +178,9 @@ extern "C" EFI_STATUS EFIAPI efi_main(
     }
 
     boot_debug("boot: ExitBootServices OK\r\n");
+    boot_debug("boot: handoff entry: ");
+    boot_debug_hex(kernel.entry);
+    boot_debug("\r\n");
 
     /*
      * No UEFI Boot Service calls are allowed after this point.
