@@ -133,7 +133,7 @@ static bool setup_identity_2m()
     /*
      * Early address space:
      *   0x0000000000000000..0x0000000FFFFFFFFF = physical identity map
-     *   0xFFFF800000000000..0xFFFF800FFFFFFFFF = HHDM/direct map
+     *   0xFFFF800000000000..0xFFFF80FFFFFFFFFF = HHDM/direct map
      *
      * Both virtual ranges intentionally reference the same page tables.
      * The HHDM therefore adds no second copy of the 64 GiB mapping and gives
