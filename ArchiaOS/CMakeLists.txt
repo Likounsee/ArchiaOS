@@ -102,6 +102,7 @@ function(archiaos_kernel_compile output source)
             -I"${ARCHIAOS_COMMON}" -I"${ARCHIAOS_CPU_DIR}" -I"${ARCHIAOS_MEMORY_DIR}"
             -c "${source}" -o "${output}"
         DEPENDS ${source} ${ARCHIAOS_COMMON}/boot_info.h
+            ${ARCHIAOS_CPU_DIR}/cpuid.hpp ${ARCHIAOS_CPU_DIR}/features.hpp
     )
 endfunction()
 
