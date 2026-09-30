@@ -15,5 +15,6 @@ constexpr u64 NOVOS_PMM_BITMAP_WORDS =
 
 extern "C" void pmm_initialize(BootInfo* bootInfo);
 extern "C" u64 pmm_alloc_page();
+extern "C" u64 pmm_alloc_contiguous(u64 pageCount);
 extern "C" void pmm_free_page(u64 physicalAddress);
 extern "C" u64 pmm_free_page_count();
