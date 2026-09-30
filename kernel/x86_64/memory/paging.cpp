@@ -1,12 +1,18 @@
 #include "paging.hpp"
 
+static constexpr u64 NOVOS_PAGE_TABLE_COUNT = 32;
+static constexpr u64 NOVOS_IDENTITY_MAP_SIZE = 0x10000000000ULL; /* 64 GiB */
+static constexpr u64 NOVOS_2M_PAGE_SIZE = 0x200000ULL;
+static constexpr u64 NOVOS_PDPT_COVERAGE = 0x40000000ULL; /* 1 GiB */
+
 static u64* pml4 = nullptr;
 static u64* pdpt = nullptr;
-static u64* pd[4] = { nullptr, nullptr, nullptr, nullptr };
+static u64* pd[NOVOS_PAGE_TABLE_COUNT] = {};
 
 static inline void zero_page(u64 address)
 {
     auto* page = reinterpret_cast<volatile u64*>(address);
+
     for (u64 i = 0; i < 512; ++i)
         page[i] = 0;
 }
@@ -18,8 +24,11 @@ static inline u64 table_entry(u64 address)
 
 static bool setup_identity_2m()
 {
-    u64 pml4Physical = pmm_alloc_page();
-    u64 pdptPhysical = pmm_alloc_page();
+    if (pml4 != nullptr)
+        return true;
+
+    const u64 pml4Physical = pmm_alloc_page();
+    const u64 pdptPhysical = pmm_alloc_page();
 
     if (pml4Physical == 0 || pdptPhysical == 0)
         return false;
@@ -30,29 +39,32 @@ static bool setup_identity_2m()
     zero_page(pml4Physical);
     zero_page(pdptPhysical);
 
+    /*
+     * Keep the early address space deliberately simple: virtual == physical
+     * for the entire physical range managed by the PMM (64 GiB).
+     *
+     * This covers the kernel image, its stack, BootInfo, ACPI tables,
+     * framebuffer, LAPIC/IOAPIC MMIO and future early allocations without
+     * depending on any firmware page tables after CR3 is replaced.
+     */
     pml4[0] = table_entry(pdptPhysical);
 
-    /*
-     * Identity-map the first 4 GiB using 2 MiB pages.
-     * This is the bootstrap mapping used by the early kernel.
-     */
-    for (u64 pdptIndex = 0; pdptIndex < 4; ++pdptIndex)
+    for (u64 pdptIndex = 0; pdptIndex < NOVOS_PAGE_TABLE_COUNT / 8; ++pdptIndex)
     {
-        u64 pdPhysical = pmm_alloc_page();
+        const u64 pdPhysical = pmm_alloc_page();
 
         if (pdPhysical == 0)
             return false;
 
         pd[pdptIndex] = reinterpret_cast<u64*>(pdPhysical);
         zero_page(pdPhysical);
-
         pdpt[pdptIndex] = table_entry(pdPhysical);
 
         for (u64 i = 0; i < 512; ++i)
         {
-            u64 physicalAddress =
-                pdptIndex * 0x40000000ULL +
-                i * 0x200000ULL;
+            const u64 physicalAddress =
+                pdptIndex * NOVOS_PDPT_COVERAGE +
+                i * NOVOS_2M_PAGE_SIZE;
 
             pd[pdptIndex][i] =
                 physicalAddress |
@@ -80,7 +92,7 @@ extern "C" u64 paging_translate(u64 virtualAddress)
     if (pml4 == nullptr)
         return 0;
 
-    u64 pml4e =
+    const u64 pml4e =
         pml4[(virtualAddress >> 39) & 0x1FF];
 
     if ((pml4e & NOVOS_PAGE_PRESENT) == 0)
@@ -89,7 +101,7 @@ extern "C" u64 paging_translate(u64 virtualAddress)
     auto* table3 =
         reinterpret_cast<u64*>(pml4e & ~0xFFFULL);
 
-    u64 pdpte =
+    const u64 pdpte =
         table3[(virtualAddress >> 30) & 0x1FF];
 
     if ((pdpte & NOVOS_PAGE_PRESENT) == 0)
@@ -98,7 +110,7 @@ extern "C" u64 paging_translate(u64 virtualAddress)
     auto* table2 =
         reinterpret_cast<u64*>(pdpte & ~0xFFFULL);
 
-    u64 pde =
+    const u64 pde =
         table2[(virtualAddress >> 21) & 0x1FF];
 
     if ((pde & NOVOS_PAGE_PRESENT) == 0)
@@ -113,17 +125,40 @@ extern "C" u64 paging_translate(u64 virtualAddress)
 
 extern "C" bool paging_map_identity(u64 physicalAddress)
 {
-    if ((physicalAddress & 0x1FFFFFULL) != 0 ||
-        physicalAddress >= 0x100000000ULL ||
+    if ((physicalAddress & (NOVOS_2M_PAGE_SIZE - 1ULL)) != 0 ||
+        physicalAddress >= NOVOS_IDENTITY_MAP_SIZE ||
         pml4 == nullptr)
         return false;
 
     return paging_translate(physicalAddress) == physicalAddress;
 }
 
+extern "C" bool paging_activate()
+{
+    if (pml4 == nullptr)
+        return false;
+
+    const u64 pml4Physical =
+        reinterpret_cast<u64>(pml4);
+
+    asm volatile(
+        "mov %0, %%cr3"
+        :
+        : "r"(pml4Physical)
+        : "memory");
+
+    asm volatile("mov %%cr3, %%rax" ::: "rax", "memory");
+
+    return paging_is_enabled();
+}
+
 extern "C" bool paging_is_enabled()
 {
     u64 cr0 = 0;
-    asm volatile("mov %%cr0, %0" : "=r"(cr0));
+
+    asm volatile(
+        "mov %%cr0, %0"
+        : "=r"(cr0));
+
     return (cr0 & (1ULL << 31)) != 0;
 }
