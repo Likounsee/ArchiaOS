@@ -2,6 +2,12 @@
 
 static EFI_SYSTEM_TABLE* g_system_table = nullptr;
 
+static void debugcon_ascii(const char* text)
+{
+    for (UINTN i = 0; text[i]; ++i)
+        asm volatile("outb %0,%1" : : "a"(text[i]), "Nd"(static_cast<unsigned short>(0xE9)));
+}
+
 static void output_ascii(const char* text)
 {
     if (!g_system_table || !g_system_table->ConOut)
@@ -18,6 +24,7 @@ static void output_ascii(const char* text)
     buffer[i] = 0;
 
     g_system_table->ConOut->OutputString(g_system_table->ConOut, buffer);
+    debugcon_ascii(text);
 }
 
 void boot_debug_init(EFI_SYSTEM_TABLE* systemTable)
