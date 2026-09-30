@@ -22,6 +22,91 @@ static inline u64 table_entry(u64 address)
     return address | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE;
 }
 
+
+static inline u64 page_entry_flags(PagingFlags flags)
+{
+    u64 value = NOVOS_PAGE_PRESENT;
+
+    if (flags.writable)
+        value |= NOVOS_PAGE_WRITE;
+
+    if (flags.user)
+        value |= NOVOS_PAGE_USER;
+
+    if (!flags.executable)
+        value |= NOVOS_PAGE_NO_EXECUTE;
+
+    return value;
+}
+
+static bool split_2m_pde(u64* pde)
+{
+    if ((*pde & NOVOS_PAGE_PRESENT) == 0)
+        return false;
+
+    if ((*pde & NOVOS_PAGE_HUGE) == 0)
+        return true;
+
+    const u64 oldBase = *pde & ~0x1FFFFFULL;
+    const u64 ptPhysical = pmm_alloc_page();
+
+    if (ptPhysical == 0)
+        return false;
+
+    auto* pt = reinterpret_cast<u64*>(ptPhysical);
+    zero_page(ptPhysical);
+
+    /*
+     * Preserve the existing bootstrap identity mapping while replacing
+     * one 2 MiB leaf with a 4 KiB page table. The default entries remain
+     * supervisor RW executable; individual pages can then be hardened.
+     */
+    for (u64 i = 0; i < 512; ++i)
+    {
+        pt[i] = (oldBase + i * NOVOS_PAGE_SIZE) |
+                NOVOS_PAGE_PRESENT |
+                NOVOS_PAGE_WRITE;
+    }
+
+    *pde = ptPhysical | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE;
+    return true;
+}
+
+static u64* find_4k_entry(u64 virtualAddress)
+{
+    if (pml4 == nullptr)
+        return nullptr;
+
+    const u64 pml4e =
+        pml4[(virtualAddress >> 39) & 0x1FF];
+
+    if ((pml4e & NOVOS_PAGE_PRESENT) == 0)
+        return nullptr;
+
+    auto* table3 =
+        reinterpret_cast<u64*>(pml4e & ~0xFFFULL);
+
+    const u64 pdpte =
+        table3[(virtualAddress >> 30) & 0x1FF];
+
+    if ((pdpte & NOVOS_PAGE_PRESENT) == 0)
+        return nullptr;
+
+    auto* table2 =
+        reinterpret_cast<u64*>(pdpte & ~0xFFFULL);
+
+    u64* pde =
+        &table2[(virtualAddress >> 21) & 0x1FF];
+
+    if (!split_2m_pde(pde))
+        return nullptr;
+
+    auto* pt =
+        reinterpret_cast<u64*>((*pde) & ~0xFFFULL);
+
+    return &pt[(virtualAddress >> 12) & 0x1FF];
+}
+
 static bool setup_identity_2m()
 {
     if (pml4 != nullptr)
@@ -131,6 +216,32 @@ extern "C" bool paging_map_identity(u64 physicalAddress)
         return false;
 
     return paging_translate(physicalAddress) == physicalAddress;
+}
+
+extern "C" bool paging_map_4k(
+    u64 virtualAddress,
+    u64 physicalAddress,
+    PagingFlags flags)
+{
+    if ((virtualAddress & (NOVOS_PAGE_SIZE - 1ULL)) != 0 ||
+        (physicalAddress & (NOVOS_PAGE_SIZE - 1ULL)) != 0 ||
+        physicalAddress >= NOVOS_PMM_MAX_PHYSICAL_ADDRESS)
+        return false;
+
+    u64* entry = find_4k_entry(virtualAddress);
+    if (entry == nullptr)
+        return false;
+
+    *entry = physicalAddress | page_entry_flags(flags);
+
+    asm volatile("invlpg (%0)" : : "r"(virtualAddress) : "memory");
+    return true;
+}
+
+extern "C" u64 paging_get_4k_entry(u64 virtualAddress)
+{
+    u64* entry = find_4k_entry(virtualAddress);
+    return entry ? *entry : 0;
 }
 
 extern "C" bool paging_activate()
