@@ -39,6 +39,8 @@ jobs:
           test -s build/esp/EFI/BOOT/BOOTX64.EFI
           test -s build/esp/EFI/ARCHIAOS/ARCHIAOS_kernel.elf
           llvm-readobj --file-headers build/ARCHIAOS_kernel.elf
+          llvm-readobj --program-headers build/ARCHIAOS_kernel.elf
+          llvm-nm build/ARCHIAOS_kernel.elf | grep "kernel_entry$"
           llvm-readobj --file-headers build/BOOTX64.EFI
           llvm-readobj --program-headers build/ARCHIAOS_kernel.elf
           llvm-objdump -d build/ARCHIAOS_kernel.elf | head -n 120
