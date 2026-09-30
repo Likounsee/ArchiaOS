@@ -56,7 +56,7 @@ extern "C" bool irq_test_timer()
 
     irq_enable();
 
-    for (volatile unsigned long long timeout = 0;
+    for (unsigned long long timeout = 0;
          timeout < 200000000ULL;
          ++timeout)
     {
