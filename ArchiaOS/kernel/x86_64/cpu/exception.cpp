@@ -32,18 +32,6 @@ extern "C" bool exception_page_fault_test_active()
     return page_fault_test_recovery_rip != 0;
 }
 
-static unsigned long long page_fault_test_recovery_rip = 0;
-
-extern "C" void exception_expect_page_fault(unsigned long long recovery_rip)
-{
-    page_fault_test_recovery_rip = recovery_rip;
-}
-
-extern "C" bool exception_page_fault_test_active()
-{
-    return page_fault_test_recovery_rip != 0;
-}
-
 extern "C" unsigned char tss_ist1_stack[];
 extern "C" unsigned char tss_ist1_stack_top[];
 
