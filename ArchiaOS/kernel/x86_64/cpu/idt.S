@@ -413,6 +413,7 @@ isr20:
 .global isr21
 .type isr21, @function
 isr21:
+    /* #CP supplies a hardware error code. */
     pushq $21
     jmp isr_common
 
@@ -468,12 +469,14 @@ isr28:
 .global isr29
 .type isr29, @function
 isr29:
+    /* #VC supplies a hardware error code on AMD SEV-ES. */
     pushq $29
     jmp isr_common
 
 .global isr30
 .type isr30, @function
 isr30:
+    /* #SX supplies a hardware error code on AMD SVM. */
     pushq $30
     jmp isr_common
 
