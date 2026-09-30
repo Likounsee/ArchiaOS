@@ -263,10 +263,15 @@ EFI_STATUS load_kernel_elf(
             destination[j] = 0;
     }
 
+    const UINT64 loadedEntry = eh->e_entry;
+    const UINT64 loadedBase = lowest;
+    const UINT64 loadedSize = highest - lowest;
+
     freePool(image);
-    outKernel->entry = eh->e_entry;
-    outKernel->base = lowest;
-    outKernel->size = highest - lowest;
+
+    outKernel->entry = loadedEntry;
+    outKernel->base = loadedBase;
+    outKernel->size = loadedSize;
 
     boot_debug("elf: kernel loaded\r\n");
     return EFI_SUCCESS;
