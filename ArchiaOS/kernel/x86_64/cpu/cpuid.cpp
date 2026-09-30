@@ -146,6 +146,25 @@ static void enumerate_features()
     }
 
     cpu_info.features.hypervisor_present = bit(r.ecx, 31);
+
+    cpu_info.features.hybrid = false;
+    cpu_info.features.core_type = CpuCoreType::Unknown;
+
+    if (cpu_info.max_basic_leaf >= 7)
+    {
+        CpuidResult f7 = cpu_cpuid(7, 0);
+        cpu_info.features.hybrid = bit(f7.edx, 15);
+    }
+
+    if (cpu_info.max_basic_leaf >= 0x1AU)
+    {
+        CpuidResult hybrid = cpu_cpuid(0x1AU, 0);
+        const unsigned int type = hybrid.eax >> 24;
+        if (type == 0x20U)
+            cpu_info.features.core_type = CpuCoreType::ECoreOrAtom;
+        else if (type == 0x40U)
+            cpu_info.features.core_type = CpuCoreType::PCoreOrCore;
+    }
 }
 
 static bool enumerate_topology_leaf(unsigned int leaf)
