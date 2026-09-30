@@ -1,5 +1,12 @@
 #pragma once
 
+enum class CpuCoreType
+{
+    Unknown,
+    ECoreOrAtom,
+    PCoreOrCore
+};
+
 enum class CpuCompatibilityMode
 {
     Standard,
@@ -48,13 +55,6 @@ struct CpuFeatures
     bool hypervisor_present;
     bool hybrid;
     CpuCoreType core_type;
-};
-
-enum class CpuCoreType
-{
-    Unknown,
-    ECoreOrAtom,
-    PCoreOrCore
 };
 
 struct CpuTopology
