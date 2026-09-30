@@ -164,6 +164,8 @@ extern "C" EFI_STATUS EFIAPI efi_main(
 
     boot_debug("boot: Memory map prepared\r\n");
 
+    boot_debug("boot: calling ExitBootServices\r\n");
+
     status = exit_boot_services(
         imageHandle, systemTable, &memoryMap, bootInfo);
 
