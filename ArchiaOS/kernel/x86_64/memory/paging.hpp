@@ -8,6 +8,15 @@ constexpr u64 NOVOS_PAGE_USER = 1ULL << 2;
 constexpr u64 NOVOS_PAGE_HUGE = 1ULL << 7;
 constexpr u64 NOVOS_PAGE_NO_EXECUTE = 1ULL << 63;
 
+/*
+ * Four-level paging layout:
+ *   low half  = bootstrap identity map
+ *   high half = HHDM/direct physical map
+ *
+ * 0xFFFF800000000000 is 48-bit canonical and corresponds to PML4 index 256.
+ */
+constexpr u64 NOVOS_HHDM_BASE = 0xFFFF800000000000ULL;
+
 struct PagingFlags
 {
     bool writable;
@@ -25,6 +34,8 @@ extern "C" bool paging_map_4k(
     PagingFlags flags);
 extern "C" u64 paging_get_4k_entry(u64 virtualAddress);
 extern "C" bool paging_unmap_4k(u64 virtualAddress);
+extern "C" u64 paging_physical_to_virtual(u64 physicalAddress);
+extern "C" u64 paging_virtual_to_physical(u64 virtualAddress);
 extern "C" bool paging_activate();
 extern "C" bool paging_is_enabled();
 extern "C" void paging_run_tests();
