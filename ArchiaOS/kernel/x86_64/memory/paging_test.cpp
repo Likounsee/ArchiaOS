@@ -100,6 +100,34 @@ extern "C" void paging_run_tests()
 
     test_str("PAGING 4K RO/NX PASS\n");
 
+    if (!paging_unmap_4k(testPage))
+        fail("PAGING TEST FAIL: 4K UNMAP\n");
+
+    if (paging_get_4k_entry(testPage) != 0)
+        fail("PAGING TEST FAIL: 4K UNMAP STATE\n");
+
+    /*
+     * Trigger one deliberate non-present-page fault. The exception path
+     * redirects only this explicitly armed test to the recovery label.
+     */
+    const unsigned long long recovery =
+        reinterpret_cast<unsigned long long>(&&page_fault_recovered);
+
+    exception_expect_page_fault(recovery);
+
+    asm volatile(
+        "movq (%%rax), %%rax"
+        :
+        : "a"(testPage)
+        : "rax", "memory");
+
+page_fault_recovered:
+
+    if (exception_page_fault_test_active())
+        fail("PAGING TEST FAIL: PAGE FAULT DID NOT FIRE\n");
+
+    test_str("PAGING PAGE FAULT RECOVERY PASS\n");
+
     test_str("PAGING CR3 ACTIVATION PASS\n");
     test_str("PAGING TEST PASS\n");
 }
