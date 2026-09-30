@@ -1,6 +1,6 @@
 #include "paging.hpp"
 
-static constexpr u64 NOVOS_PAGE_TABLE_COUNT = 32;
+static constexpr u64 NOVOS_PAGE_TABLE_COUNT = 64;
 static constexpr u64 NOVOS_IDENTITY_MAP_SIZE = 0x10000000000ULL; /* 64 GiB */
 static constexpr u64 NOVOS_2M_PAGE_SIZE = 0x200000ULL;
 static constexpr u64 NOVOS_PDPT_COVERAGE = 0x40000000ULL; /* 1 GiB */
@@ -49,7 +49,7 @@ static bool setup_identity_2m()
      */
     pml4[0] = table_entry(pdptPhysical);
 
-    for (u64 pdptIndex = 0; pdptIndex < NOVOS_PAGE_TABLE_COUNT / 8; ++pdptIndex)
+    for (u64 pdptIndex = 0; pdptIndex < NOVOS_PAGE_TABLE_COUNT; ++pdptIndex)
     {
         const u64 pdPhysical = pmm_alloc_page();
 
