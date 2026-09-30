@@ -24,6 +24,7 @@ extern "C" bool paging_map_4k(
     u64 physicalAddress,
     PagingFlags flags);
 extern "C" u64 paging_get_4k_entry(u64 virtualAddress);
+extern "C" bool paging_unmap_4k(u64 virtualAddress);
 extern "C" bool paging_activate();
 extern "C" bool paging_is_enabled();
 extern "C" void paging_run_tests();
