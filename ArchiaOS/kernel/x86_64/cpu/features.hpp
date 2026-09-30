@@ -46,6 +46,15 @@ struct CpuFeatures
     bool one_gib_pages;
 
     bool hypervisor_present;
+    bool hybrid;
+    CpuCoreType core_type;
+};
+
+enum class CpuCoreType
+{
+    Unknown,
+    ECoreOrAtom,
+    PCoreOrCore
 };
 
 struct CpuTopology
