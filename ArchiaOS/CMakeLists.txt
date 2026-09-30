@@ -77,6 +77,7 @@ set(ARCHIAOS_KERNEL_PMM_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_pmm.obj)
 set(ARCHIAOS_KERNEL_PMM_TEST_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_pmm_test.obj)
 set(ARCHIAOS_KERNEL_CPUID_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_cpuid.obj)
 set(ARCHIAOS_KERNEL_CPU_REPORT_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_cpu_report.obj)
+set(ARCHIAOS_KERNEL_SECURITY_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_security.obj)
 
 set(ARCHIAOS_KERNEL_ELF ${ARCHIAOS_BUILD}/ARCHIAOS_kernel.elf)
 
@@ -103,6 +104,7 @@ function(archiaos_kernel_compile output source)
             -c "${source}" -o "${output}"
         DEPENDS ${source} ${ARCHIAOS_COMMON}/boot_info.h
             ${ARCHIAOS_CPU_DIR}/cpuid.hpp ${ARCHIAOS_CPU_DIR}/features.hpp
+            ${ARCHIAOS_CPU_DIR}/security.hpp
     )
 endfunction()
 
@@ -132,6 +134,7 @@ archiaos_kernel_compile(${ARCHIAOS_KERNEL_PMM_OBJ} ${ARCHIAOS_MEMORY_DIR}/pmm.cp
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_PMM_TEST_OBJ} ${ARCHIAOS_MEMORY_DIR}/pmm_test.cpp)
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_CPUID_OBJ} ${ARCHIAOS_CPU_DIR}/cpuid.cpp)
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_CPU_REPORT_OBJ} ${ARCHIAOS_CPU_DIR}/cpu_report.cpp)
+archiaos_kernel_compile(${ARCHIAOS_KERNEL_SECURITY_OBJ} ${ARCHIAOS_CPU_DIR}/security.cpp)
 
 add_custom_command(
     OUTPUT ${ARCHIAOS_KERNEL_ELF}
@@ -153,6 +156,7 @@ add_custom_command(
         "${ARCHIAOS_KERNEL_PMM_TEST_OBJ}"
         "${ARCHIAOS_KERNEL_CPUID_OBJ}"
         "${ARCHIAOS_KERNEL_CPU_REPORT_OBJ}"
+        "${ARCHIAOS_KERNEL_SECURITY_OBJ}"
         -o "${ARCHIAOS_KERNEL_ELF}"
     DEPENDS
         ${ARCHIAOS_KERNEL_OBJ} ${ARCHIAOS_KERNEL_ENTRY_OBJ}
@@ -164,6 +168,7 @@ add_custom_command(
         ${ARCHIAOS_KERNEL_PMM_OBJ}
         ${ARCHIAOS_KERNEL_PMM_TEST_OBJ}
         ${ARCHIAOS_KERNEL_CPUID_OBJ} ${ARCHIAOS_KERNEL_CPU_REPORT_OBJ}
+        ${ARCHIAOS_KERNEL_SECURITY_OBJ}
         ${ARCHIAOS_KERNEL_DIR}/kernel.ld
 )
 
