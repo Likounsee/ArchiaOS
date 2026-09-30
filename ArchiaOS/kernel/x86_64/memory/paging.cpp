@@ -27,7 +27,7 @@ static inline u64* table_pointer(u64 physicalAddress)
 
 static inline void zero_page(u64 address)
 {
-    auto* page = reinterpret_cast<volatile u64*>(address);
+    auto* page = reinterpret_cast<volatile u64*>(table_pointer(address));
 
     for (u64 i = 0; i < 512; ++i)
         page[i] = 0;
@@ -75,7 +75,7 @@ static bool split_2m_pde(u64* pde)
         return false;
 
     auto* pt = table_pointer(ptPhysical);
-    zero_page(reinterpret_cast<u64>(pt));
+    zero_page(ptPhysical);
 
     /*
      * Preserve the existing bootstrap mapping while replacing one 2 MiB
