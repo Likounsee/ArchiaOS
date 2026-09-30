@@ -1,4 +1,9 @@
 #include "../../../common/boot_info.h"
+#include "../cpu/gdt.hpp"
+#include "../cpu/tss.hpp"
+#include "../cpu/idt.hpp"
+#include "../cpu/irq.hpp"
+#include "../memory/pmm.hpp"
 
 using UINT32 = unsigned int;
 using UINT64 = unsigned long long;
@@ -58,6 +63,8 @@ static void fill_rect(
         for (UINT32 px = 0; px < w; ++px)
             put_pixel(fb, pitchPixels, x + px, y + py, pixel);
 }
+
+extern "C" void pmm_run_tests(BootInfo* bootInfo);
 
 extern "C" void kernel_main(BootInfo* bootInfo)
 {
@@ -132,6 +139,42 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     debug_str("BootInfo: OK\n");
     debug_str("Memory Map: OK\n");
     debug_str("Framebuffer: OK\n");
+
+    debug_str("CPU: initializing GDT\n");
+    gdt_initialize();
+    debug_str("CPU: GDT OK\n");
+
+    debug_str("CPU: initializing TSS\n");
+    tss_initialize();
+    debug_str("CPU: TSS OK\n");
+
+    debug_str("CPU: initializing IDT\n");
+    idt_initialize();
+    debug_str("CPU: IDT 256 VECTORS OK\n");
+
+    debug_str("PMM: running tests\n");
+    pmm_run_tests(bootInfo);
+    debug_str("PMM: TESTS OK\n");
+
+    debug_str("CPU: testing invalid opcode handler\n");
+    idt_test_invalid_opcode();
+    debug_str("CPU: INVALID OPCODE HANDLER OK\n");
+
+    debug_str("IRQ: initializing LAPIC\n");
+    if (!irq_initialize())
+    {
+        debug_str("[KERNEL] IRQ/LAPIC INIT FAILED\n");
+        halt();
+    }
+    debug_str("IRQ: LAPIC OK\n");
+
+    debug_str("IRQ: testing timer\n");
+    if (!irq_test_timer())
+    {
+        debug_str("[KERNEL] IRQ TIMER TEST FAILED\n");
+        halt();
+    }
+    debug_str("IRQ: TIMER TEST OK\n");
 
     volatile UINT32* fb =
         reinterpret_cast<volatile UINT32*>(bootInfo->framebuffer_base);
