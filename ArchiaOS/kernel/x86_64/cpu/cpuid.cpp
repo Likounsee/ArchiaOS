@@ -305,6 +305,7 @@ extern "C" void cpu_initialize()
     decode_family_model(cpu_cpuid(1, 0));
     copy_brand();
     enumerate_features();
+    enumerate_security_capabilities();
     enumerate_topology();
 
     cpu_info.compatibility =
