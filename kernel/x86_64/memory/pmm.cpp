@@ -47,7 +47,16 @@ static void reserve_range(u64 start, u64 page_count)
         page_count = max_pages;
 
     for (u64 i = 0; i < page_count; ++i)
-        bitmap_set((start / NOVOS_PAGE_SIZE) + i);
+    {
+        const u64 frame = (start / NOVOS_PAGE_SIZE) + i;
+
+        if (!bitmap_test(frame))
+        {
+            bitmap_set(frame);
+            if (pmm_free_pages > 0)
+                --pmm_free_pages;
+        }
+    }
 }
 
 static void reserve_bytes(u64 start, u64 size)
