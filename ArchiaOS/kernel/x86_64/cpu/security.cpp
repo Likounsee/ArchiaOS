@@ -152,46 +152,30 @@ extern "C" const CpuSecurityState* cpu_security_get_state()
 
 extern "C" void cpu_security_print_report()
 {
-    debug_str("CPU: security activation
-");
+    debug_str("CPU: security activation\n");
 
     debug_str("CPU: NXE: ");
-    debug_str(state.nx_enabled ? "ACTIVE
-" :
-              state.nx_supported ? "SUPPORTED/NOT ACTIVE
-" :
-              "NOT SUPPORTED
-");
+    debug_str(state.nx_enabled ? "ACTIVE\n" :
+              state.nx_supported ? "SUPPORTED/NOT ACTIVE\n" :
+              "NOT SUPPORTED\n");
 
     debug_str("CPU: CR0.WP: ");
-    debug_str(state.write_protect_enabled ? "ACTIVE
-" : "NOT ACTIVE
-");
+    debug_str(state.write_protect_enabled ? "ACTIVE\n" : "NOT ACTIVE\n");
 
     debug_str("CPU: UMIP: ");
-    debug_str(state.umip_enabled ? "ACTIVE
-" :
-              state.umip_supported ? "SUPPORTED/NOT ACTIVE
-" :
-              "NOT SUPPORTED
-");
+    debug_str(state.umip_enabled ? "ACTIVE\n" :
+              state.umip_supported ? "SUPPORTED/NOT ACTIVE\n" :
+              "NOT SUPPORTED\n");
 
     debug_str("CPU: SMEP: ");
-    debug_str(state.smep_enabled ? "ACTIVE
-" :
-              state.smep_supported ? "DEFERRED (USER PAGES)
-" :
-              "NOT SUPPORTED
-");
+    debug_str(state.smep_enabled ? "ACTIVE\n" :
+              state.smep_supported ? "DEFERRED (USER PAGES)\n" :
+              "NOT SUPPORTED\n");
 
     debug_str("CPU: SMAP: ");
-    debug_str(state.smap_enabled ? "ACTIVE
-" :
-              state.smap_supported ? "DEFERRED (USER PAGES)
-" :
-              "NOT SUPPORTED
-");
+    debug_str(state.smap_enabled ? "ACTIVE\n" :
+              state.smap_supported ? "DEFERRED (USER PAGES)\n" :
+              "NOT SUPPORTED\n");
 
-    debug_str("CPU: SECURITY ACTIVATION OK
-");
+    debug_str("CPU: SECURITY ACTIVATION OK\n");
 }
