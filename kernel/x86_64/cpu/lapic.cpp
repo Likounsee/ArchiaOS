@@ -122,21 +122,16 @@ extern "C" bool lapic_initialize()
     }
 
     /*
-     * Prefer x2APIC when the CPU supports it. In x2APIC mode APIC
-     * registers are accessed through architecturally defined MSRs,
-     * avoiding a dependency on a separately mapped MMIO window.
+     * Honor x2APIC when firmware has already selected it. We deliberately
+     * do not switch modes here: some platforms lock APIC mode transitions,
+     * and the OS can safely continue in xAPIC mode when firmware left it
+     * there. If firmware selected x2APIC, all APIC accesses below use the
+     * architectural MSR interface.
      */
-    if ((cpuidEcx & CPUID_X2APIC) != 0)
+    if ((cpuidEcx & CPUID_X2APIC) != 0 &&
+        (apic_base & APIC_X2APIC) != 0)
     {
-        if ((apic_base & APIC_X2APIC) == 0)
-        {
-            apic_base |= APIC_X2APIC | APIC_ENABLE;
-            wrmsr(IA32_APIC_BASE_MSR, apic_base);
-            apic_base = rdmsr(IA32_APIC_BASE_MSR);
-        }
-
-        if ((apic_base & APIC_X2APIC) != 0)
-            lapic_x2apic = true;
+        lapic_x2apic = true;
     }
 
     if (!lapic_x2apic)
