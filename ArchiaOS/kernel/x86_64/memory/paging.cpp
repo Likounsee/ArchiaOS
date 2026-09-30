@@ -1,4 +1,5 @@
 #include "paging.hpp"
+#include "../cpu/features.hpp"
 
 static constexpr u64 NOVOS_PAGE_TABLE_COUNT = 64;
 static constexpr u64 NOVOS_IDENTITY_MAP_SIZE = 0x10000000000ULL; /* 64 GiB */
@@ -34,7 +35,13 @@ static inline u64 page_entry_flags(PagingFlags flags)
         value |= NOVOS_PAGE_USER;
 
     if (!flags.executable)
+    {
+        const CpuInfo* cpu = cpu_get_info();
+        if (cpu == nullptr || !cpu->features.nx)
+            return 0;
+
         value |= NOVOS_PAGE_NO_EXECUTE;
+    }
 
     return value;
 }
@@ -232,7 +239,11 @@ extern "C" bool paging_map_4k(
     if (entry == nullptr)
         return false;
 
-    *entry = physicalAddress | page_entry_flags(flags);
+    const u64 flagsValue = page_entry_flags(flags);
+    if (flagsValue == 0)
+        return false;
+
+    *entry = physicalAddress | flagsValue;
 
     asm volatile("invlpg (%0)" : : "r"(virtualAddress) : "memory");
     return true;
