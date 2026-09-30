@@ -103,9 +103,15 @@ function(archiaos_kernel_compile output source)
             -I"${ARCHIAOS_COMMON}" -I"${ARCHIAOS_CPU_DIR}" -I"${ARCHIAOS_MEMORY_DIR}"
             -c "${source}" -o "${output}"
         DEPENDS ${source} ${ARCHIAOS_COMMON}/boot_info.h
-            ${ARCHIAOS_CPU_DIR}/cpuid.hpp ${ARCHIAOS_CPU_DIR}/features.hpp
+            ${ARCHIAOS_CPU_DIR}/cpuid.hpp
+            ${ARCHIAOS_CPU_DIR}/features.hpp
             ${ARCHIAOS_CPU_DIR}/security.hpp
             ${ARCHIAOS_CPU_DIR}/idt.hpp
+            ${ARCHIAOS_CPU_DIR}/gdt.hpp
+            ${ARCHIAOS_CPU_DIR}/tss.hpp
+            ${ARCHIAOS_CPU_DIR}/irq.hpp
+            ${ARCHIAOS_CPU_DIR}/lapic.hpp
+            ${ARCHIAOS_CPU_DIR}/acpi.hpp
             ${ARCHIAOS_MEMORY_DIR}/paging.hpp
             ${ARCHIAOS_MEMORY_DIR}/pmm.hpp
     )
