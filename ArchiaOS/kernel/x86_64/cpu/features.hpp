@@ -37,6 +37,7 @@ struct CpuFeatures
     bool invariant_tsc;
     bool fsgsbase;
     bool pcid;
+    bool tsc_deadline;
     bool x2apic;
     bool smep;
     bool smap;
