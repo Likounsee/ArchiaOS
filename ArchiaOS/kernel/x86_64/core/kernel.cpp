@@ -106,6 +106,9 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     if (!bootInfo->memory_map_address ||
         !bootInfo->memory_map_size ||
         bootInfo->memory_descriptor_size < 40 ||
+        bootInfo->memory_descriptor_size > 4096 ||
+        bootInfo->memory_map_size <
+            bootInfo->memory_descriptor_size ||
         bootInfo->memory_map_size %
             bootInfo->memory_descriptor_size != 0)
     {
