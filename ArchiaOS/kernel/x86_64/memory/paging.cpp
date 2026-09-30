@@ -23,7 +23,6 @@ static inline u64 table_entry(u64 address)
     return address | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE;
 }
 
-
 static inline u64 page_entry_flags(PagingFlags flags)
 {
     u64 value = NOVOS_PAGE_PRESENT;
@@ -64,9 +63,9 @@ static bool split_2m_pde(u64* pde)
     zero_page(ptPhysical);
 
     /*
-     * Preserve the existing bootstrap identity mapping while replacing
-     * one 2 MiB leaf with a 4 KiB page table. The default entries remain
-     * supervisor RW executable; individual pages can then be hardened.
+     * Preserve the existing bootstrap mapping while replacing one 2 MiB
+     * leaf with a 4 KiB page table. The default entries remain supervisor,
+     * writable and executable; individual pages can then be hardened.
      */
     for (u64 i = 0; i < 512; ++i)
     {
@@ -132,14 +131,16 @@ static bool setup_identity_2m()
     zero_page(pdptPhysical);
 
     /*
-     * Keep the early address space deliberately simple: virtual == physical
-     * for the entire physical range managed by the PMM (64 GiB).
+     * Early address space:
+     *   0x0000000000000000..0x0000000FFFFFFFFF = physical identity map
+     *   0xFFFF800000000000..0xFFFF800FFFFFFFFF = HHDM/direct map
      *
-     * This covers the kernel image, its stack, BootInfo, ACPI tables,
-     * framebuffer, LAPIC/IOAPIC MMIO and future early allocations without
-     * depending on any firmware page tables after CR3 is replaced.
+     * Both virtual ranges intentionally reference the same page tables.
+     * The HHDM therefore adds no second copy of the 64 GiB mapping and gives
+     * the kernel a stable canonical virtual address for every managed frame.
      */
     pml4[0] = table_entry(pdptPhysical);
+    pml4[256] = table_entry(pdptPhysical);
 
     for (u64 pdptIndex = 0; pdptIndex < NOVOS_PAGE_TABLE_COUNT; ++pdptIndex)
     {
@@ -277,6 +278,27 @@ extern "C" u64 paging_get_4k_entry(u64 virtualAddress)
 {
     u64* entry = find_4k_entry(virtualAddress);
     return entry ? *entry : 0;
+}
+
+extern "C" u64 paging_physical_to_virtual(u64 physicalAddress)
+{
+    if (physicalAddress >= NOVOS_PMM_MAX_PHYSICAL_ADDRESS)
+        return 0;
+
+    return NOVOS_HHDM_BASE + physicalAddress;
+}
+
+extern "C" u64 paging_virtual_to_physical(u64 virtualAddress)
+{
+    if (virtualAddress < NOVOS_HHDM_BASE ||
+        virtualAddress >=
+            NOVOS_HHDM_BASE + NOVOS_PMM_MAX_PHYSICAL_ADDRESS)
+    {
+        return 0;
+    }
+
+    const u64 translated = paging_translate(virtualAddress);
+    return translated;
 }
 
 extern "C" bool paging_activate()
