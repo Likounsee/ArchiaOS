@@ -56,6 +56,42 @@ extern "C" void paging_run_tests()
 
     test_str("PAGING IDENTITY MAP PASS (64 GiB)\n");
 
+    /*
+     * The high-half direct map must resolve the same physical frames as
+     * the identity map. This is the address-space primitive used later by
+     * the PMM/page-table code to access arbitrary physical memory without
+     * consuming low virtual addresses.
+     */
+    const u64 hhdmSamples[] = {
+        0x0000000000000000ULL,
+        0x0000000000200000ULL,
+        0x0000000040000000ULL,
+        0x0000000100000000ULL,
+        NOVOS_PMM_MAX_PHYSICAL_ADDRESS - NOVOS_PAGE_SIZE
+    };
+
+    for (u64 physical : hhdmSamples)
+    {
+        const u64 virtualAddress =
+            paging_physical_to_virtual(physical);
+
+        if (virtualAddress == 0 ||
+            paging_translate(virtualAddress) != physical ||
+            paging_virtual_to_physical(virtualAddress) != physical)
+        {
+            fail("PAGING TEST FAIL: HHDM TRANSLATION\n");
+        }
+    }
+
+    if (paging_physical_to_virtual(NOVOS_PMM_MAX_PHYSICAL_ADDRESS) != 0 ||
+        paging_virtual_to_physical(NOVOS_HHDM_BASE +
+                                   NOVOS_PMM_MAX_PHYSICAL_ADDRESS) != 0)
+    {
+        fail("PAGING TEST FAIL: HHDM RANGE\n");
+    }
+
+    test_str("PAGING HHDM 64GiB PASS\n");
+
     if (!paging_activate())
         fail("PAGING TEST FAIL: ACTIVATION\n");
 
