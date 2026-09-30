@@ -7,6 +7,7 @@ static constexpr u64 NOVOS_2M_PAGE_SIZE = 0x200000ULL;
 static constexpr u64 NOVOS_PDPT_COVERAGE = 0x40000000ULL; /* 1 GiB */
 
 static u64* pml4 = nullptr;
+static u64 pml4_physical = 0;
 static u64* pdpt = nullptr;
 static u64* pd[NOVOS_PAGE_TABLE_COUNT] = {};
 static bool paging_active = false;
@@ -138,6 +139,7 @@ static bool setup_identity_2m()
     if (pml4Physical == 0 || pdptPhysical == 0)
         return false;
 
+    pml4_physical = pml4Physical;
     pml4 = reinterpret_cast<u64*>(pml4Physical);
     pdpt = reinterpret_cast<u64*>(pdptPhysical);
 
@@ -191,7 +193,7 @@ extern "C" bool paging_initialize()
 
 extern "C" u64 paging_pml4_physical()
 {
-    return reinterpret_cast<u64>(pml4);
+    return pml4_physical;
 }
 
 extern "C" u64 paging_translate(u64 virtualAddress)
@@ -324,8 +326,7 @@ extern "C" bool paging_activate()
     if (pml4 == nullptr)
         return false;
 
-    const u64 pml4Physical =
-        reinterpret_cast<u64>(pml4);
+    const u64 pml4Physical = pml4_physical;
 
     asm volatile(
         "mov %0, %%cr3"
@@ -335,6 +336,7 @@ extern "C" bool paging_activate()
 
     /* From this point on, page-table pages are accessed through the HHDM. */
     paging_active = true;
+    pml4 = table_pointer(pml4_physical);
 
     asm volatile("mov %%cr3, %%rax" ::: "rax", "memory");
 
