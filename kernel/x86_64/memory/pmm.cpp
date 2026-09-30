@@ -212,6 +212,50 @@ extern "C" u64 pmm_alloc_page()
     return 0;
 }
 
+extern "C" u64 pmm_alloc_contiguous(u64 pageCount)
+{
+    if (pageCount == 0 ||
+        pageCount > NOVOS_PMM_MAX_FRAMES - 1ULL)
+    {
+        return 0;
+    }
+
+    u64 runStart = 1;
+    u64 runLength = 0;
+
+    for (u64 frame = 1;
+         frame < NOVOS_PMM_MAX_FRAMES;
+         ++frame)
+    {
+        if (!bitmap_test(frame))
+        {
+            if (runLength == 0)
+                runStart = frame;
+
+            ++runLength;
+
+            if (runLength == pageCount)
+            {
+                for (u64 i = 0; i < pageCount; ++i)
+                    bitmap_set(runStart + i);
+
+                if (pmm_free_pages >= pageCount)
+                    pmm_free_pages -= pageCount;
+                else
+                    pmm_free_pages = 0;
+
+                return runStart * NOVOS_PAGE_SIZE;
+            }
+        }
+        else
+        {
+            runLength = 0;
+        }
+    }
+
+    return 0;
+}
+
 extern "C" void pmm_free_page(u64 physicalAddress)
 {
     if (physicalAddress == 0 ||
