@@ -55,8 +55,21 @@ jobs:
           timeout 15s qemu-system-x86_64             -machine q35             -m 256M             -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd             -drive if=pflash,format=raw,file=build/OVMF_VARS_4M.fd             -drive format=raw,file=fat:rw:build/esp             -display none             -serial none             -monitor none             -debugcon stdio             -global isa-debugcon.iobase=0xe9             -no-reboot             -no-shutdown             > qemu.log 2>&1
           status=$?
           cat qemu.log
-          grep -q "ARCHIAOS KERNEL STARTED" qemu.log
-          grep -q "BootInfo: OK" qemu.log
-          grep -q "Memory Map: OK" qemu.log
-          grep -q "Framebuffer: OK" qemu.log
-          exit $?
+          for marker in \
+            "ARCHIAOS KERNEL STARTED" \
+            "BootInfo: OK" \
+            "Memory Map: OK" \
+            "Framebuffer: OK" \
+            "CPU: GDT OK" \
+            "CPU: TSS OK" \
+            "CPU: IDT 256 VECTORS OK" \
+            "PMM TEST PASS" \
+            "CPU: INVALID OPCODE HANDLER OK" \
+            "IRQ: LAPIC OK" \
+            "IRQ: TIMER TEST OK" \
+            "ACPI: RSDP/MADT OK"; do
+            grep -q "$marker" qemu.log || {
+              echo "Missing expected marker: $marker"
+              exit 1
+            }
+          done
