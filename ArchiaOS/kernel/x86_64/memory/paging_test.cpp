@@ -120,7 +120,7 @@ extern "C" void paging_run_tests()
         "movq (%%rax), %%rax"
         :
         : "a"(testPage)
-        : "rax", "memory");
+        : "memory");
 
 page_fault_recovered:
 
