@@ -63,7 +63,12 @@ jobs:
             "CPU: GDT OK" \
             "CPU: TSS OK" \
             "CPU: IDT 256 VECTORS OK" \
+            "PMM CONTIGUOUS PASS" \
             "PMM TEST PASS" \
+            "PAGING TABLES CREATED" \
+            "PAGING IDENTITY MAP PASS (64 GiB)" \
+            "PAGING CR3 ACTIVATION PASS" \
+            "PAGING TEST PASS" \
             "CPU: INVALID OPCODE HANDLER OK" \
             "IRQ: LAPIC OK" \
             "IRQ: TIMER TEST OK" \
