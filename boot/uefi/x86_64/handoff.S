@@ -1,6 +1,5 @@
 .text
 .globl archiaos_x86_64_handoff
-.type archiaos_x86_64_handoff,@function
 
 archiaos_x86_64_handoff:
     /*
