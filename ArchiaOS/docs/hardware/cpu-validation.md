@@ -19,6 +19,7 @@ QEMU supports named x86 CPU models and per-feature configuration. This lets CI e
 The planned validation matrix includes, when supported by the installed QEMU version:
 
 - qemu64 — generic x86-64 baseline;
+- core2duo — pre-SSE4.1-era compatibility test for the future Light path;
 - Penryn — older Intel model with SSE4.1-era capabilities;
 - Nehalem — older SSE4.2-era Intel model;
 - Haswell — AVX2-era Intel model;
