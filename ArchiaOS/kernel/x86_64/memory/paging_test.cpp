@@ -102,6 +102,28 @@ extern "C" void paging_run_tests()
         0x0000000012345678ULL)
         fail("PAGING TEST FAIL: POST-ACTIVATE TRANSLATION\n");
 
+    /*
+     * Validate a real load/store through the HHDM after CR3 activation.
+     * Translation-only tests cannot prove that the CPU can actually access
+     * the direct-map virtual address.
+     */
+    const u64 hhdmTestPage = pmm_alloc_page();
+    if (hhdmTestPage == 0)
+        fail("PAGING TEST FAIL: HHDM ALLOCATION\n");
+
+    const u64 hhdmTestVirtual = paging_physical_to_virtual(hhdmTestPage);
+    volatile u64* hhdmMemory =
+        reinterpret_cast<volatile u64*>(hhdmTestVirtual);
+    constexpr u64 hhdmPattern = 0xA55A5AA55AA55AA5ULL;
+
+    hhdmMemory[0] = hhdmPattern;
+
+    if (hhdmMemory[0] != hhdmPattern)
+        fail("PAGING TEST FAIL: HHDM MEMORY ACCESS\n");
+
+    pmm_free_page(hhdmTestPage);
+    test_str("PAGING HHDM MEMORY ACCESS PASS\n");
+
     if (!paging_map_identity(0x0000000000200000ULL))
         fail("PAGING TEST FAIL: MAP API\n");
 
