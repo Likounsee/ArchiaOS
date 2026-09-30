@@ -89,6 +89,8 @@ jobs:
               "PAGING TABLES CREATED" \
               "PAGING IDENTITY MAP PASS (64 GiB)" \
               "PAGING CR3 ACTIVATION PASS" \
+              "PAGING 4K RO/NX PASS" \
+              "PAGING PAGE FAULT RECOVERY PASS" \
               "PAGING TEST PASS" \
               "CPU: INVALID OPCODE HANDLER OK" \
               "IRQ: LAPIC OK" \
