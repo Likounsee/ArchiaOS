@@ -97,6 +97,8 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
         }
     }
 
+    debug_str("PMM CONTIGUOUS PASS\n");
+
     for (u64 i = 0; i < 4; ++i)
         pmm_free_page(contiguous + i * 0x1000ULL);
 
