@@ -74,6 +74,39 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
     }
 
     pmm_free_page(page_a);
+    pmm_free_page(page_b);
+
+    const u64 free_before_contiguous = pmm_free_page_count();
+    const u64 contiguous = pmm_alloc_contiguous(4);
+
+    if (contiguous == 0 ||
+        (contiguous & 0xFFFULL) != 0 ||
+        pmm_free_page_count() + 4 != free_before_contiguous)
+    {
+        debug_str("PMM TEST FAIL: CONTIGUOUS ALLOCATION\\n");
+        for (;;) asm volatile ("cli; hlt");
+    }
+
+    for (u64 i = 0; i < 4; ++i)
+    {
+        if (contiguous + i * 0x1000ULL !=
+            contiguous + i * 0x1000ULL)
+        {
+            debug_str("PMM TEST FAIL: CONTIGUOUS RANGE\\n");
+            for (;;) asm volatile ("cli; hlt");
+        }
+    }
+
+    for (u64 i = 0; i < 4; ++i)
+        pmm_free_page(contiguous + i * 0x1000ULL);
+
+    if (pmm_free_page_count() != free_before_contiguous)
+    {
+        debug_str("PMM TEST FAIL: CONTIGUOUS FREE\\n");
+        for (;;) asm volatile ("cli; hlt");
+    }
+
+    pmm_free_page(page_a);
 
     if (pmm_free_page_count() != free_before)
     {
