@@ -246,6 +246,8 @@ EFI_STATUS load_kernel_elf(
         status = allocatePages(
             EFI_ALLOCATE_ADDRESS,
             memoryType,
+            static_cast<UINTN>(pages),
+            &address);
 
         if (status != EFI_SUCCESS || address != ph[i].p_vaddr)
         {
