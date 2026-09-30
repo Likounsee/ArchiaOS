@@ -51,6 +51,42 @@ extern "C" void exception_dispatch(ExceptionFrame* frame)
         return;
     }
 
+    if (frame->vector == 14)
+    {
+        unsigned long long cr2 = 0;
+        asm volatile("mov %%cr2, %0" : "=r"(cr2));
+
+        const unsigned long long error = frame->error_code;
+
+        debug_str("[PF] Linear address: ");
+        debug_hex64(cr2);
+        debug_str("  error: ");
+        debug_hex64(error);
+        debug_str("\n");
+
+        debug_str("[PF] reason: ");
+        if ((error & (1ULL << 0)) == 0)
+            debug_str("NOT-PRESENT");
+        else
+            debug_str("PROTECTION");
+        debug_str(" access: ");
+
+        if (error & (1ULL << 4))
+            debug_str("INSTRUCTION-FETCH");
+        else if (error & (1ULL << 1))
+            debug_str("WRITE");
+        else
+            debug_str("READ");
+
+        debug_str(" privilege: ");
+        debug_str((error & (1ULL << 2)) ? "USER" : "SUPERVISOR");
+        debug_str("\n");
+
+        debug_str("[PF] page-fault handler reached\n");
+        for (;;)
+            asm volatile ("cli; hlt");
+    }
+
     if (frame->vector == 8)
     {
         unsigned long long frame_address =
