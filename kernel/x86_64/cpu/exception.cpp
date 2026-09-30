@@ -35,7 +35,8 @@ extern "C" void exception_dispatch(ExceptionFrame* frame)
     debug_hex64(frame->rflags);
     debug_str("\n");
 
-    if (frame->vector >= 0x20)
+    if ((frame->vector >= 0x20 && frame->vector <= 0x2F) ||
+        frame->vector == 0xFF)
     {
         irq_dispatch(frame);
         return;
