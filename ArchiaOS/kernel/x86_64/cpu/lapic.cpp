@@ -123,5 +123,5 @@ extern "C" unsigned long long lapic_get_ticks()
 
 extern "C" void lapic_timer_interrupt()
 {
-    ++lapic_ticks;
+    lapic_ticks = lapic_ticks + 1;
 }
