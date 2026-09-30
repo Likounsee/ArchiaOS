@@ -2,7 +2,11 @@
 
 static inline void test_char(char c)
 {
-    asm volatile ("outb %0, %1" : : "a"(c), "Nd"(static_cast<unsigned short>(0xE9)));
+    asm volatile (
+        "outb %0, %1"
+        :
+        : "a"(c),
+          "Nd"(static_cast<unsigned short>(0xE9)));
 }
 
 static void test_str(const char* s)
@@ -11,12 +15,12 @@ static void test_str(const char* s)
         test_char(s[i]);
 }
 
-static void test_hex(u64 v)
+static void fail(const char* message)
 {
-    const char* d = "0123456789ABCDEF";
-    test_char('0'); test_char('x');
-    for (int i = 0; i < 16; ++i)
-        test_char(d[(v >> ((15-i)*4)) & 0xF]);
+    test_str(message);
+
+    for (;;)
+        asm volatile("cli; hlt");
 }
 
 extern "C" void paging_run_tests()
@@ -24,35 +28,46 @@ extern "C" void paging_run_tests()
     test_str("PAGING TEST START\n");
 
     if (!paging_initialize())
-    {
-        test_str("PAGING TEST FAIL: INIT\n");
-        for (;;) asm volatile("cli; hlt");
-    }
+        fail("PAGING TEST FAIL: INIT\n");
 
     test_str("PAGING TABLES CREATED\n");
 
     if (paging_pml4_physical() == 0)
+        fail("PAGING TEST FAIL: PML4\n");
+
+    const u64 testAddresses[] = {
+        0x00000000ULL,
+        0x00100000ULL,
+        0x3FFFFFFFULL,
+        0x40000000ULL,
+        0x100000000ULL,
+        0x7FFFFFFFFULL,
+        0xFFFFFFFFFULL
+    };
+
+    for (u64 address : testAddresses)
     {
-        test_str("PAGING TEST FAIL: PML4\n");
-        for (;;) asm volatile("cli; hlt");
+        const u64 translated = paging_translate(address);
+
+        if (translated != address)
+            fail("PAGING TEST FAIL: TRANSLATION\n");
     }
 
-    if (paging_translate(0x00100000ULL) != 0x00100000ULL)
-    {
-        test_str("PAGING TEST FAIL: TRANSLATION\n");
-        test_hex(paging_translate(0x00100000ULL));
-        test_str("\n");
-        for (;;) asm volatile("cli; hlt");
-    }
+    test_str("PAGING IDENTITY MAP PASS (64 GiB)\n");
 
-    test_str("PAGING IDENTITY MAP PASS (LOW 4 GiB)\n");
+    if (!paging_activate())
+        fail("PAGING TEST FAIL: ACTIVATION\n");
 
     if (!paging_is_enabled())
-    {
-        test_str("PAGING TEST FAIL: PAGING DISABLED\n");
-        for (;;) asm volatile("cli; hlt");
-    }
+        fail("PAGING TEST FAIL: PAGING DISABLED\n");
 
-    test_str("UEFI PAGING ALREADY ENABLED\n");
+    if (paging_translate(0x0000000012345678ULL) !=
+        0x0000000012345678ULL)
+        fail("PAGING TEST FAIL: POST-ACTIVATE TRANSLATION\n");
+
+    if (!paging_map_identity(0x0000000000200000ULL))
+        fail("PAGING TEST FAIL: MAP API\n");
+
+    test_str("PAGING CR3 ACTIVATION PASS\n");
     test_str("PAGING TEST PASS\n");
 }
