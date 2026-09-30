@@ -9,6 +9,20 @@ static constexpr u64 NOVOS_PDPT_COVERAGE = 0x40000000ULL; /* 1 GiB */
 static u64* pml4 = nullptr;
 static u64* pdpt = nullptr;
 static u64* pd[NOVOS_PAGE_TABLE_COUNT] = {};
+static bool paging_active = false;
+
+static inline u64* table_pointer(u64 physicalAddress)
+{
+    /*
+     * Before CR3 activation only the bootstrap identity map is guaranteed.
+     * Once active, page-table pages must be reached through the HHDM so that
+     * page-table management no longer depends on the identity map.
+     */
+    if (paging_active)
+        return reinterpret_cast<u64*>(NOVOS_HHDM_BASE + physicalAddress);
+
+    return reinterpret_cast<u64*>(physicalAddress);
+}
 
 static inline void zero_page(u64 address)
 {
@@ -90,7 +104,7 @@ static u64* find_4k_entry(u64 virtualAddress)
         return nullptr;
 
     auto* table3 =
-        reinterpret_cast<u64*>(pml4e & ~0xFFFULL);
+        table_pointer(pml4e & ~0xFFFULL);
 
     const u64 pdpte =
         table3[(virtualAddress >> 30) & 0x1FF];
@@ -99,7 +113,7 @@ static u64* find_4k_entry(u64 virtualAddress)
         return nullptr;
 
     auto* table2 =
-        reinterpret_cast<u64*>(pdpte & ~0xFFFULL);
+        table_pointer(pdpte & ~0xFFFULL);
 
     u64* pde =
         &table2[(virtualAddress >> 21) & 0x1FF];
@@ -108,7 +122,7 @@ static u64* find_4k_entry(u64 virtualAddress)
         return nullptr;
 
     auto* pt =
-        reinterpret_cast<u64*>((*pde) & ~0xFFFULL);
+        table_pointer((*pde) & ~0xFFFULL);
 
     return &pt[(virtualAddress >> 12) & 0x1FF];
 }
@@ -214,7 +228,7 @@ extern "C" u64 paging_translate(u64 virtualAddress)
                (virtualAddress & 0x1FFFFFULL);
 
     auto* table1 =
-        reinterpret_cast<u64*>(pde & ~0xFFFULL);
+        table_pointer(pde & ~0xFFFULL);
 
     const u64 pte =
         table1[(virtualAddress >> 12) & 0x1FF];
@@ -285,6 +299,10 @@ extern "C" u64 paging_physical_to_virtual(u64 physicalAddress)
     if (physicalAddress >= NOVOS_PMM_MAX_PHYSICAL_ADDRESS)
         return 0;
 
+    const u64 hhdmEnd = NOVOS_HHDM_BASE + NOVOS_PMM_MAX_PHYSICAL_ADDRESS;
+    if (hhdmEnd < NOVOS_HHDM_BASE)
+        return 0;
+
     return NOVOS_HHDM_BASE + physicalAddress;
 }
 
@@ -314,6 +332,9 @@ extern "C" bool paging_activate()
         :
         : "r"(pml4Physical)
         : "memory");
+
+    /* From this point on, page-table pages are accessed through the HHDM. */
+    paging_active = true;
 
     asm volatile("mov %%cr3, %%rax" ::: "rax", "memory");
 
