@@ -113,7 +113,7 @@ extern "C" void cpu_print_report()
         debug_str("P-CORE/CORE");
     else
         debug_str("UNKNOWN/NOT REPORTED");
-    debug_char('\\n');
+    debug_char('\n');
 
     if (c->features.nx && c->features.smep && c->features.smap)
         debug_str("CPU: hardening profile: NX+SMEP+SMAP\n");
