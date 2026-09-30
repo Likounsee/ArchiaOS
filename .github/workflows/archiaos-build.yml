@@ -41,6 +41,9 @@ jobs:
           llvm-readobj --file-headers build/ARCHIAOS_kernel.elf
           llvm-readobj --file-headers build/BOOTX64.EFI
 
+      - name: Prepare writable OVMF variables
+        run: cp /usr/share/OVMF/OVMF_VARS_4M.fd build/OVMF_VARS_4M.fd
+
       - name: QEMU UEFI smoke test
         run: |
           set +e
