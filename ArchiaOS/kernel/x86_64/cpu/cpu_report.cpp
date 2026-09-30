@@ -104,6 +104,16 @@ extern "C" void cpu_print_report()
     feature_line("1GiB PAGES", c->features.one_gib_pages);
     feature_line("INVARIANT TSC", c->features.invariant_tsc);
     feature_line("HYPERVISOR", c->features.hypervisor_present);
+    feature_line("HYBRID CPU", c->features.hybrid);
+
+    debug_str("CPU: core type: ");
+    if (c->features.core_type == CpuCoreType::ECoreOrAtom)
+        debug_str("E-CORE/ATOM");
+    else if (c->features.core_type == CpuCoreType::PCoreOrCore)
+        debug_str("P-CORE/CORE");
+    else
+        debug_str("UNKNOWN/NOT REPORTED");
+    debug_char('\\n');
 
     if (c->features.nx && c->features.smep && c->features.smap)
         debug_str("CPU: hardening profile: NX+SMEP+SMAP\n");
