@@ -6,6 +6,7 @@
 #include "../cpu/acpi.hpp"
 #include "../memory/pmm.hpp"
 #include "../memory/paging.hpp"
+#include "../cpu/features.hpp"
 
 using UINT32 = unsigned int;
 using UINT64 = unsigned long long;
@@ -141,6 +142,10 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     debug_str("BootInfo: OK\n");
     debug_str("Memory Map: OK\n");
     debug_str("Framebuffer: OK\n");
+
+    debug_str("CPU: detecting CPUID/features/topology\n");
+    cpu_initialize();
+    cpu_print_report();
 
     debug_str("CPU: initializing GDT\n");
     gdt_initialize();
