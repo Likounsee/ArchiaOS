@@ -75,6 +75,22 @@ static void decode_family_model(const CpuidResult& r)
         cpu_info.model |= extended_model << 4;
 }
 
+static void enumerate_security_capabilities()
+{
+    CpuidResult leaf1 = cpu_cpuid(1, 0);
+    CpuidResult leaf7 = cpu_cpuid(7, 0);
+
+    cpu_info.features.x2apic = bit(leaf1.ecx, 21);
+    cpu_info.features.pcid = bit(leaf1.ecx, 17);
+    cpu_info.features.tsc_deadline = bit(leaf1.ecx, 24);
+
+    cpu_info.features.invpcid = bit(leaf7.ebx, 10);
+    cpu_info.features.smap = bit(leaf7.ebx, 20);
+    cpu_info.features.sgx = bit(leaf7.ebx, 2);
+    cpu_info.features.umip = bit(leaf7.ecx, 2);
+    cpu_info.features.fsgsbase = bit(leaf7.ebx, 0);
+}
+
 static void enumerate_features()
 {
     CpuidResult r = cpu_cpuid(1, 0);
