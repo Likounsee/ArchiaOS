@@ -4,15 +4,14 @@
 #include <stddef.h>
 
 /*
- * Stable UEFI -> NovOS handoff contract.
+ * Stable UEFI -> ArchiaOS handoff contract.
  *
  * ABI rules:
  *   - fixed-width integer fields only;
- *   - no pointers or compiler-dependent types in the structure;
+ *   - no compiler-dependent pointer types in the structure;
  *   - fields are appended for future versions;
- *   - kernel validates magic, version and size before reading optional data.
- *
- * The addresses are physical addresses valid after ExitBootServices().
+ *   - all addresses are physical addresses valid after ExitBootServices();
+ *   - the kernel validates magic, version and size before reading data.
  */
 struct BootInfo
 {
@@ -42,14 +41,21 @@ struct BootInfo
 
     uint64_t uefi_system_table;
     uint64_t bootloader_version;
+
+    uint64_t kernel_image_base;
+    uint64_t kernel_image_size;
+    uint64_t boot_info_address;
+    uint64_t boot_info_size;
 };
 
 static constexpr uint32_t NOVOS_BOOT_INFO_MAGIC = 0x4F564F4E;
-static constexpr uint32_t NOVOS_BOOT_INFO_VERSION = 1;
-static constexpr uint64_t NOVOS_BOOTLOADER_VERSION = 0x00010000ULL;
+static constexpr uint32_t NOVOS_BOOT_INFO_VERSION = 2;
+static constexpr uint64_t NOVOS_BOOTLOADER_VERSION = 0x00020000ULL;
 
-static_assert(sizeof(BootInfo) == 128, "BootInfo ABI size changed");
+static_assert(sizeof(BootInfo) == 160, "BootInfo ABI size changed");
 static_assert(offsetof(BootInfo, memory_map_address) == 16, "BootInfo ABI offset changed");
 static_assert(offsetof(BootInfo, framebuffer_base) == 48, "BootInfo ABI offset changed");
 static_assert(offsetof(BootInfo, acpi_rsdp_address) == 88, "BootInfo ABI offset changed");
 static_assert(offsetof(BootInfo, uefi_system_table) == 112, "BootInfo ABI offset changed");
+static_assert(offsetof(BootInfo, kernel_image_base) == 128, "BootInfo ABI offset changed");
+static_assert(offsetof(BootInfo, boot_info_address) == 144, "BootInfo ABI offset changed");

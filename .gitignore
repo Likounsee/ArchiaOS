@@ -1,0 +1,24 @@
+# CMake / build outputs
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+*.dir/
+*.obj
+*.pdb
+*.ilk
+*.log
+
+# Visual Studio / IDE
+.vs/
+.vscode/
+.idea/
+
+# Local firmware/runtime state
+OVMF_VARS*.fd
+
+# OS/editor noise
+.DS_Store
+Thumbs.db

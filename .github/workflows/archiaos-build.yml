@@ -1,0 +1,47 @@
+name: ArchiaOS build
+
+on:
+  push:
+    branches: [ "ArchiaOS" ]
+  pull_request:
+    branches: [ "ArchiaOS" ]
+
+jobs:
+  build-and-smoke-test:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install toolchain and firmware
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld cmake ninja-build qemu-system-x86 ovmf
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Verify ELF and EFI outputs
+        run: |
+          test -s build/ARCHIAOS_kernel.elf
+          test -s build/BOOTX64.EFI
+          test -s build/esp/EFI/BOOT/BOOTX64.EFI
+          test -s build/esp/EFI/ARCHIAOS/ARCHIAOS_kernel.elf
+          llvm-readobj --file-headers build/ARCHIAOS_kernel.elf
+          llvm-readobj --file-headers build/BOOTX64.EFI
+
+      - name: QEMU UEFI smoke test
+        run: |
+          set +e
+          timeout 15s qemu-system-x86_64             -machine q35             -m 256M             -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd             -drive if=pflash,format=raw,file=/usr/share/OVMF/OVMF_VARS_4M.fd             -drive format=raw,file=fat:rw:build/esp             -display none             -serial none             -monitor none             -debugcon stdio             -global isa-debugcon.iobase=0xe9             -no-reboot             -no-shutdown             > qemu.log 2>&1
+          status=$?
+          cat qemu.log
+          grep -q "ARCHIAOS KERNEL STARTED" qemu.log
+          grep -q "BootInfo: OK" qemu.log
+          grep -q "Memory Map: OK" qemu.log
+          grep -q "Framebuffer: OK" qemu.log
+          exit $?

@@ -34,10 +34,7 @@ static bool setup_identity_2m()
 
     /*
      * Identity-map the first 4 GiB using 2 MiB pages.
-     *
-     * This covers the low physical-memory region used by firmware,
-     * ACPI tables and MMIO during early kernel initialization.
-     * Each PDPT entry covers 1 GiB and points to one page directory.
+     * This is the bootstrap mapping used by the early kernel.
      */
     for (u64 pdptIndex = 0; pdptIndex < 4; ++pdptIndex)
     {
@@ -54,13 +51,14 @@ static bool setup_identity_2m()
         for (u64 i = 0; i < 512; ++i)
         {
             u64 physicalAddress =
-                (pdptIndex * 0x40000000ULL) + (i * 0x200000ULL);
+                pdptIndex * 0x40000000ULL +
+                i * 0x200000ULL;
 
             pd[pdptIndex][i] =
                 physicalAddress |
                 NOVOS_PAGE_PRESENT |
                 NOVOS_PAGE_WRITE |
-                (1ULL << 7);
+                NOVOS_PAGE_HUGE;
         }
     }
 
@@ -82,34 +80,50 @@ extern "C" u64 paging_translate(u64 virtualAddress)
     if (pml4 == nullptr)
         return 0;
 
-    u64 pml4e = pml4[(virtualAddress >> 39) & 0x1FF];
+    u64 pml4e =
+        pml4[(virtualAddress >> 39) & 0x1FF];
+
     if ((pml4e & NOVOS_PAGE_PRESENT) == 0)
         return 0;
 
-    auto* table3 = reinterpret_cast<u64*>(pml4e & ~0xFFFULL);
-    u64 pdpte = table3[(virtualAddress >> 30) & 0x1FF];
+    auto* table3 =
+        reinterpret_cast<u64*>(pml4e & ~0xFFFULL);
+
+    u64 pdpte =
+        table3[(virtualAddress >> 30) & 0x1FF];
+
     if ((pdpte & NOVOS_PAGE_PRESENT) == 0)
         return 0;
 
-    if (pdpte & (1ULL << 7))
-        return (pdpte & ~0x3FFFFFFFULL) |
-               (virtualAddress & 0x3FFFFFFFULL);
+    auto* table2 =
+        reinterpret_cast<u64*>(pdpte & ~0xFFFULL);
 
-    auto* table2 = reinterpret_cast<u64*>(pdpte & ~0xFFFULL);
-    u64 pde = table2[(virtualAddress >> 21) & 0x1FF];
+    u64 pde =
+        table2[(virtualAddress >> 21) & 0x1FF];
+
     if ((pde & NOVOS_PAGE_PRESENT) == 0)
         return 0;
 
-    if (pde & (1ULL << 7))
+    if (pde & NOVOS_PAGE_HUGE)
         return (pde & ~0x1FFFFFULL) |
                (virtualAddress & 0x1FFFFFULL);
 
     return 0;
 }
 
+extern "C" bool paging_map_identity(u64 physicalAddress)
+{
+    if ((physicalAddress & 0x1FFFFFULL) != 0 ||
+        physicalAddress >= 0x100000000ULL ||
+        pml4 == nullptr)
+        return false;
+
+    return paging_translate(physicalAddress) == physicalAddress;
+}
+
 extern "C" bool paging_is_enabled()
 {
     u64 cr0 = 0;
-    asm volatile ("mov %%cr0, %0" : "=r"(cr0));
+    asm volatile("mov %%cr0, %0" : "=r"(cr0));
     return (cr0 & (1ULL << 31)) != 0;
 }
