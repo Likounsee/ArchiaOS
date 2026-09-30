@@ -168,6 +168,11 @@ extern "C" bool lapic_initialize()
     return true;
 }
 
+extern "C" bool lapic_is_x2apic()
+{
+    return lapic_x2apic;
+}
+
 extern "C" void lapic_timer_start()
 {
     lapic_write(
