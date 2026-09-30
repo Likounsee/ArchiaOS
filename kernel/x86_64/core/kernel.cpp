@@ -5,6 +5,7 @@
 #include "../cpu/irq.hpp"
 #include "../cpu/acpi.hpp"
 #include "../memory/pmm.hpp"
+#include "../memory/paging.hpp"
 
 using UINT32 = unsigned int;
 using UINT64 = unsigned long long;
@@ -156,6 +157,10 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     debug_str("PMM: running tests\n");
     pmm_run_tests(bootInfo);
     debug_str("PMM: TESTS OK\n");
+
+    debug_str("MM: initializing paging\n");
+    paging_run_tests();
+    debug_str("MM: paging ACTIVE\n");
 
     debug_str("CPU: testing invalid opcode handler\n");
     idt_test_invalid_opcode();
