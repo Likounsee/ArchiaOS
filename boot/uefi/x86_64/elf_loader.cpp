@@ -240,11 +240,12 @@ EFI_STATUS load_kernel_elf(
         }
 
         EFI_PHYSICAL_ADDRESS address = ph[i].p_vaddr;
+        const EFI_MEMORY_TYPE memoryType =
+            (ph[i].p_flags & PF_X) ? EfiLoaderCode : EfiLoaderData;
+
         status = allocatePages(
             EFI_ALLOCATE_ADDRESS,
-            EfiLoaderData,
-            static_cast<UINTN>(pages),
-            &address);
+            memoryType,
 
         if (status != EFI_SUCCESS || address != ph[i].p_vaddr)
         {
