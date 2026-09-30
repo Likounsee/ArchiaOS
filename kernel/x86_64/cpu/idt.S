@@ -99,11 +99,11 @@ isr_common:
     pushq %r15
 
     mov %rsp, %rdi
-    mov %rsp, %r11
+    mov %rsp, %r12
     andq $-16, %rsp
     subq $8, %rsp
     call exception_dispatch
-    mov %r11, %rsp
+    mov %r12, %rsp
 
     popq %r15
     popq %r14
