@@ -72,6 +72,7 @@ set(ARCHIAOS_KERNEL_IRQ_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_irq.obj)
 set(ARCHIAOS_KERNEL_LAPIC_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_lapic.obj)
 set(ARCHIAOS_KERNEL_TSS_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_tss.obj)
 set(ARCHIAOS_KERNEL_PAGING_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_paging.obj)
+set(ARCHIAOS_KERNEL_PAGING_TEST_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_paging_test.obj)
 set(ARCHIAOS_KERNEL_PMM_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_pmm.obj)
 set(ARCHIAOS_KERNEL_PMM_TEST_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_pmm_test.obj)
 
@@ -123,6 +124,7 @@ archiaos_kernel_compile(${ARCHIAOS_KERNEL_IRQ_OBJ} ${ARCHIAOS_CPU_DIR}/irq.cpp)
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_LAPIC_OBJ} ${ARCHIAOS_CPU_DIR}/lapic.cpp)
 archiaos_kernel_asm_compile(${ARCHIAOS_KERNEL_TSS_OBJ} ${ARCHIAOS_CPU_DIR}/tss.S)
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_PAGING_OBJ} ${ARCHIAOS_MEMORY_DIR}/paging.cpp)
+archiaos_kernel_compile(${ARCHIAOS_KERNEL_PAGING_TEST_OBJ} ${ARCHIAOS_MEMORY_DIR}/paging_test.cpp)
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_PMM_OBJ} ${ARCHIAOS_MEMORY_DIR}/pmm.cpp)
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_PMM_TEST_OBJ} ${ARCHIAOS_MEMORY_DIR}/pmm_test.cpp)
 
@@ -141,6 +143,7 @@ add_custom_command(
         "${ARCHIAOS_KERNEL_LAPIC_OBJ}"
         "${ARCHIAOS_KERNEL_TSS_OBJ}"
         "${ARCHIAOS_KERNEL_PAGING_OBJ}"
+        "${ARCHIAOS_KERNEL_PAGING_TEST_OBJ}"
         "${ARCHIAOS_KERNEL_PMM_OBJ}"
         "${ARCHIAOS_KERNEL_PMM_TEST_OBJ}"
         -o "${ARCHIAOS_KERNEL_ELF}"
@@ -150,7 +153,8 @@ add_custom_command(
         ${ARCHIAOS_KERNEL_EXCEPTION_OBJ} ${ARCHIAOS_KERNEL_GDT_OBJ}
         ${ARCHIAOS_KERNEL_IDT_OBJ} ${ARCHIAOS_KERNEL_IRQ_OBJ}
         ${ARCHIAOS_KERNEL_LAPIC_OBJ} ${ARCHIAOS_KERNEL_TSS_OBJ}
-        ${ARCHIAOS_KERNEL_PAGING_OBJ} ${ARCHIAOS_KERNEL_PMM_OBJ}
+        ${ARCHIAOS_KERNEL_PAGING_OBJ} ${ARCHIAOS_KERNEL_PAGING_TEST_OBJ}
+        ${ARCHIAOS_KERNEL_PMM_OBJ}
         ${ARCHIAOS_KERNEL_PMM_TEST_OBJ}
         ${ARCHIAOS_KERNEL_DIR}/kernel.ld
 )
