@@ -44,6 +44,7 @@ jobs:
           llvm-readobj --file-headers build/BOOTX64.EFI
           llvm-readobj --program-headers build/ARCHIAOS_kernel.elf
           llvm-objdump -d build/ARCHIAOS_kernel.elf | head -n 120
+          llvm-objdump -d --start-address=0x1004B0 --stop-address=0x1004F0 build/ARCHIAOS_kernel.elf
 
       - name: Prepare writable OVMF variables
         run: cp /usr/share/OVMF/OVMF_VARS_4M.fd build/OVMF_VARS_4M.fd
