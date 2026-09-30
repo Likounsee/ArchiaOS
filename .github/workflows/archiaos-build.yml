@@ -49,32 +49,53 @@ jobs:
       - name: Prepare writable OVMF variables
         run: cp /usr/share/OVMF/OVMF_VARS_4M.fd ArchiaOS/build/OVMF_VARS_4M.fd
 
-      - name: QEMU UEFI smoke test
+      - name: QEMU UEFI CPU compatibility matrix
         run: |
           set +e
-          timeout 15s qemu-system-x86_64             -machine q35             -m 256M             -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd             -drive if=pflash,format=raw,file=ArchiaOS/build/OVMF_VARS_4M.fd             -drive format=raw,file=fat:rw:ArchiaOS/build/esp             -display none             -serial none             -monitor none             -debugcon stdio             -global isa-debugcon.iobase=0xe9             -no-reboot             -no-shutdown             > qemu.log 2>&1
-          status=$?
-          cat qemu.log
-          for marker in \
-            "ARCHIAOS KERNEL STARTED" \
-            "BootInfo: OK" \
-            "Memory Map: OK" \
-            "Framebuffer: OK" \
-            "CPU: GDT OK" \
-            "CPU: TSS OK" \
-            "CPU: IDT 256 VECTORS OK" \
-            "PMM CONTIGUOUS PASS" \
-            "PMM TEST PASS" \
-            "PAGING TABLES CREATED" \
-            "PAGING IDENTITY MAP PASS (64 GiB)" \
-            "PAGING CR3 ACTIVATION PASS" \
-            "PAGING TEST PASS" \
-            "CPU: INVALID OPCODE HANDLER OK" \
-            "IRQ: LAPIC OK" \
-            "IRQ: TIMER TEST OK" \
-            "ACPI: RSDP/MADT OK"; do
-            grep -q "$marker" qemu.log || {
-              echo "Missing expected marker: $marker"
+          models="qemu64 Penryn Nehalem Haswell Skylake-Client"
+          for cpu in $models; do
+            echo "===== QEMU CPU MODEL: $cpu ====="
+            cp /usr/share/OVMF/OVMF_VARS_4M.fd "ArchiaOS/build/OVMF_VARS_${cpu}.fd"
+            timeout 15s qemu-system-x86_64 \
+              -machine q35 \
+              -cpu "$cpu" \
+              -m 256M \
+              -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
+              -drive if=pflash,format=raw,file="ArchiaOS/build/OVMF_VARS_${cpu}.fd" \
+              -drive format=raw,file=fat:rw:ArchiaOS/build/esp \
+              -display none -serial none -monitor none \
+              -debugcon stdio -global isa-debugcon.iobase=0xe9 \
+              -no-reboot -no-shutdown > "qemu-${cpu}.log" 2>&1
+            status=$?
+            cat "qemu-${cpu}.log"
+            if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then
+              echo "QEMU failed for CPU model $cpu with status $status"
               exit 1
-            }
+            fi
+            for marker in \
+              "ARCHIAOS KERNEL STARTED" \
+              "BootInfo: OK" \
+              "Memory Map: OK" \
+              "Framebuffer: OK" \
+              "CPU: FEATURES DETECTED OK" \
+              "CPU: SECURITY FEATURES DETECTED OK" \
+              "CPU: TOPOLOGY DETECTED OK" \
+              "CPU: GDT OK" \
+              "CPU: TSS OK" \
+              "CPU: IDT 256 VECTORS OK" \
+              "PMM CONTIGUOUS PASS" \
+              "PMM TEST PASS" \
+              "PAGING TABLES CREATED" \
+              "PAGING IDENTITY MAP PASS (64 GiB)" \
+              "PAGING CR3 ACTIVATION PASS" \
+              "PAGING TEST PASS" \
+              "CPU: INVALID OPCODE HANDLER OK" \
+              "IRQ: LAPIC OK" \
+              "IRQ: TIMER TEST OK" \
+              "ACPI: RSDP/MADT OK"; do
+              grep -q "$marker" "qemu-${cpu}.log" || {
+                echo "Missing expected marker for $cpu: $marker"
+                exit 1
+              }
+            done
           done
