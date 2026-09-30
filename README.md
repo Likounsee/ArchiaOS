@@ -175,6 +175,10 @@ Le kernel possède maintenant une véritable phase d'initialisation :
         ↓
     ACPI / MADT
 
+### CPU compatibility foundation
+
+The kernel now performs runtime CPUID detection for CPU identity, SIMD/instruction-set capabilities, CPU hardening capabilities, topology and Intel hybrid-core information. SSE4.1 is the current Standard compatibility target; CPUs below that level are reported as Light rather than being rejected yet. QEMU CI is configured to exercise multiple named CPU models. See `docs/architecture/cpu-compatibility.md` and `docs/hardware/cpu-validation.md`.
+
 ### Initialisation actuellement testée
 
     ARCHIAOS KERNEL STARTED
