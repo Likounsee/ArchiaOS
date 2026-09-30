@@ -238,6 +238,20 @@ extern "C" bool paging_map_4k(
     return true;
 }
 
+extern "C" bool paging_unmap_4k(u64 virtualAddress)
+{
+    if ((virtualAddress & (NOVOS_PAGE_SIZE - 1ULL)) != 0)
+        return false;
+
+    u64* entry = find_4k_entry(virtualAddress);
+    if (entry == nullptr)
+        return false;
+
+    *entry = 0;
+    asm volatile("invlpg (%0)" : : "r"(virtualAddress) : "memory");
+    return true;
+}
+
 extern "C" u64 paging_get_4k_entry(u64 virtualAddress)
 {
     u64* entry = find_4k_entry(virtualAddress);
