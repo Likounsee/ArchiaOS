@@ -164,10 +164,11 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     pmm_run_tests(bootInfo);
     debug_str("PMM: TESTS OK\n");
 
-    debug_str("MM: initializing paging\n");
-    paging_run_tests();
-    debug_str("MM: paging ACTIVE\n");
-
+    /*
+     * Enable CR0.WP/NXE/UMIP before creating 4 KiB mappings that use
+     * execute-disable. IA32_EFER.NXE must be enabled before a present
+     * paging entry is allowed to carry XD=1.
+     */
     debug_str("CPU: activating hardware security protections\n");
     if (!cpu_security_initialize())
     {
@@ -175,6 +176,10 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         halt();
     }
     cpu_security_print_report();
+
+    debug_str("MM: initializing paging\n");
+    paging_run_tests();
+    debug_str("MM: paging ACTIVE\n");
 
     debug_str("CPU: testing invalid opcode handler\n");
     idt_test_invalid_opcode();
