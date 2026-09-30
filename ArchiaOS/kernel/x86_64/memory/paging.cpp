@@ -2,7 +2,7 @@
 #include "../cpu/features.hpp"
 
 static constexpr u64 NOVOS_PAGE_TABLE_COUNT = 64;
-static constexpr u64 NOVOS_IDENTITY_MAP_SIZE = 0x10000000000ULL; /* 64 GiB */
+static constexpr u64 NOVOS_IDENTITY_MAP_SIZE = 0x1000000000ULL; /* 64 GiB */
 static constexpr u64 NOVOS_2M_PAGE_SIZE = 0x200000ULL;
 static constexpr u64 NOVOS_PDPT_COVERAGE = 0x40000000ULL; /* 1 GiB */
 
