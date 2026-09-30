@@ -99,7 +99,11 @@ isr_common:
     pushq %r15
 
     mov %rsp, %rdi
+    mov %rsp, %r11
+    andq $-16, %rsp
+    subq $8, %rsp
     call exception_dispatch
+    mov %r11, %rsp
 
     popq %r15
     popq %r14
@@ -270,7 +274,7 @@ idt_initialize:
     lea isr47(%rip), %rax
     add $16, %rdi
     call idt_set_gate0
-    add $3584, %rdi
+    lea idt_table+4080(%rip), %rdi
     lea isr255(%rip), %rax
     call idt_set_gate0
 
