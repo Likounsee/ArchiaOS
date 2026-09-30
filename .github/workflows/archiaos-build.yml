@@ -27,32 +27,32 @@ jobs:
           echo "clang=$CLANG"
           echo "lld=$LLD"
           echo "lld-link=$LLD_LINK"
-          cmake -S . -B build -G Ninja -DARCHIAOS_CLANG=clang -DARCHIAOS_LLD=ld.lld -DARCHIAOS_LLD_LINK=lld-link -DARCHIAOS_CLANG="$CLANG" -DARCHIAOS_LLD="$LLD" -DARCHIAOS_LLD_LINK="$LLD_LINK"
+          cmake -S ArchiaOS -B ArchiaOS/build -G Ninja -DARCHIAOS_CLANG=clang -DARCHIAOS_LLD=ld.lld -DARCHIAOS_LLD_LINK=lld-link -DARCHIAOS_CLANG="$CLANG" -DARCHIAOS_LLD="$LLD" -DARCHIAOS_LLD_LINK="$LLD_LINK"
 
       - name: Build
-        run: cmake --build build --config Release
+        run: cmake --build ArchiaOS/build --config Release
 
       - name: Verify ELF and EFI outputs
         run: |
-          test -s build/ARCHIAOS_kernel.elf
-          test -s build/BOOTX64.EFI
-          test -s build/esp/EFI/BOOT/BOOTX64.EFI
-          test -s build/esp/EFI/ARCHIAOS/ARCHIAOS_kernel.elf
-          llvm-readobj --file-headers build/ARCHIAOS_kernel.elf
-          llvm-readobj --program-headers build/ARCHIAOS_kernel.elf
-          llvm-nm build/ARCHIAOS_kernel.elf | grep "kernel_entry$"
-          llvm-readobj --file-headers build/BOOTX64.EFI
-          llvm-readobj --program-headers build/ARCHIAOS_kernel.elf
-          llvm-objdump -d build/ARCHIAOS_kernel.elf | head -n 120
-          llvm-objdump -d --start-address=0x1004B0 --stop-address=0x1004F0 build/ARCHIAOS_kernel.elf
+          test -s ArchiaOS/build/ARCHIAOS_kernel.elf
+          test -s ArchiaOS/build/BOOTX64.EFI
+          test -s ArchiaOS/build/esp/EFI/BOOT/BOOTX64.EFI
+          test -s ArchiaOS/build/esp/EFI/ARCHIAOS/ARCHIAOS_kernel.elf
+          llvm-readobj --file-headers ArchiaOS/build/ARCHIAOS_kernel.elf
+          llvm-readobj --program-headers ArchiaOS/build/ARCHIAOS_kernel.elf
+          llvm-nm ArchiaOS/build/ARCHIAOS_kernel.elf | grep "kernel_entry$"
+          llvm-readobj --file-headers ArchiaOS/build/BOOTX64.EFI
+          llvm-readobj --program-headers ArchiaOS/build/ARCHIAOS_kernel.elf
+          llvm-objdump -d ArchiaOS/build/ARCHIAOS_kernel.elf | head -n 120
+          llvm-objdump -d --start-address=0x1004B0 --stop-address=0x1004F0 ArchiaOS/build/ARCHIAOS_kernel.elf
 
       - name: Prepare writable OVMF variables
-        run: cp /usr/share/OVMF/OVMF_VARS_4M.fd build/OVMF_VARS_4M.fd
+        run: cp /usr/share/OVMF/OVMF_VARS_4M.fd ArchiaOS/build/OVMF_VARS_4M.fd
 
       - name: QEMU UEFI smoke test
         run: |
           set +e
-          timeout 15s qemu-system-x86_64             -machine q35             -m 256M             -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd             -drive if=pflash,format=raw,file=build/OVMF_VARS_4M.fd             -drive format=raw,file=fat:rw:build/esp             -display none             -serial none             -monitor none             -debugcon stdio             -global isa-debugcon.iobase=0xe9             -no-reboot             -no-shutdown             > qemu.log 2>&1
+          timeout 15s qemu-system-x86_64             -machine q35             -m 256M             -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd             -drive if=pflash,format=raw,file=ArchiaOS/build/OVMF_VARS_4M.fd             -drive format=raw,file=fat:rw:ArchiaOS/build/esp             -display none             -serial none             -monitor none             -debugcon stdio             -global isa-debugcon.iobase=0xe9             -no-reboot             -no-shutdown             > qemu.log 2>&1
           status=$?
           cat qemu.log
           for marker in \
