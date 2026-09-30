@@ -109,7 +109,7 @@ static void enumerate_features()
     cpu_info.features.smap = false;
     cpu_info.features.umip = false;
     cpu_info.features.invpcid = false;
-    cpu_info.features.one_gib_pages = false;
+    cpu_info.features.one_gib_pages = bit(r.edx, 26);
     cpu_info.features.avx2 = false;
     cpu_info.features.avx512f = false;
     cpu_info.features.bmi1 = false;
