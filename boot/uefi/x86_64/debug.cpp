@@ -10,7 +10,11 @@ static void debugcon_ascii(const char* text)
 
 static void output_ascii(const char* text)
 {
-    if (!g_system_table || !g_system_table->ConOut)
+    debugcon_ascii(text);
+
+    if (!g_system_table ||
+        !g_system_table->BootServices ||
+        !g_system_table->ConOut)
         return;
 
     CHAR16 buffer[128];
@@ -24,7 +28,6 @@ static void output_ascii(const char* text)
     buffer[i] = 0;
 
     g_system_table->ConOut->OutputString(g_system_table->ConOut, buffer);
-    debugcon_ascii(text);
 }
 
 void boot_debug_init(EFI_SYSTEM_TABLE* systemTable)
