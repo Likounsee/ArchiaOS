@@ -68,6 +68,38 @@ extern "C" void paging_run_tests()
     if (!paging_map_identity(0x0000000000200000ULL))
         fail("PAGING TEST FAIL: MAP API\n");
 
+    /*
+     * Exercise fine-grained permissions with a PMM-owned page.
+     */
+    const u64 testPage = pmm_alloc_page();
+    if (testPage == 0)
+        fail("PAGING TEST FAIL: 4K ALLOCATION\n");
+
+    const PagingFlags readOnlyNoExecute{
+        false,
+        false,
+        false
+    };
+
+    if (!paging_map_4k(testPage, testPage, readOnlyNoExecute))
+        fail("PAGING TEST FAIL: 4K MAP\n");
+
+    const u64 entry = paging_get_4k_entry(testPage);
+
+    if ((entry & 0x000FFFFFFFFFF000ULL) != testPage ||
+        (entry & NOVOS_PAGE_PRESENT) == 0 ||
+        (entry & NOVOS_PAGE_WRITE) != 0 ||
+        (entry & NOVOS_PAGE_USER) != 0 ||
+        (entry & NOVOS_PAGE_NO_EXECUTE) == 0)
+    {
+        fail("PAGING TEST FAIL: PERMISSIONS\n");
+    }
+
+    if (paging_translate(testPage) != testPage)
+        fail("PAGING TEST FAIL: 4K TRANSLATION\n");
+
+    test_str("PAGING 4K RO/NX PASS\n");
+
     test_str("PAGING CR3 ACTIVATION PASS\n");
     test_str("PAGING TEST PASS\n");
 }
