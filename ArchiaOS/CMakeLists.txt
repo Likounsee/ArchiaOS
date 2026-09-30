@@ -105,6 +105,9 @@ function(archiaos_kernel_compile output source)
         DEPENDS ${source} ${ARCHIAOS_COMMON}/boot_info.h
             ${ARCHIAOS_CPU_DIR}/cpuid.hpp ${ARCHIAOS_CPU_DIR}/features.hpp
             ${ARCHIAOS_CPU_DIR}/security.hpp
+            ${ARCHIAOS_CPU_DIR}/idt.hpp
+            ${ARCHIAOS_MEMORY_DIR}/paging.hpp
+            ${ARCHIAOS_MEMORY_DIR}/pmm.hpp
     )
 endfunction()
 
