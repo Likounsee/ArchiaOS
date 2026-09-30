@@ -7,6 +7,7 @@
 #include "../memory/pmm.hpp"
 #include "../memory/paging.hpp"
 #include "../cpu/features.hpp"
+#include "../cpu/security.hpp"
 
 using UINT32 = unsigned int;
 using UINT64 = unsigned long long;
@@ -166,6 +167,14 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     debug_str("MM: initializing paging\n");
     paging_run_tests();
     debug_str("MM: paging ACTIVE\n");
+
+    debug_str("CPU: activating hardware security protections\n");
+    if (!cpu_security_initialize())
+    {
+        debug_str("[KERNEL] CPU SECURITY ACTIVATION FAILED\n");
+        halt();
+    }
+    cpu_security_print_report();
 
     debug_str("CPU: testing invalid opcode handler\n");
     idt_test_invalid_opcode();
