@@ -223,7 +223,37 @@ static void enumerate_topology()
         cpu_info.topology.package_count = 1;
         cpu_info.topology.initial_apic_id = topo.eax;
         cpu_info.topology.enumerated = true;
+        return;
     }
+
+    // Legacy x86 fallback. Intel documents CPUID.1 EBX[23:16] as the
+    // logical-processor count and CPUID.4 EAX[31:26] as the core count
+    // when deterministic cache parameters are available.
+    CpuidResult leaf1 = cpu_cpuid(1, 0);
+    const unsigned int logical =
+        (leaf1.ebx >> 16) & 0xFFU;
+
+    unsigned int cores = 1;
+    if (cpu_info.max_basic_leaf >= 4)
+    {
+        CpuidResult leaf4 = cpu_cpuid(4, 0);
+        if ((leaf4.eax & 0x1FU) != 0)
+            cores = ((leaf4.eax >> 26) & 0x3FU) + 1U;
+    }
+
+    if (cores > logical && logical != 0)
+        cores = logical;
+
+    unsigned int threads = 1;
+    if (cores != 0 && logical >= cores && logical % cores == 0)
+        threads = logical / cores;
+
+    cpu_info.topology.logical_processors = logical ? logical : 1;
+    cpu_info.topology.threads_per_core = threads;
+    cpu_info.topology.cores_per_package = cores;
+    cpu_info.topology.package_count = 1;
+    cpu_info.topology.initial_apic_id = leaf1.ebx >> 24;
+    cpu_info.topology.enumerated = true;
 }
 
 extern "C" void cpu_initialize()
