@@ -20,7 +20,14 @@ jobs:
           sudo apt-get install -y clang lld cmake ninja-build qemu-system-x86 ovmf
 
       - name: Configure
-        run: cmake -S . -B build -G Ninja
+        run: |
+          CLANG="$(command -v clang++ || command -v clang++-18 || command -v clang++-19 || command -v clang++-17)"
+          LLD="$(command -v ld.lld || command -v ld.lld-18 || command -v ld.lld-19 || command -v ld.lld-17)"
+          LLD_LINK="$(command -v lld-link || command -v lld-link-18 || command -v lld-link-19 || command -v lld-link-17)"
+          echo "clang=$CLANG"
+          echo "lld=$LLD"
+          echo "lld-link=$LLD_LINK"
+          cmake -S . -B build -G Ninja -DARCHIAOS_CLANG="$CLANG" -DARCHIAOS_LLD="$LLD" -DARCHIAOS_LLD_LINK="$LLD_LINK"
 
       - name: Build
         run: cmake --build build --config Release
