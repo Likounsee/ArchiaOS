@@ -57,7 +57,7 @@ static EFI_STATUS allocate_pmm_bitmap(
     if (status != EFI_SUCCESS || descriptorSize < sizeof(EFI_MEMORY_DESCRIPTOR) || size % descriptorSize != 0)
         return status != EFI_SUCCESS ? status : EFI_INVALID_PARAMETER;
 
-    constexpr UINT64 maxPhysical = 0x4000000000ULL;
+    constexpr UINT64 maxPhysical = NOVOS_PMM_MAX_PHYSICAL_ADDRESS;
     UINT64 highest = 0;
     for (UINTN offset = 0; offset < size; offset += descriptorSize)
     {
