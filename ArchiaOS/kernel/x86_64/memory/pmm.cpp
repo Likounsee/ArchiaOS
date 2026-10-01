@@ -53,9 +53,8 @@ static void reserve_range(u64 start, u64 page_count)
         return;
 
     const u64 max_pages =
-        (NOVOS_PMM_MAX_PHYSICAL_ADDRESS - start +
-         NOVOS_PAGE_SIZE - 1) /
-        NOVOS_PAGE_SIZE;
+        (pmm_max_frames * NOVOS_PAGE_SIZE - start +
+         NOVOS_PAGE_SIZE - 1) / NOVOS_PAGE_SIZE;
 
     if (page_count > max_pages)
         page_count = max_pages;
@@ -76,12 +75,12 @@ static void reserve_range(u64 start, u64 page_count)
 
 static void reserve_bytes(u64 start, u64 size)
 {
-    if (size == 0 || start >= NOVOS_PMM_MAX_PHYSICAL_ADDRESS)
+    if (size == 0 || pmm_max_frames == 0 || start >= pmm_max_frames * NOVOS_PAGE_SIZE)
         return;
 
     const u64 end =
-        size > NOVOS_PMM_MAX_PHYSICAL_ADDRESS - start
-            ? NOVOS_PMM_MAX_PHYSICAL_ADDRESS
+        size > pmm_max_frames * NOVOS_PAGE_SIZE - start
+            ? pmm_max_frames * NOVOS_PAGE_SIZE
             : start + size;
 
     const u64 firstPage = start / NOVOS_PAGE_SIZE;
@@ -96,11 +95,11 @@ static void reserve_bytes(u64 start, u64 size)
 
 static void release_range(u64 start, u64 page_count)
 {
-    if (start >= NOVOS_PMM_MAX_PHYSICAL_ADDRESS)
+    if (pmm_max_frames == 0 || start >= pmm_max_frames * NOVOS_PAGE_SIZE)
         return;
 
     const u64 max_pages =
-        (NOVOS_PMM_MAX_PHYSICAL_ADDRESS - start) /
+        (pmm_max_frames * NOVOS_PAGE_SIZE - start) /
         NOVOS_PAGE_SIZE;
 
     if (page_count > max_pages)
@@ -135,7 +134,24 @@ static bool reclaimable_efi_type(u32 type)
 
 extern "C" void pmm_initialize(BootInfo* bootInfo)
 {
-    for (u64 i = 0; i < NOVOS_PMM_BITMAP_WORDS; ++i)
+    pmm_bitmap = nullptr;
+    pmm_reserved_bitmap = nullptr;
+    pmm_bitmap_words = 0;
+    pmm_max_frames = 0;
+    pmm_free_pages = 0;
+
+    if (bootInfo == nullptr ||
+        bootInfo->pmm_bitmap_base == 0 ||
+        bootInfo->pmm_bitmap_size < 8192ULL ||
+        (bootInfo->pmm_bitmap_size & (NOVOS_PAGE_SIZE - 1ULL)) != 0)
+        return;
+
+    pmm_bitmap = reinterpret_cast<u64*>(bootInfo->pmm_bitmap_base);
+    pmm_bitmap_words = (bootInfo->pmm_bitmap_size / 2ULL) / sizeof(u64);
+    pmm_reserved_bitmap = pmm_bitmap + pmm_bitmap_words;
+    pmm_max_frames = pmm_bitmap_words * 64ULL;
+
+    for (u64 i = 0; i < pmm_bitmap_words; ++i)
     {
         pmm_bitmap[i] = ~0ULL;
         pmm_reserved_bitmap[i] = 0;
@@ -192,6 +208,10 @@ extern "C" void pmm_initialize(BootInfo* bootInfo)
         bootInfo->framebuffer_base,
         bootInfo->framebuffer_size);
 
+    reserve_bytes(
+        bootInfo->pmm_bitmap_base,
+        bootInfo->pmm_bitmap_size);
+
     /* Physical address zero is never a valid allocation result. */
     if (!bitmap_test(0))
     {
@@ -204,7 +224,7 @@ extern "C" void pmm_initialize(BootInfo* bootInfo)
 extern "C" u64 pmm_alloc_page()
 {
     for (u64 word_index = 0;
-         word_index < NOVOS_PMM_BITMAP_WORDS;
+         word_index < pmm_bitmap_words;
          ++word_index)
     {
         const u64 word = pmm_bitmap[word_index];
@@ -237,7 +257,7 @@ extern "C" u64 pmm_alloc_page()
 extern "C" u64 pmm_alloc_contiguous(u64 pageCount)
 {
     if (pageCount == 0 ||
-        pageCount > NOVOS_PMM_MAX_FRAMES - 1ULL)
+        pageCount > pmm_max_frames - 1ULL)
     {
         return 0;
     }
@@ -246,7 +266,7 @@ extern "C" u64 pmm_alloc_contiguous(u64 pageCount)
     u64 runLength = 0;
 
     for (u64 frame = 1;
-         frame < NOVOS_PMM_MAX_FRAMES;
+         frame < pmm_max_frames;
          ++frame)
     {
         if (!bitmap_test(frame))
@@ -282,7 +302,7 @@ extern "C" void pmm_free_page(u64 physicalAddress)
 {
     if (physicalAddress == 0 ||
         (physicalAddress & (NOVOS_PAGE_SIZE - 1ULL)) != 0 ||
-        physicalAddress >= NOVOS_PMM_MAX_PHYSICAL_ADDRESS)
+        pmm_max_frames == 0 || physicalAddress >= pmm_max_frames * NOVOS_PAGE_SIZE)
     {
         return;
     }
