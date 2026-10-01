@@ -87,8 +87,8 @@ jobs:
               "PMM CONTIGUOUS PASS" \
               "PMM TEST PASS" \
               "PAGING TABLES CREATED" \
-              "PAGING IDENTITY MAP PASS (64 GiB)" \
-              "PAGING HHDM 64GiB PASS" \
+              "PAGING IDENTITY MAP PASS" \
+              "PAGING HHDM PASS" \
               "PAGING CR3 ACTIVATION PASS" \
               "PAGING 4K RO/NX BITS PASS" \
               "PAGING NX EXECUTION FAULT PASS" \
