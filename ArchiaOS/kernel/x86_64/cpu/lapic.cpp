@@ -407,41 +407,25 @@ extern "C" bool lapic_startup_cpu(
     if (apic_id == lapic_current_id())
         return true;
 
-    /*
-     * INIT assertion/deassertion followed by two SIPIs. The second SIPI is
-     * intentional: firmware and QEMU tolerate it and it covers platforms
-     * where the first startup IPI is lost during AP reset release.
-     */
     lapic_write(0x280, 0x80A, 0);
+
     lapic_debug("LAPIC: INIT ASSERT\\n");
     if (!lapic_send_ipi(apic_id, (5ULL << 8) | (1ULL << 14)))
         return false;
-    lapic_debug_hex("LAPIC: ICR AFTER INIT=", *lapic_register(0x300));
-    lapic_debug_hex("LAPIC: ESR AFTER INIT=", *lapic_register(0x280));
     lapic_debug("LAPIC: INIT ASSERT SENT\\n");
-    lapic_startup_delay();
 
-    lapic_debug("LAPIC: INIT DEASSERT\\n");
-    if (!lapic_send_ipi(apic_id, (5ULL << 8)))
-        return false;
-    lapic_debug_hex("LAPIC: ICR AFTER DEASSERT=", *lapic_register(0x300));
-    lapic_debug_hex("LAPIC: ESR AFTER DEASSERT=", *lapic_register(0x280));
-    lapic_debug("LAPIC: INIT DEASSERT SENT\\n");
     lapic_startup_delay();
 
     lapic_debug("LAPIC: SIPI1\\n");
     if (!lapic_send_ipi(apic_id, (6ULL << 8) | startup_vector))
         return false;
-    lapic_debug_hex("LAPIC: ICR AFTER SIPI1=", *lapic_register(0x300));
-    lapic_debug_hex("LAPIC: ESR AFTER SIPI1=", *lapic_register(0x280));
     lapic_debug("LAPIC: SIPI1 SENT\\n");
+
     lapic_startup_delay();
 
     lapic_debug("LAPIC: SIPI2\\n");
     if (!lapic_send_ipi(apic_id, (6ULL << 8) | startup_vector))
         return false;
-    lapic_debug_hex("LAPIC: ICR AFTER SIPI2=", *lapic_register(0x300));
-    lapic_debug_hex("LAPIC: ESR AFTER SIPI2=", *lapic_register(0x280));
     lapic_debug("LAPIC: SIPI2 SENT\\n");
 
     return true;
