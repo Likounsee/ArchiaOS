@@ -21,6 +21,18 @@ static inline void smp_debug(const char* s)
         asm volatile("outb %0,%1" : : "a"(s[i]), "Nd"(static_cast<unsigned short>(0xE9)));
 }
 
+static void smp_debug_hex(const char* label, uint64_t value)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    smp_debug(label);
+    for (int shift = 60; shift >= 0; shift -= 4)
+    {
+        const char ch = digits[(value >> shift) & 0xFULL];
+        asm volatile("outb %0,%1" : : "a"(ch), "Nd"(static_cast<unsigned short>(0xE9)));
+    }
+    smp_debug("\n");
+}
+
 
 extern "C" void smp_ap_entry(
     unsigned int processorIndex,
@@ -73,6 +85,9 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
     if (trampolineSize == 0 || trampolineSize > NOVOS_PAGE_SIZE)
         return false;
 
+    smp_debug_hex("SMP: TRAMPOLINE PHYS=", trampolinePhysical);
+    smp_debug_hex("SMP: STARTUP VECTOR=", startupVector);
+    smp_debug_hex("SMP: BSP APIC ID=", currentApicId);
     smp_debug("SMP: TRAMPOLINE READY\\n");
 
     const uint64_t trampolinePhysical =
@@ -123,6 +138,7 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
     for (unsigned int index = 0; index < processorLimit; ++index)
     {
         const unsigned int apicId = acpi->processor_apic_ids[index];
+        smp_debug_hex("SMP: TARGET APIC ID=", apicId);
 
         if (apicId == currentApicId)
             continue;
