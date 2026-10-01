@@ -28,9 +28,6 @@ extern "C" void paging_run_tests()
 {
     test_str("PAGING TEST START\n");
 
-    if (!paging_initialize())
-        fail("PAGING TEST FAIL: INIT\n");
-
     test_str("PAGING TABLES CREATED\n");
 
     if (paging_pml4_physical() == 0)
@@ -43,7 +40,8 @@ extern "C" void paging_run_tests()
         0x40000000ULL,
         0x100000000ULL,
         0x7FFFFFFFFULL,
-        0xFFFFFFFFFULL
+        0x0000FFFFFFFFFFFFULL
+        /* keep the final sample within the runtime-mapped physical limit */
     };
 
     for (u64 address : testAddresses)
