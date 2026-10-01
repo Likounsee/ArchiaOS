@@ -2118,8 +2118,20 @@ idt_initialize:
     call idt_set_gate0
     /* Vector 8 (#DF) must use TSS IST1. */
     cmp $8, %ecx
-    jne .Lidt_no_ist
+    je .Lidt_ist1
+    cmp $2, %ecx
+    je .Lidt_ist2
+    cmp $18, %ecx
+    je .Lidt_ist3
+    jmp .Lidt_no_ist
+.Lidt_ist1:
     movb $1, 4(%rdi)
+    jmp .Lidt_no_ist
+.Lidt_ist2:
+    movb $2, 4(%rdi)
+    jmp .Lidt_no_ist
+.Lidt_ist3:
+    movb $3, 4(%rdi)
 .Lidt_no_ist:
     add $16, %rdi
     inc %ecx
