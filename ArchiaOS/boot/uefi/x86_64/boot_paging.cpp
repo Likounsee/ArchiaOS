@@ -261,7 +261,7 @@ EFI_STATUS prepare_boot_paging(
             const UINT64 physical =
                 physicalBase + pdIndex * HUGE_PAGE_SIZE;
 
-            if (physical >= highest)
+            if (physical >= MAX_PHYSICAL)
                 break;
 
             pd[pdIndex] =
