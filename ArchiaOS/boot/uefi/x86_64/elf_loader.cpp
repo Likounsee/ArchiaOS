@@ -175,8 +175,7 @@ EFI_STATUS load_kernel_elf(
             add_overflow(ph[i].p_offset, ph[i].p_filesz, &fileEnd) ||
             fileEnd > imageSize ||
             add_overflow(ph[i].p_vaddr, ph[i].p_memsz, &memEnd) ||
-            ph[i].p_paddr != ph[i].p_vaddr ||
-            ph[i].p_vaddr == 0 ||
+                        ph[i].p_vaddr == 0 ||
             (ph[i].p_vaddr & (PAGE - 1)) != 0 ||
             ph[i].p_memsz == 0)
         {
