@@ -123,7 +123,7 @@ static bool split_2m_pde(u64* pde)
     return true;
 }
 
-static u64* find_4k_entry(u64 virtualAddress, bool user)
+static u64* find_4k_entry(u64 virtualAddress, bool user, bool split)
 {
     if (pml4 == nullptr)
         return nullptr;
@@ -162,7 +162,7 @@ static u64* find_4k_entry(u64 virtualAddress, bool user)
     if (user && (*pde & NOVOS_PAGE_PRESENT))
         *pde |= NOVOS_PAGE_USER;
 
-    if (!split_2m_pde(pde))
+    if (split && !split_2m_pde(pde))
         return nullptr;
 
     auto* pt =
@@ -340,7 +340,7 @@ extern "C" bool paging_map_4k(
         physicalAddress >= mapped_physical_limit)
         return false;
 
-    u64* entry = find_4k_entry(virtualAddress, flags.user);
+    u64* entry = find_4k_entry(virtualAddress, flags.user, true);
     if (entry == nullptr)
         return false;
 
@@ -360,7 +360,7 @@ extern "C" bool paging_unmap_4k(u64 virtualAddress)
         ((virtualAddress >> 48) != 0 && (virtualAddress >> 48) != 0xFFFFULL))
         return false;
 
-    u64* entry = find_4k_entry(virtualAddress, false);
+    u64* entry = find_4k_entry(virtualAddress, false, true);
     if (entry == nullptr)
         return false;
 
@@ -371,7 +371,7 @@ extern "C" bool paging_unmap_4k(u64 virtualAddress)
 
 extern "C" u64 paging_get_4k_entry(u64 virtualAddress)
 {
-    u64* entry = find_4k_entry(virtualAddress, false);
+    u64* entry = find_4k_entry(virtualAddress, false, false);
     return entry ? *entry : 0;
 }
 
