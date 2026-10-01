@@ -140,6 +140,13 @@ extern "C" void paging_run_tests()
         false
     };
 
+    /*
+     * Install the instruction while the bootstrap identity mapping is still
+     * writable. The protection test below must not fault while preparing its
+     * own test page.
+     */
+    *reinterpret_cast<volatile unsigned char*>(testPage) = 0xC3;
+
     if (!paging_map_4k(testPage, testPage, readOnlyNoExecute))
         fail("PAGING TEST FAIL: 4K MAP\n");
 
@@ -165,8 +172,6 @@ extern "C" void paging_run_tests()
      * while we install a single RET instruction, then remapped RO+NX.
      * Executing it must raise #PF with the recovery RIP below.
      */
-    *reinterpret_cast<volatile unsigned char*>(testPage) = 0xC3;
-
     const unsigned long long nxRecovery =
         reinterpret_cast<unsigned long long>(&&nx_page_fault_recovered);
 
