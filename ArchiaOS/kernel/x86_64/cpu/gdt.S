@@ -79,8 +79,10 @@ gdt_initialize_cpu:
     movq $0, 24(%rcx)
     movq $0, 32(%rcx)
 
-    movq $0x00AF9A000000FFFF, 8(%rcx)
-    movq $0x00CF92000000FFFF, 16(%rcx)
+    movabsq $0x00AF9A000000FFFF, %rax
+    movq %rax, 8(%rcx)
+    movabsq $0x00CF92000000FFFF, %rax
+    movq %rax, 16(%rcx)
 
     /* The per-CPU TSS array is 104 bytes per CPU. */
     mov %edi, %eax
