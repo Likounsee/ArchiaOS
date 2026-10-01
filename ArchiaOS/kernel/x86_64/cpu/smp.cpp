@@ -1,6 +1,7 @@
 #include "smp.hpp"
 #include "acpi.hpp"
 #include "lapic.hpp"
+#include "irq.hpp"
 #include "gdt.hpp"
 #include "idt.hpp"
 #include "../memory/pmm.hpp"
