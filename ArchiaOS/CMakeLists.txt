@@ -96,7 +96,7 @@ function(archiaos_kernel_compile output source)
     add_custom_command(
         OUTPUT ${output}
         COMMAND "${ARCHIAOS_CLANG}" -target x86_64-pc-none-elf
-            -std=c++20 -ffreestanding -O2 -Wall -Wextra -Werror -fno-exceptions -fno-rtti
+            -std=c++20 -ffreestanding -O2 -Wall -Wextra -Werror -fno-builtin -fno-exceptions -fno-rtti
             -fno-stack-protector -fno-pie -fno-asynchronous-unwind-tables
             -fno-threadsafe-statics -mgeneral-regs-only
             -mno-red-zone -mno-sse -mno-sse2
