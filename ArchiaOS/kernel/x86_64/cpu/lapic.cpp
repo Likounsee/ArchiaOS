@@ -401,7 +401,7 @@ extern "C" bool lapic_startup_cpu(
     lapic_startup_delay();
 
     lapic_debug("LAPIC: INIT DEASSERT\\n");
-    if (!lapic_send_ipi(apic_id, (5ULL << 8)))
+    if (!lapic_send_ipi(apic_id, (5ULL << 8) | (1ULL << 15)))
         return false;
     lapic_debug_hex("LAPIC: ICR AFTER DEASSERT=", *lapic_register(0x300));
     lapic_debug_hex("LAPIC: ESR AFTER DEASSERT=", *lapic_register(0x280));
