@@ -36,14 +36,14 @@ extern "C" void irq_dispatch(ExceptionFrame* frame)
     const unsigned long long vector = frame->vector;
 
     if (vector >= 0x20 && vector <= 0xFE)
-        ++irq_dispatch_count;
+        __atomic_fetch_add(&irq_dispatch_count, 1ULL, __ATOMIC_RELAXED);
 
     if (vector == 0x20)
         lapic_timer_interrupt();
     else if (vector == 0x21)
     {
         keyboard_last_scancode = io_in8(0x60);
-        ++keyboard_irq_count;
+        __atomic_fetch_add(&keyboard_irq_count, 1ULL, __ATOMIC_RELAXED);
     }
 
     /* Vector 0xFF is the LAPIC spurious vector and must not receive EOI. */
@@ -96,4 +96,17 @@ extern "C" bool irq_test_timer()
     return false;
 }
 
-extern "C" unsigned long long irq_dispatch_count_get()\n{\n    return irq_dispatch_count;\n}\n\nextern "C" unsigned long long irq_keyboard_count_get()\n{\n    return keyboard_irq_count;\n}\n\nextern "C" unsigned char irq_keyboard_last_scancode()\n{\n    return keyboard_last_scancode;\n}\n
+extern "C" unsigned long long irq_dispatch_count_get()
+{
+    return __atomic_load_n(&irq_dispatch_count, __ATOMIC_ACQUIRE);
+}
+
+extern "C" unsigned long long irq_keyboard_count_get()
+{
+    return __atomic_load_n(&keyboard_irq_count, __ATOMIC_ACQUIRE);
+}
+
+extern "C" unsigned char irq_keyboard_last_scancode()
+{
+    return keyboard_last_scancode;
+}
