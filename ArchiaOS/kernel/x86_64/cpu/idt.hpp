@@ -29,5 +29,7 @@ extern "C" void idt_test_invalid_opcode();
 extern "C" void idt_test_double_fault();
 extern "C" void exception_dispatch(ExceptionFrame* frame);
 extern "C" void irq_dispatch(ExceptionFrame* frame);
-extern "C" void exception_expect_page_fault(unsigned long long recovery_rip);
+extern "C" void exception_expect_page_fault(unsigned long long recovery_rip, unsigned long long expected_cr2, unsigned long long error_mask, unsigned long long error_value);
 extern "C" bool exception_page_fault_test_active();
+extern "C" void exception_expect_invalid_opcode(unsigned long long rip);
+extern "C" bool exception_invalid_opcode_test_active();
