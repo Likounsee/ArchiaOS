@@ -54,7 +54,7 @@ extern "C" void paging_run_tests()
             fail("PAGING TEST FAIL: TRANSLATION\n");
     }
 
-    test_str("PAGING IDENTITY MAP PASS (256 GiB)\n");
+    test_str("PAGING IDENTITY MAP PASS\n");
 
     /*
      * The high-half direct map must resolve the same physical frames as
@@ -90,7 +90,7 @@ extern "C" void paging_run_tests()
         fail("PAGING TEST FAIL: HHDM RANGE\n");
     }
 
-    test_str("PAGING HHDM 256GiB PASS\n");
+    test_str("PAGING HHDM PASS\n");
 
     if (!paging_activate())
         fail("PAGING TEST FAIL: ACTIVATION\n");
