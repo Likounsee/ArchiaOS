@@ -63,13 +63,25 @@ smp_trampoline_pmode:
     movw %ax, %es
     movw %ax, %ss
 
+    movb $0x45, %al
+    movw $0xE9, %dx
+    outb %al, %dx
+
     movl SMP_MAILBOX_CR4(%ebx), %eax
     orl $(1 << 5), %eax
     andl $~(1 << 17), %eax
     movl %eax, %cr4
 
+    movb $0x46, %al
+    movw $0xE9, %dx
+    outb %al, %dx
+
     movl SMP_MAILBOX_CR3(%ebx), %eax
     movl %eax, %cr3
+
+    movb $0x47, %al
+    movw $0xE9, %dx
+    outb %al, %dx
 
     movl SMP_MAILBOX_EFER(%ebx), %ecx
     movl %ecx, %eax
@@ -77,10 +89,18 @@ smp_trampoline_pmode:
     movl $0xC0000080, %ecx
     wrmsr
 
+    movb $0x48, %al
+    movw $0xE9, %dx
+    outb %al, %dx
+
     movl SMP_MAILBOX_CR0(%ebx), %eax
     orl $((1 << 0) | (1 << 31)), %eax
     andl $~((1 << 29) | (1 << 30)), %eax
     movl %eax, %cr0
+
+    movb $0x49, %al
+    movw $0xE9, %dx
+    outb %al, %dx
 
     /* Build a protected-mode 16:32 far pointer to long-mode code. */
     movw $(smp_trampoline_lmode_ptr - smp_trampoline_start), %di
