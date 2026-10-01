@@ -56,6 +56,7 @@ set(ARCHIAOS_BOOT_HEADERS
     ${ARCHIAOS_BOOT_INC}/framebuffer.h
     ${ARCHIAOS_BOOT_INC}/memory_map.h
     ${ARCHIAOS_BOOT_INC}/handoff.h
+    ${ARCHIAOS_BOOT_INC}/boot_paging.h
     ${ARCHIAOS_COMMON}/boot_info.h
 )
 
@@ -86,6 +87,7 @@ set(ARCHIAOS_BOOT_ELF_OBJ ${ARCHIAOS_BUILD}/archiaos_boot_elf_loader.obj)
 set(ARCHIAOS_BOOT_FB_OBJ ${ARCHIAOS_BUILD}/archiaos_boot_framebuffer.obj)
 set(ARCHIAOS_BOOT_MM_OBJ ${ARCHIAOS_BUILD}/archiaos_boot_memory_map.obj)
 set(ARCHIAOS_BOOT_HANDOFF_OBJ ${ARCHIAOS_BUILD}/archiaos_boot_handoff.obj)
+set(ARCHIAOS_BOOT_PAGING_OBJ ${ARCHIAOS_BUILD}/archiaos_boot_paging.obj)
 set(ARCHIAOS_BOOT_EFI ${ARCHIAOS_BUILD}/BOOTX64.EFI)
 
 set(ARCHIAOS_ESP_DIR ${ARCHIAOS_BUILD}/esp)
@@ -203,6 +205,7 @@ archiaos_boot_compile(${ARCHIAOS_BOOT_FS_OBJ} ${ARCHIAOS_BOOT_DIR}/filesystem.cp
 archiaos_boot_compile(${ARCHIAOS_BOOT_ELF_OBJ} ${ARCHIAOS_BOOT_DIR}/elf_loader.cpp)
 archiaos_boot_compile(${ARCHIAOS_BOOT_FB_OBJ} ${ARCHIAOS_BOOT_DIR}/framebuffer.cpp)
 archiaos_boot_compile(${ARCHIAOS_BOOT_MM_OBJ} ${ARCHIAOS_BOOT_DIR}/memory_map.cpp)
+archiaos_boot_compile(${ARCHIAOS_BOOT_PAGING_OBJ} ${ARCHIAOS_BOOT_DIR}/boot_paging.cpp)
 
 add_custom_command(
     OUTPUT ${ARCHIAOS_BOOT_HANDOFF_OBJ}
