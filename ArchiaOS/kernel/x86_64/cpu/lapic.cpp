@@ -397,6 +397,11 @@ extern "C" bool lapic_startup_cpu(
         return false;
     lapic_startup_delay();
 
+    lapic_debug("LAPIC: INIT DEASSERT\\n");
+    if (!lapic_send_ipi(apic_id, (5ULL << 8), false))
+        return false;
+    lapic_startup_delay();
+
     lapic_debug("LAPIC: SIPI1 TARGET\\n");
     if (!lapic_send_ipi(apic_id, (6ULL << 8) | startup_vector, false))
         return false;
