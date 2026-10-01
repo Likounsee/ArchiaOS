@@ -23,18 +23,6 @@ static inline void lapic_debug(const char* s)
         asm volatile("outb %0,%1" : : "a"(s[i]), "Nd"(static_cast<unsigned short>(0xE9)));
 }
 
-static void lapic_debug_hex(const char* label, unsigned int value)
-{
-    static const char digits[] = "0123456789ABCDEF";
-    lapic_debug(label);
-    for (int shift = 28; shift >= 0; shift -= 4)
-    {
-        const char ch = digits[(value >> shift) & 0xFU];
-        asm volatile("outb %0,%1" : : "a"(ch), "Nd"(static_cast<unsigned short>(0xE9)));
-    }
-    lapic_debug("\n");
-}
-
 static volatile unsigned char* lapic_base = nullptr;
 
 static constexpr unsigned long long LAPIC_EOI = 0x0B0;
