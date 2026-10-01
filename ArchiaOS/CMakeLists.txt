@@ -69,6 +69,7 @@ set(ARCHIAOS_KERNEL_GDT_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_gdt.obj)
 set(ARCHIAOS_KERNEL_IDT_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_idt.obj)
 set(ARCHIAOS_KERNEL_IRQ_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_irq.obj)
 set(ARCHIAOS_KERNEL_LAPIC_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_lapic.obj)
+set(ARCHIAOS_KERNEL_IOAPIC_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_ioapic.obj)
 set(ARCHIAOS_KERNEL_TSS_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_tss.obj)
 set(ARCHIAOS_KERNEL_PAGING_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_paging.obj)
 set(ARCHIAOS_KERNEL_PAGING_TEST_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_paging_test.obj)
@@ -115,6 +116,7 @@ function(archiaos_kernel_compile output source)
             ${ARCHIAOS_CPU_DIR}/tss.hpp
             ${ARCHIAOS_CPU_DIR}/irq.hpp
             ${ARCHIAOS_CPU_DIR}/lapic.hpp
+            ${ARCHIAOS_CPU_DIR}/ioapic.hpp
             ${ARCHIAOS_CPU_DIR}/acpi.hpp
             ${ARCHIAOS_CPU_DIR}/smp.hpp
             ${ARCHIAOS_MEMORY_DIR}/paging.hpp
@@ -142,6 +144,7 @@ archiaos_kernel_asm_compile(${ARCHIAOS_KERNEL_GDT_OBJ} ${ARCHIAOS_CPU_DIR}/gdt.S
 archiaos_kernel_asm_compile(${ARCHIAOS_KERNEL_IDT_OBJ} ${ARCHIAOS_CPU_DIR}/idt.S)
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_IRQ_OBJ} ${ARCHIAOS_CPU_DIR}/irq.cpp)
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_LAPIC_OBJ} ${ARCHIAOS_CPU_DIR}/lapic.cpp)
+archiaos_kernel_compile(${ARCHIAOS_KERNEL_IOAPIC_OBJ} ${ARCHIAOS_CPU_DIR}/ioapic.cpp)
 archiaos_kernel_asm_compile(${ARCHIAOS_KERNEL_TSS_OBJ} ${ARCHIAOS_CPU_DIR}/tss.S)
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_PAGING_OBJ} ${ARCHIAOS_MEMORY_DIR}/paging.cpp)
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_PAGING_TEST_OBJ} ${ARCHIAOS_MEMORY_DIR}/tests/paging_test.cpp)
@@ -166,6 +169,7 @@ add_custom_command(
         "${ARCHIAOS_KERNEL_IDT_OBJ}"
         "${ARCHIAOS_KERNEL_IRQ_OBJ}"
         "${ARCHIAOS_KERNEL_LAPIC_OBJ}"
+        "${ARCHIAOS_KERNEL_IOAPIC_OBJ}"
         "${ARCHIAOS_KERNEL_TSS_OBJ}"
         "${ARCHIAOS_KERNEL_PAGING_OBJ}"
         "${ARCHIAOS_KERNEL_PAGING_TEST_OBJ}"
@@ -182,7 +186,7 @@ add_custom_command(
         ${ARCHIAOS_KERNEL_MEMORY_OBJ} ${ARCHIAOS_KERNEL_ACPI_OBJ}
         ${ARCHIAOS_KERNEL_EXCEPTION_OBJ} ${ARCHIAOS_KERNEL_GDT_OBJ}
         ${ARCHIAOS_KERNEL_IDT_OBJ} ${ARCHIAOS_KERNEL_IRQ_OBJ}
-        ${ARCHIAOS_KERNEL_LAPIC_OBJ} ${ARCHIAOS_KERNEL_TSS_OBJ}
+        ${ARCHIAOS_KERNEL_LAPIC_OBJ} ${ARCHIAOS_KERNEL_IOAPIC_OBJ} ${ARCHIAOS_KERNEL_TSS_OBJ}
         ${ARCHIAOS_KERNEL_PAGING_OBJ} ${ARCHIAOS_KERNEL_PAGING_TEST_OBJ}
         ${ARCHIAOS_KERNEL_PMM_OBJ}
         ${ARCHIAOS_KERNEL_PMM_TEST_OBJ}
