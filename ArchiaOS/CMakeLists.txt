@@ -79,6 +79,7 @@ set(ARCHIAOS_KERNEL_CPUID_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_cpuid.obj)
 set(ARCHIAOS_KERNEL_CPU_REPORT_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_cpu_report.obj)
 set(ARCHIAOS_KERNEL_SECURITY_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_security.obj)
 set(ARCHIAOS_KERNEL_SMP_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_smp.obj)
+set(ARCHIAOS_KERNEL_SCHEDULER_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_scheduler.obj)
 set(ARCHIAOS_KERNEL_SMP_TRAMPOLINE_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_smp_trampoline.obj)
 
 set(ARCHIAOS_KERNEL_ELF ${ARCHIAOS_BUILD}/ARCHIAOS_kernel.elf)
@@ -154,6 +155,7 @@ archiaos_kernel_compile(${ARCHIAOS_KERNEL_CPUID_OBJ} ${ARCHIAOS_CPU_DIR}/cpuid.c
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_CPU_REPORT_OBJ} ${ARCHIAOS_CPU_DIR}/cpu_report.cpp)
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_SECURITY_OBJ} ${ARCHIAOS_CPU_DIR}/security.cpp)
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_SMP_OBJ} ${ARCHIAOS_CPU_DIR}/smp.cpp)
+archiaos_kernel_compile(${ARCHIAOS_KERNEL_SCHEDULER_OBJ} ${ARCHIAOS_CPU_DIR}/scheduler.cpp)
 archiaos_kernel_asm_compile(${ARCHIAOS_KERNEL_SMP_TRAMPOLINE_OBJ} ${ARCHIAOS_CPU_DIR}/smp_trampoline.S)
 
 add_custom_command(
