@@ -383,19 +383,19 @@ extern "C" bool lapic_startup_cpu(
     if (!lapic_send_ipi(apic_id, 5U | (1U << 14), 0))
         return false;
 
-    for (volatile unsigned int delay = 0; delay < 100000U; ++delay)
+    for (unsigned int delay = 0; delay < 100000U; ++delay)
         asm volatile("pause");
 
     if (!lapic_send_ipi(apic_id, 5U, 0))
         return false;
 
-    for (volatile unsigned int delay = 0; delay < 10000U; ++delay)
+    for (unsigned int delay = 0; delay < 10000U; ++delay)
         asm volatile("pause");
 
     if (!lapic_send_ipi(apic_id, 6U, startup_vector))
         return false;
 
-    for (volatile unsigned int delay = 0; delay < 20000U; ++delay)
+    for (unsigned int delay = 0; delay < 20000U; ++delay)
         asm volatile("pause");
 
     if (!lapic_send_ipi(apic_id, 6U, startup_vector))
