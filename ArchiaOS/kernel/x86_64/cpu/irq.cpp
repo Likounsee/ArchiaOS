@@ -1,5 +1,6 @@
 #include "irq.hpp"
 #include "lapic.hpp"
+#include "scheduler.hpp"
 
 static volatile unsigned long long irq_dispatch_count = 0;
 static volatile unsigned long long keyboard_irq_count = 0;
@@ -40,6 +41,7 @@ extern "C" void irq_dispatch(ExceptionFrame* frame)
 
     if (vector == 0x20)
         lapic_timer_interrupt();
+        scheduler_timer_tick(0);
     else if (vector == 0x21)
     {
         keyboard_last_scancode = io_in8(0x60);
