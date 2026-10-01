@@ -2106,7 +2106,14 @@ isr_common:
     add $16, %rsp
     iretq
 
+.global idt_load_current
 .global idt_initialize
+.type idt_load_current, @function
+idt_load_current:
+    lea idt_pointer(%rip), %rax
+    lidt (%rax)
+    ret
+
 .type idt_initialize, @function
 idt_initialize:
     lea idt_table(%rip), %rdi
