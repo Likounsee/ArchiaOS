@@ -110,6 +110,9 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
     for (uint64_t i = 0; i < trampolineSize; ++i)
         trampoline[i] = trampolineSource[i];
 
+    smp_debug_hex("SMP: TRAMPOLINE BYTE0 HHDM=", trampoline[0]);
+    smp_debug_hex("SMP: TRAMPOLINE BYTE0 IDENTITY=", reinterpret_cast<volatile unsigned char*>(trampolinePhysical)[0]);
+
     /*
      * The startup vector is the physical page number divided by 4 KiB.
      * SIPI vectors are limited to 8 bits, hence the low-memory allocation.
