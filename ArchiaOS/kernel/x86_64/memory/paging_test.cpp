@@ -157,7 +157,33 @@ extern "C" void paging_run_tests()
     if (paging_translate(testPage) != testPage)
         fail("PAGING TEST FAIL: 4K TRANSLATION\n");
 
-    test_str("PAGING 4K RO/NX PASS\n");
+    test_str("PAGING 4K RO/NX BITS PASS\n");
+
+    /*
+     * Prove NX is enforced by the CPU, not merely encoded in the PTE.
+     * The page is writable/executable through the bootstrap identity map
+     * while we install a single RET instruction, then remapped RO+NX.
+     * Executing it must raise #PF with the recovery RIP below.
+     */
+    *reinterpret_cast<volatile unsigned char*>(testPage) = 0xC3;
+
+    const unsigned long long nxRecovery =
+        reinterpret_cast<unsigned long long>(&&nx_page_fault_recovered);
+
+    exception_expect_page_fault(nxRecovery);
+
+    asm volatile(
+        "call *%%rax"
+        :
+        : "a"(testPage)
+        : "memory");
+
+nx_page_fault_recovered:
+
+    if (exception_page_fault_test_active())
+        fail("PAGING TEST FAIL: NX DID NOT FIRE\n");
+
+    test_str("PAGING NX EXECUTION FAULT PASS\n");
 
     if (!paging_unmap_4k(testPage))
         fail("PAGING TEST FAIL: 4K UNMAP\n");
