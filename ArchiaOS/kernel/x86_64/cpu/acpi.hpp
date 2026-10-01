@@ -13,6 +13,10 @@ struct AcpiInfo
     unsigned int processor_apic_ids[MAX_PROCESSORS];
     unsigned int ioapic_count;
     unsigned int interrupt_override_count;
+    static constexpr unsigned int MAX_INTERRUPT_OVERRIDES = 16;
+    unsigned char interrupt_override_source[MAX_INTERRUPT_OVERRIDES];
+    unsigned int interrupt_override_gsi[MAX_INTERRUPT_OVERRIDES];
+    unsigned short interrupt_override_flags[MAX_INTERRUPT_OVERRIDES];
 };
 
 enum AcpiStatus
