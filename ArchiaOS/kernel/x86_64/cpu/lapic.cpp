@@ -372,7 +372,7 @@ extern "C" bool lapic_startup_cpu(
         return false;
     lapic_debug("LAPIC: INIT ASSERT SENT\\n");
 
-    for (unsigned int delay = 0; delay < 100000U; ++delay)
+    for (unsigned int delay = 0; delay < 1000U; ++delay)
         asm volatile("pause");
 
     lapic_debug("LAPIC: INIT DEASSERT\\n");
@@ -380,7 +380,7 @@ extern "C" bool lapic_startup_cpu(
         return false;
     lapic_debug("LAPIC: INIT DEASSERT SENT\\n");
 
-    for (unsigned int delay = 0; delay < 10000U; ++delay)
+    for (unsigned int delay = 0; delay < 1000U; ++delay)
         asm volatile("pause");
 
     lapic_debug("LAPIC: SIPI1\\n");
@@ -388,7 +388,7 @@ extern "C" bool lapic_startup_cpu(
         return false;
     lapic_debug("LAPIC: SIPI1 SENT\\n");
 
-    for (unsigned int delay = 0; delay < 20000U; ++delay)
+    for (unsigned int delay = 0; delay < 1000U; ++delay)
         asm volatile("pause");
 
     lapic_debug("LAPIC: SIPI2\\n");
