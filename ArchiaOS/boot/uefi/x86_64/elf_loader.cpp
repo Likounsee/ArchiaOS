@@ -283,8 +283,15 @@ EFI_STATUS load_kernel_elf(
         }
 
         EFI_PHYSICAL_ADDRESS address = ph[i].p_vaddr;
-        const EFI_MEMORY_TYPE memoryType =
-            (ph[i].p_flags & PF_X) ? EfiLoaderCode : EfiLoaderData;
+        /*
+         * The loader's UEFI memory type describes ownership/lifetime, not
+         * the final CPU page permissions. After ExitBootServices() the
+         * kernel's own page tables are authoritative. Keep every ELF
+         * segment in LoaderData so an executable segment is not advertised
+         * as firmware executable memory before the kernel establishes its
+         * final mappings.
+         */
+        const EFI_MEMORY_TYPE memoryType = EfiLoaderData;
 
         status = allocatePages(
             EFI_ALLOCATE_ADDRESS,
