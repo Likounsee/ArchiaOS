@@ -397,17 +397,21 @@ extern "C" bool lapic_startup_cpu(
     if (apic_id == lapic_current_id())
         return true;
 
+    /* Broadcast to all APs, excluding the BSP, which is the safest way to
+       recover APs left in an unknown firmware parking state after EBS. */
+    lapic_debug("LAPIC: BROADCAST INIT\\n");
+    if (!lapic_send_ipi(apic_id, (5ULL << 8) | (1ULL << 14), true))
+        return false;
+    lapic_startup_delay();
+
     lapic_debug("LAPIC: BROADCAST SIPI1\\n");
     if (!lapic_send_ipi(apic_id, (6ULL << 8) | startup_vector, true))
         return false;
-    lapic_debug("LAPIC: BROADCAST SIPI1 SENT\\n");
-
     lapic_startup_delay();
 
     lapic_debug("LAPIC: BROADCAST SIPI2\\n");
     if (!lapic_send_ipi(apic_id, (6ULL << 8) | startup_vector, true))
         return false;
-    lapic_debug("LAPIC: BROADCAST SIPI2 SENT\\n");
 
     return true;
 }
