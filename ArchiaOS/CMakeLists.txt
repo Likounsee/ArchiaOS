@@ -77,6 +77,8 @@ set(ARCHIAOS_KERNEL_PMM_TEST_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_pmm_test.obj)
 set(ARCHIAOS_KERNEL_CPUID_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_cpuid.obj)
 set(ARCHIAOS_KERNEL_CPU_REPORT_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_cpu_report.obj)
 set(ARCHIAOS_KERNEL_SECURITY_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_security.obj)
+set(ARCHIAOS_KERNEL_SMP_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_smp.obj)
+set(ARCHIAOS_KERNEL_SMP_TRAMPOLINE_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_smp_trampoline.obj)
 
 set(ARCHIAOS_KERNEL_ELF ${ARCHIAOS_BUILD}/ARCHIAOS_kernel.elf)
 
@@ -114,6 +116,7 @@ function(archiaos_kernel_compile output source)
             ${ARCHIAOS_CPU_DIR}/irq.hpp
             ${ARCHIAOS_CPU_DIR}/lapic.hpp
             ${ARCHIAOS_CPU_DIR}/acpi.hpp
+            ${ARCHIAOS_CPU_DIR}/smp.hpp
             ${ARCHIAOS_MEMORY_DIR}/paging.hpp
             ${ARCHIAOS_MEMORY_DIR}/pmm.hpp
     )
@@ -147,6 +150,8 @@ archiaos_kernel_compile(${ARCHIAOS_KERNEL_PMM_TEST_OBJ} ${ARCHIAOS_MEMORY_DIR}/t
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_CPUID_OBJ} ${ARCHIAOS_CPU_DIR}/cpuid.cpp)
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_CPU_REPORT_OBJ} ${ARCHIAOS_CPU_DIR}/cpu_report.cpp)
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_SECURITY_OBJ} ${ARCHIAOS_CPU_DIR}/security.cpp)
+archiaos_kernel_compile(${ARCHIAOS_KERNEL_SMP_OBJ} ${ARCHIAOS_CPU_DIR}/smp.cpp)
+archiaos_kernel_asm_compile(${ARCHIAOS_KERNEL_SMP_TRAMPOLINE_OBJ} ${ARCHIAOS_CPU_DIR}/smp_trampoline.S)
 
 add_custom_command(
     OUTPUT ${ARCHIAOS_KERNEL_ELF}
@@ -180,7 +185,8 @@ add_custom_command(
         ${ARCHIAOS_KERNEL_PMM_OBJ}
         ${ARCHIAOS_KERNEL_PMM_TEST_OBJ}
         ${ARCHIAOS_KERNEL_CPUID_OBJ} ${ARCHIAOS_KERNEL_CPU_REPORT_OBJ}
-        ${ARCHIAOS_KERNEL_SECURITY_OBJ}
+        ${ARCHIAOS_KERNEL_SECURITY_OBJ} ${ARCHIAOS_KERNEL_SMP_OBJ}
+        ${ARCHIAOS_KERNEL_SMP_TRAMPOLINE_OBJ}
         ${ARCHIAOS_KERNEL_DIR}/kernel.ld
 )
 
