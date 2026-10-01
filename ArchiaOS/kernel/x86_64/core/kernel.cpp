@@ -89,7 +89,7 @@ extern "C" void kernel_main(BootInfo* bootInfo)
 
     if (bootInfo->version == 0 ||
         bootInfo->version > NOVOS_BOOT_INFO_VERSION ||
-        bootInfo->size < sizeof(BootInfo)
+        bootInfo->size < sizeof(BootInfo))
     {
         debug_str("[KERNEL] BootInfo BAD VERSION/SIZE\n");
         halt();
