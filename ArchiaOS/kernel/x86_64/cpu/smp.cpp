@@ -9,10 +9,6 @@
 
 static constexpr uint64_t TRAMPOLINE_LIMIT = 0x100000ULL;
 static constexpr uint64_t TRAMPOLINE_MAILBOX_OFFSET = 0x200ULL;
-static constexpr uint64_t TRAMPOLINE_STACK_OFFSET = 0x210ULL;
-static constexpr uint64_t TRAMPOLINE_INDEX_OFFSET = 0x218ULL;
-static constexpr uint64_t TRAMPOLINE_APIC_ID_OFFSET = 0x21CULL;
-static constexpr uint64_t TRAMPOLINE_STARTED_OFFSET = 0x220ULL;
 
 extern "C" unsigned char smp_trampoline_start[];
 extern "C" unsigned char smp_trampoline_end[];
