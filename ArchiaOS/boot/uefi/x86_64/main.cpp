@@ -177,13 +177,10 @@ extern "C" EFI_STATUS EFIAPI efi_main(
         boot_halt();
     }
 
-    boot_debug("boot: ExitBootServices OK\r\n");
-    boot_debug("boot: handoff entry: ");
-    boot_debug_hex(kernel.entry);
-    boot_debug("\r\n");
-
     /*
-     * No UEFI Boot Service calls are allowed after this point.
+     * ExitBootServices() has succeeded. From this point onward the UEFI
+     * console and all other Boot Services are unavailable; do not call
+     * boot_debug or any EFI service before the kernel handoff.
      * handoff.S converts Microsoft x64 -> SysV AMD64 and jumps.
      */
     archiaos_x86_64_handoff(kernel.entry, bootInfo);
