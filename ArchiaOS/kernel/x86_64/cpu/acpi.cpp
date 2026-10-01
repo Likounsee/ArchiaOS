@@ -66,7 +66,12 @@ static bool checksum_ok(unsigned long long address, unsigned int length)
  */
 static bool address_is_mapped(unsigned long long address)
 {
-    return address != 0 && address < 0x100000000ULL;
+    /*
+     * Bootstrap paging identity-maps the first 64 GiB. ACPI tables are
+     * physical addresses supplied by firmware and are not guaranteed to
+     * live below 4 GiB, especially XSDT entries on modern systems.
+     */
+    return address != 0 && address < 0x1000000000ULL;
 }
 
 static unsigned long long find_rsdp_in_range(
