@@ -92,6 +92,7 @@ jobs:
               "PAGING CR3 ACTIVATION PASS" \
               "PAGING 4K RO/NX BITS PASS" \
               "PAGING NX EXECUTION FAULT PASS" \
+              "PAGING RO WRITE FAULT PASS" \
               "PAGING PAGE FAULT RECOVERY PASS" \
               "PAGING TEST PASS" \
               "CPU: INVALID OPCODE HANDLER OK" \
