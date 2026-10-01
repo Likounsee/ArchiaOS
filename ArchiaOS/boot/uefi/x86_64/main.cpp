@@ -229,9 +229,21 @@ extern "C" EFI_STATUS EFIAPI efi_main(
     status = allocate_pmm_bitmap(systemTable, &memoryMap, bootInfo);
     if (status != EFI_SUCCESS)
         boot_halt();
-    boot_debug("boot: PMM bitmap allocated\r\n");
+    boot_debug("boot: PMM bitmap allocated\\r\\n");
 
-    boot_debug("boot: calling ExitBootServices\r\n");
+    UINT64 bootPml4Physical = 0;
+    status = prepare_boot_paging(
+        systemTable,
+        &memoryMap,
+        &kernel,
+        bootInfo->framebuffer_base,
+        bootInfo->framebuffer_size,
+        &bootPml4Physical);
+    if (status != EFI_SUCCESS)
+        boot_halt();
+    boot_debug("boot: higher-half paging prepared\\r\\n");
+
+    boot_debug("boot: calling ExitBootServices\\r\\n");
 
     status = exit_boot_services(
         imageHandle, systemTable, &memoryMap, bootInfo);
