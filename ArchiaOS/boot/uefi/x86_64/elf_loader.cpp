@@ -310,7 +310,7 @@ EFI_STATUS load_kernel_elf(
     }
 
     const UINT64 loadedEntry = eh->e_entry;
-    const UINT64 loadedBase = lowest;
+    const UINT64 loadedBase = physicalBase;
     const UINT64 loadedSize = highest - lowest;
 
     freePool(image);
@@ -318,7 +318,8 @@ EFI_STATUS load_kernel_elf(
     outKernel->entry = loadedEntry;
     outKernel->base = loadedBase;
     outKernel->size = loadedSize;
+    outKernel->virtual_base = lowest;
 
-    boot_debug("elf: kernel loaded\r\n");
+    boot_debug("elf: kernel loaded at independent physical address\r\n");
     return EFI_SUCCESS;
 }
