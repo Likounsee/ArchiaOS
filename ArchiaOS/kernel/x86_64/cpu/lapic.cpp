@@ -365,7 +365,8 @@ static void lapic_startup_delay()
 
 static bool lapic_send_ipi(
     unsigned int apic_id,
-    unsigned long long command)
+    unsigned long long command,
+    bool broadcast = false)
 {
     if (x2apic_mode)
     {
@@ -380,8 +381,9 @@ static bool lapic_send_ipi(
      * interval on virtual LAPICs. Startup IPIs are serialized here by the
      * caller, so avoid spinning indefinitely on that advisory status bit.
      */
-    *lapic_register(0x310) = apic_id << 24;
-    *lapic_register(0x300) = static_cast<unsigned int>(command);
+    *lapic_register(0x310) = broadcast ? 0U : (apic_id << 24);
+    *lapic_register(0x300) = static_cast<unsigned int>(command) |
+        (broadcast ? (3U << 18) : 0U);
     return true;
 }
 
@@ -395,17 +397,17 @@ extern "C" bool lapic_startup_cpu(
     if (apic_id == lapic_current_id())
         return true;
 
-    lapic_debug("LAPIC: SIPI1\\n");
-    if (!lapic_send_ipi(apic_id, (6ULL << 8) | startup_vector))
+    lapic_debug("LAPIC: BROADCAST SIPI1\\n");
+    if (!lapic_send_ipi(apic_id, (6ULL << 8) | startup_vector, true))
         return false;
-    lapic_debug("LAPIC: SIPI1 SENT\\n");
+    lapic_debug("LAPIC: BROADCAST SIPI1 SENT\\n");
 
     lapic_startup_delay();
 
-    lapic_debug("LAPIC: SIPI2\\n");
-    if (!lapic_send_ipi(apic_id, (6ULL << 8) | startup_vector))
+    lapic_debug("LAPIC: BROADCAST SIPI2\\n");
+    if (!lapic_send_ipi(apic_id, (6ULL << 8) | startup_vector, true))
         return false;
-    lapic_debug("LAPIC: SIPI2 SENT\\n");
+    lapic_debug("LAPIC: BROADCAST SIPI2 SENT\\n");
 
     return true;
 }
