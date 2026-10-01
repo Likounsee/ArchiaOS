@@ -1,6 +1,6 @@
 #include "paging.hpp"
-#include "../../cpu/idt.hpp"
-#include "../../cpu/features.hpp"
+#include "idt.hpp"
+#include "features.hpp"
 
 static inline void test_char(char c)
 {
