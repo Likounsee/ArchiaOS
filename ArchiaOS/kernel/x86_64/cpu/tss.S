@@ -41,7 +41,9 @@ tss64:
 .type tss_initialize, @function
 tss_initialize:
     xor %edi, %edi
-    jmp tss_initialize_cpu
+    call tss_initialize_cpu
+    xor %edi, %edi
+    jmp tss_load_cpu
 
 .type tss_initialize_cpu, @function
 tss_initialize_cpu:
