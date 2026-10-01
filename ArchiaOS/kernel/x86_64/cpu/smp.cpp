@@ -58,7 +58,8 @@ static void smp_debug_hex(const char* label, uint64_t value)
 
 extern "C" void smp_ap_entry(
     unsigned int processorIndex,
-    unsigned int apicId)
+    unsigned int apicId,
+    unsigned long long mailboxPhysical)
 {
     irq_disable();
     smp_debug("SMP: AP C++ ENTRY\n");
