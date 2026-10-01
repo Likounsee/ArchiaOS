@@ -38,6 +38,7 @@ static constexpr UINT8 ELFDATA2LSB = 1;
 static constexpr UINT32 PT_LOAD = 1;
 static constexpr UINT32 PF_X = 1;
 static constexpr UINT64 PAGE = 4096;
+using EFI_FREE_PAGES = EFI_STATUS(EFIAPI*)(EFI_PHYSICAL_ADDRESS, UINTN);
 
 static bool add_overflow(UINT64 a, UINT64 b, UINT64* out)
 {
@@ -90,12 +91,20 @@ static EFI_STATUS read_all(
 
     status = setPosition(file, 0);
     if (status != EFI_SUCCESS)
+    {
+        auto freePool = reinterpret_cast<EFI_FREE_POOL>(st->BootServices->FreePool);
+        freePool(buffer);
         return status;
+    }
 
     UINTN size = static_cast<UINTN>(fileSize64);
     status = file->Read(file, &size, buffer);
     if (status != EFI_SUCCESS || size != fileSize64)
-        return EFI_INVALID_PARAMETER;
+    {
+        auto freePool = reinterpret_cast<EFI_FREE_POOL>(st->BootServices->FreePool);
+        freePool(buffer);
+        return status != EFI_SUCCESS ? status : EFI_INVALID_PARAMETER;
+    }
 
     *outBuffer = reinterpret_cast<UINT8*>(buffer);
     *outSize = size;
@@ -217,6 +226,24 @@ EFI_STATUS load_kernel_elf(
     auto allocatePages =
         reinterpret_cast<EFI_ALLOCATE_PAGES>(
             st->BootServices->AllocatePages);
+    auto freePages =
+        reinterpret_cast<EFI_FREE_PAGES>(
+            st->BootServices->FreePages);
+
+    auto rollback_segments = [&](UINT16 count)
+    {
+        for (UINT16 j = 0; j < count; ++j)
+        {
+            if (ph[j].p_type != PT_LOAD)
+                continue;
+
+            UINT64 segmentEnd = ph[j].p_vaddr + ph[j].p_memsz;
+            UINT64 last = (segmentEnd + PAGE - 1) & ~(PAGE - 1);
+            UINT64 pages = (last - ph[j].p_vaddr) / PAGE;
+            if (pages != 0)
+                freePages(ph[j].p_vaddr, static_cast<UINTN>(pages));
+        }
+    };
 
     for (UINT16 i = 0; i < eh->e_phnum; ++i)
     {
@@ -251,8 +278,11 @@ EFI_STATUS load_kernel_elf(
 
         if (status != EFI_SUCCESS || address != ph[i].p_vaddr)
         {
+            if (status == EFI_SUCCESS && address != ph[i].p_vaddr)
+                freePages(address, static_cast<UINTN>(pages));
+            rollback_segments(i);
             freePool(image);
-            return status;
+            return status != EFI_SUCCESS ? status : EFI_INVALID_PARAMETER;
         }
 
         UINT8* destination = reinterpret_cast<UINT8*>(address);
