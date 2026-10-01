@@ -10,6 +10,7 @@
 #include "../cpu/security.hpp"
 #include "../cpu/smp.hpp"
 #include "../cpu/ioapic.hpp"
+#include "../cpu/lapic.hpp"
 
 using UINT32 = unsigned int;
 using UINT64 = unsigned long long;
