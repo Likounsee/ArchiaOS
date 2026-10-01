@@ -1,4 +1,5 @@
 name: ArchiaOS build
+# Temporary audit validation branch: exercise the full UEFI/QEMU matrix.
 
 on:
   push:
