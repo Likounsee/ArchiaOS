@@ -121,11 +121,14 @@ smp_trampoline_pmode:
     movw $0xE9, %dx
     outb %al, %dx
 
-    /* FF /5 with a 32-bit displacement: far jump through m16:32
-       at trampoline_base + smp_trampoline_lmode_ptr. */
+    movb $0x4A, %al
+    movw $0xE9, %dx
+    outb %al, %dx
+
+    .byte 0x66
     .byte 0xFF
-    .byte 0xAB
-    .long (smp_trampoline_lmode_ptr - smp_trampoline_start)
+    .byte 0x2E
+    .word (smp_trampoline_lmode_ptr - smp_trampoline_start)
 
 .code64
 smp_trampoline_lmode:
