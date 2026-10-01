@@ -1,5 +1,6 @@
 #include "lapic.hpp"
 #include "../memory/paging.hpp"
+#include "features.hpp"
 
 static constexpr unsigned int IA32_APIC_BASE_MSR = 0x1B;
 static constexpr unsigned long long APIC_BASE_MASK = 0xFFFFFFFFFFFFF000ULL;
@@ -105,13 +106,17 @@ static inline void lapic_write(unsigned int xapicOffset, unsigned int x2apicMsr,
 
 extern "C" bool lapic_initialize()
 {
-    if ((cpuid_edx(1) & (1U << 9)) == 0)
+    const CpuInfo* cpu = cpu_get_info();
+    if (cpu == nullptr || cpu->max_basic_leaf < 1)
+        return false;
+
+    if (!cpu->features.x2apic &&
+        (cpuid_edx(1) & (1U << 9)) == 0)
         return false;
 
     unsigned long long apic_base = rdmsr(IA32_APIC_BASE_MSR);
 
-    const bool x2apic_supported =
-        (cpuid_ecx(1) & (1U << 21)) != 0;
+    const bool x2apic_supported = cpu->features.x2apic;
 
     if ((apic_base & APIC_ENABLE) == 0)
     {
