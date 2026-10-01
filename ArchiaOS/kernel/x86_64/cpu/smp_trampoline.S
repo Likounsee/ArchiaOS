@@ -16,3 +16,4 @@ smp_trampoline_halt:
 
 smp_trampoline_end:
 .size smp_trampoline_start, smp_trampoline_end-smp_trampoline_start
+
