@@ -5,4 +5,5 @@
 
 extern "C" [[noreturn]] void archiaos_x86_64_handoff(
     UINT64 kernelEntry,
-    BootInfo* bootInfo);
+    BootInfo* bootInfo,
+    UINT64 bootPml4Physical);
