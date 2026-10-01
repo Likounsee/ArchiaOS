@@ -150,6 +150,20 @@ extern "C" void exception_dispatch(ExceptionFrame* frame)
             asm volatile ("cli; hlt");
     }
 
+    if (frame->vector == 2)
+    {
+        debug_str("[EXC] Non-maskable interrupt received; halting safely\\n");
+        for (;;)
+            asm volatile ("cli; hlt");
+    }
+
+    if (frame->vector == 18)
+    {
+        debug_str("[EXC] Machine-check exception received; halting safely\\n");
+        for (;;)
+            asm volatile ("cli; hlt");
+    }
+
     if (frame->vector == 8)
     {
         unsigned long long frame_address =
