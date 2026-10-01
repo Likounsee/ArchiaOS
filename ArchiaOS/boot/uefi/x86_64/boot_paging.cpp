@@ -84,10 +84,103 @@ static bool add_overflow(UINT64 a, UINT64 b, UINT64* out)
     return false;
 }
 
+static EFI_STATUS map_special_identity(
+    EFI_SYSTEM_TABLE* st,
+    UINT64* identityPdpt,
+    UINT64 physicalAddress,
+    UINT64 size)
+{
+    if (size == 0)
+        return EFI_SUCCESS;
+
+    UINT64 end;
+    if (add_overflow(physicalAddress, size, &end))
+        return EFI_INVALID_PARAMETER;
+
+    const UINT64 first = physicalAddress & ~(PAGE_SIZE - 1);
+    const UINT64 last = (end + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+
+    for (UINT64 page = first; page < last; page += PAGE_SIZE)
+    {
+        const UINT64 pdptIndex = (page >> 30) & 0x1FFULL;
+        const UINT64 pdIndex = (page >> 21) & 0x1FFULL;
+        const UINT64 ptIndex = (page >> 12) & 0x1FFULL;
+
+        EFI_PHYSICAL_ADDRESS pdPhysical = 0;
+        UINT64 pdptEntry = identityPdpt[pdptIndex];
+
+        if ((pdptEntry & PRESENT) == 0)
+        {
+            EFI_STATUS status = alloc_page(st, &pdPhysical);
+            if (status != EFI_SUCCESS)
+                return status;
+
+            identityPdpt[pdptIndex] =
+                pdPhysical | PRESENT | WRITE;
+        }
+        else
+        {
+            pdPhysical =
+                static_cast<EFI_PHYSICAL_ADDRESS>(
+                    pdptEntry & ~0xFFFULL);
+        }
+
+        auto* pd = reinterpret_cast<UINT64*>(pdPhysical);
+        UINT64 pde = pd[pdIndex];
+
+        if ((pde & PRESENT) != 0 && (pde & HUGE) != 0)
+        {
+            EFI_PHYSICAL_ADDRESS ptPhysical = 0;
+            EFI_STATUS status = alloc_page(st, &ptPhysical);
+            if (status != EFI_SUCCESS)
+                return status;
+
+            auto* pt = reinterpret_cast<UINT64*>(ptPhysical);
+            const UINT64 oldBase =
+                pde & 0x000FFFFFFFE00000ULL;
+            const UINT64 oldFlags =
+                pde & (PRESENT | WRITE);
+
+            for (UINT64 i = 0; i < 512; ++i)
+                pt[i] = oldBase + i * PAGE_SIZE | oldFlags;
+
+            pd[pdIndex] =
+                ptPhysical | PRESENT | WRITE;
+            pde = pd[pdIndex];
+        }
+
+        if ((pde & PRESENT) == 0)
+        {
+            EFI_PHYSICAL_ADDRESS ptPhysical = 0;
+            EFI_STATUS status = alloc_page(st, &ptPhysical);
+            if (status != EFI_SUCCESS)
+                return status;
+
+            pd[pdIndex] =
+                ptPhysical | PRESENT | WRITE;
+            pde = pd[pdIndex];
+        }
+
+        auto* pt = reinterpret_cast<UINT64*>(
+            static_cast<EFI_PHYSICAL_ADDRESS>(pde & ~0xFFFULL));
+
+        /*
+         * Temporary MMIO identity mappings are uncached. The kernel replaces
+         * these mappings after its own paging hierarchy is active.
+         */
+        pt[ptIndex] =
+            page | PRESENT | WRITE | (1ULL << 4);
+    }
+
+    return EFI_SUCCESS;
+}
+
 EFI_STATUS prepare_boot_paging(
     EFI_SYSTEM_TABLE* st,
     const FinalMemoryMap* memoryMap,
     const LoadedKernel* kernel,
+    UINT64 framebufferBase,
+    UINT64 framebufferSize,
     UINT64* outPml4Physical)
 {
     if (!st || !st->BootServices || !memoryMap || !kernel ||
@@ -246,6 +339,30 @@ EFI_STATUS prepare_boot_paging(
 
         mapped += PAGE_SIZE;
     }
+
+    status = map_special_identity(
+        st,
+        identityPdpt,
+        0xFEC00000ULL,
+        0x1000ULL);
+    if (status != EFI_SUCCESS)
+        return status;
+
+    status = map_special_identity(
+        st,
+        identityPdpt,
+        0xFEE00000ULL,
+        0x1000ULL);
+    if (status != EFI_SUCCESS)
+        return status;
+
+    status = map_special_identity(
+        st,
+        identityPdpt,
+        framebufferBase,
+        framebufferSize);
+    if (status != EFI_SUCCESS)
+        return status;
 
     *outPml4Physical = pml4Physical;
     return EFI_SUCCESS;
