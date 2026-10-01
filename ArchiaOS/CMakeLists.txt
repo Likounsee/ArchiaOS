@@ -11,20 +11,17 @@ set(ARCHIAOS_LLD_LINK "" CACHE FILEPATH "LLD PE/COFF linker")
 if(NOT ARCHIAOS_CLANG)
     find_program(ARCHIAOS_CLANG
         NAMES clang++.exe clang++ clang++-18 clang++-19 clang++-17
-        PATHS /usr/bin /usr/local/bin
-        NO_DEFAULT_PATH)
+        PATHS /usr/bin /usr/local/bin)
 endif()
 if(NOT ARCHIAOS_LLD)
     find_program(ARCHIAOS_LLD
         NAMES ld.lld.exe ld.lld ld.lld-18 ld.lld-19 ld.lld-17
-        PATHS /usr/bin /usr/local/bin
-        NO_DEFAULT_PATH)
+        PATHS /usr/bin /usr/local/bin)
 endif()
 if(NOT ARCHIAOS_LLD_LINK)
     find_program(ARCHIAOS_LLD_LINK
         NAMES lld-link.exe lld-link lld-link-18 lld-link-19 lld-link-17
-        PATHS /usr/bin /usr/local/bin
-        NO_DEFAULT_PATH)
+        PATHS /usr/bin /usr/local/bin)
 endif()
 
 if(NOT ARCHIAOS_CLANG AND EXISTS "C:/Program Files/LLVM/bin/clang++.exe")
@@ -98,7 +95,7 @@ function(archiaos_kernel_compile output source)
     add_custom_command(
         OUTPUT ${output}
         COMMAND "${ARCHIAOS_CLANG}" -target x86_64-pc-none-elf
-            -std=c++20 -ffreestanding -O2 -fno-exceptions -fno-rtti
+            -std=c++20 -ffreestanding -O2 -Wall -Wextra -Werror -fno-exceptions -fno-rtti
             -fno-stack-protector -fno-pie -fno-asynchronous-unwind-tables
             -fno-threadsafe-statics -mgeneral-regs-only
             -mno-red-zone -mno-sse -mno-sse2
