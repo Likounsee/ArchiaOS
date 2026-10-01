@@ -9,7 +9,8 @@ PHDRS
 
 SECTIONS
 {
-    /* Final kernel VMA; the UEFI loader may place the image anywhere physically. */\n    . = 0xFFFFFFFF80100000;
+    /* Final kernel VMA; the UEFI loader may place the image anywhere physically. */
+    . = 0xFFFFFFFF80100000;
 
     .text : ALIGN(4096)
     {
