@@ -14,9 +14,6 @@
 
 .code16
 smp_trampoline_start:
-    movb $0x41, %al
-    movw $0xE9, %dx
-    outb %al, %dx
     cli
     cld
 
@@ -54,34 +51,19 @@ smp_trampoline_start:
 
 .code32
 smp_trampoline_pmode:
-    movb $0x43, %al
-    movw $0xE9, %dx
-    outb %al, %dx
 
     movw $0x10, %ax
     movw %ax, %ds
     movw %ax, %es
     movw %ax, %ss
 
-    movb $0x45, %al
-    movw $0xE9, %dx
-    outb %al, %dx
-
     movl SMP_MAILBOX_CR4(%ebx), %eax
     orl $(1 << 5), %eax
     andl $~(1 << 17), %eax
     movl %eax, %cr4
 
-    movb $0x46, %al
-    movw $0xE9, %dx
-    outb %al, %dx
-
     movl SMP_MAILBOX_CR3(%ebx), %eax
     movl %eax, %cr3
-
-    movb $0x47, %al
-    movw $0xE9, %dx
-    outb %al, %dx
 
     movl SMP_MAILBOX_EFER(%ebx), %ecx
     movl %ecx, %eax
@@ -89,18 +71,10 @@ smp_trampoline_pmode:
     movl $0xC0000080, %ecx
     wrmsr
 
-    movb $0x48, %al
-    movw $0xE9, %dx
-    outb %al, %dx
-
     movl SMP_MAILBOX_CR0(%ebx), %eax
     orl $((1 << 0) | (1 << 31)), %eax
     andl $~((1 << 29) | (1 << 30)), %eax
     movl %eax, %cr0
-
-    movb $0x49, %al
-    movw $0xE9, %dx
-    outb %al, %dx
 
     /* Build a protected-mode 16:32 far pointer to long-mode code. */
     movl %ebx, %edi
@@ -110,13 +84,6 @@ smp_trampoline_pmode:
     movl %eax, 0(%edi)
     movw $0x0018, 4(%edi)
 
-    movb $0x44, %al
-    movw $0xE9, %dx
-    outb %al, %dx
-
-    movb $0x4A, %al
-    movw $0xE9, %dx
-    outb %al, %dx
 
     /* Build the far pointer on a known identity-mapped trampoline stack.
        This avoids any ambiguity in ModRM/address-size encoding. */
@@ -135,9 +102,6 @@ smp_trampoline_pmode:
 
 .code64
 smp_trampoline_lmode:
-    movb $0x42, %al
-    movw $0xE9, %dx
-    outb %al, %dx
 
     movw $0x20, %ax
     movw %ax, %ds
