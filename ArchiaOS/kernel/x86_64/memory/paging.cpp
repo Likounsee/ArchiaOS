@@ -1,8 +1,8 @@
 #include "paging.hpp"
 #include "../cpu/features.hpp"
 
-static constexpr u64 NOVOS_PAGE_TABLE_COUNT = 64;
-static constexpr u64 NOVOS_IDENTITY_MAP_SIZE = 0x1000000000ULL; /* 64 GiB */
+static constexpr u64 NOVOS_PAGE_TABLE_COUNT = 256;
+static constexpr u64 NOVOS_IDENTITY_MAP_SIZE = NOVOS_PMM_MAX_PHYSICAL_ADDRESS;
 static constexpr u64 NOVOS_2M_PAGE_SIZE = 0x200000ULL;
 static constexpr u64 NOVOS_PDPT_COVERAGE = 0x40000000ULL; /* 1 GiB */
 
@@ -59,6 +59,11 @@ static inline u64 page_entry_flags(PagingFlags flags)
 {
     u64 value = NOVOS_PAGE_PRESENT;
 
+    if (flags.write_through)
+        value |= 1ULL << 3;
+    if (flags.cache_disable)
+        value |= 1ULL << 4;
+
     if (flags.writable)
         value |= NOVOS_PAGE_WRITE;
 
@@ -86,11 +91,13 @@ static bool split_2m_pde(u64* pde)
         return true;
 
     const u64 oldEntry = *pde;
-    const u64 oldBase = oldEntry & ~0x1FFFFFULL;
+    const u64 oldBase = oldEntry & 0x000FFFFFFFE00000ULL;
     const u64 permissionFlags =
         oldEntry & (NOVOS_PAGE_PRESENT |
                     NOVOS_PAGE_WRITE |
                     NOVOS_PAGE_USER |
+                    (1ULL << 3) |
+                    (1ULL << 4) |
                     NOVOS_PAGE_NO_EXECUTE);
     const u64 ptPhysical = pmm_alloc_page();
 
@@ -119,6 +126,10 @@ static u64* find_4k_entry(u64 virtualAddress)
 {
     if (pml4 == nullptr)
         return nullptr;
+
+    if ((virtualAddress >> 48) != 0 &&
+        (virtualAddress >> 48) != 0xFFFFULL)
+        return 0;
 
     const u64 pml4e =
         pml4[(virtualAddress >> 39) & 0x1FF];
@@ -246,6 +257,10 @@ extern "C" u64 paging_translate(u64 virtualAddress)
     if ((pdpte & NOVOS_PAGE_PRESENT) == 0)
         return 0;
 
+    if (pdpte & NOVOS_PAGE_HUGE)
+        return (pdpte & 0x000FFFFFC0000000ULL) |
+               (virtualAddress & 0x3FFFFFFFULL);
+
     auto* table2 =
         table_pointer(pdpte & ~0xFFFULL);
 
@@ -256,7 +271,7 @@ extern "C" u64 paging_translate(u64 virtualAddress)
         return 0;
 
     if (pde & NOVOS_PAGE_HUGE)
-        return (pde & ~0x1FFFFFULL) |
+        return (pde & 0x000FFFFFFFE00000ULL) |
                (virtualAddress & 0x1FFFFFULL);
 
     auto* table1 =
@@ -288,6 +303,7 @@ extern "C" bool paging_map_4k(
     PagingFlags flags)
 {
     if ((virtualAddress & (NOVOS_PAGE_SIZE - 1ULL)) != 0 ||
+        (virtualAddress >> 48) != 0 && (virtualAddress >> 48) != 0xFFFFULL ||
         (physicalAddress & (NOVOS_PAGE_SIZE - 1ULL)) != 0 ||
         physicalAddress >= NOVOS_PMM_MAX_PHYSICAL_ADDRESS)
         return false;
@@ -308,7 +324,8 @@ extern "C" bool paging_map_4k(
 
 extern "C" bool paging_unmap_4k(u64 virtualAddress)
 {
-    if ((virtualAddress & (NOVOS_PAGE_SIZE - 1ULL)) != 0)
+    if ((virtualAddress & (NOVOS_PAGE_SIZE - 1ULL)) != 0 ||
+        ((virtualAddress >> 48) != 0 && (virtualAddress >> 48) != 0xFFFFULL))
         return false;
 
     u64* entry = find_4k_entry(virtualAddress);
