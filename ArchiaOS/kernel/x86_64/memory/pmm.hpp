@@ -7,7 +7,7 @@ using u64 = uint64_t;
 using u32 = uint32_t;
 
 constexpr u64 NOVOS_PAGE_SIZE = 0x1000ULL;
-constexpr u64 NOVOS_PMM_MAX_PHYSICAL_ADDRESS = 0x4000000000ULL; /* 256 GiB */
+constexpr u64 NOVOS_PMM_MAX_PHYSICAL_ADDRESS = 0x8000000000ULL; /* 512 GiB */
 constexpr u64 NOVOS_PMM_MAX_FRAMES =
     NOVOS_PMM_MAX_PHYSICAL_ADDRESS / NOVOS_PAGE_SIZE;
 extern "C" void pmm_initialize(BootInfo* bootInfo);
