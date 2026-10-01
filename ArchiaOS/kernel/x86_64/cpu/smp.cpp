@@ -43,6 +43,18 @@ static inline void smp_debug(const char* s)
         asm volatile("outb %0,%1" : : "a"(s[i]), "Nd"(static_cast<unsigned short>(0xE9)));
 }
 
+static void smp_debug_hex(const char* label, uint64_t value)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    smp_debug(label);
+    for (int shift = 60; shift >= 0; shift -= 4)
+    {
+        const char ch = digits[(value >> shift) & 0xFULL];
+        asm volatile("outb %0,%1" : : "a"(ch), "Nd"(static_cast<unsigned short>(0xE9)));
+    }
+    smp_debug("\n");
+}
+
 extern "C" void smp_ap_entry(
     unsigned int processorIndex,
     unsigned int apicId,
