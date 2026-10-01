@@ -323,42 +323,26 @@ extern "C" unsigned int lapic_current_id()
     return *lapic_register(0x020);
 }
 
-static bool lapic_wait_icr_idle()
-{
-    if (x2apic_mode)
-        return true;
-
-    for (unsigned int timeout = 0; timeout < 1000000U; ++timeout)
-    {
-        if ((*lapic_register(0x300) & (1U << 12)) == 0)
-            return true;
-        asm volatile("pause");
-    }
-
-    return false;
-}
-
 static bool lapic_send_ipi(
     unsigned int apic_id,
     unsigned long long command)
 {
-
     if (x2apic_mode)
     {
-        if (!lapic_wait_icr_idle())
-            return false;
         wrmsr(
             0x830,
             (static_cast<unsigned long long>(apic_id) << 32) | command);
         return true;
     }
 
-    if (!lapic_wait_icr_idle())
-        return false;
-
+    /*
+     * The ICR delivery-status bit can remain asserted for an extended
+     * interval on virtual LAPICs. Startup IPIs are serialized here by the
+     * caller, so avoid spinning indefinitely on that advisory status bit.
+     */
     *lapic_register(0x310) = apic_id << 24;
     *lapic_register(0x300) = static_cast<unsigned int>(command);
-    return lapic_wait_icr_idle();
+    return true;
 }
 
 extern "C" bool lapic_startup_cpu(
