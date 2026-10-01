@@ -12,8 +12,7 @@ extern "C" void* memset(void* destination, int value, unsigned long long size)
 extern "C" void* memcpy(void* destination, const void* source, unsigned long long size)
 {
     unsigned char* dst = reinterpret_cast<unsigned char*>(destination);
-    const unsigned char* src =
-        reinterpret_cast<const unsigned char*>(source);
+    const unsigned char* src = reinterpret_cast<const unsigned char*>(source);
 
     for (unsigned long long i = 0; i < size; ++i)
         dst[i] = src[i];
@@ -24,8 +23,7 @@ extern "C" void* memcpy(void* destination, const void* source, unsigned long lon
 extern "C" void* memmove(void* destination, const void* source, unsigned long long size)
 {
     unsigned char* dst = reinterpret_cast<unsigned char*>(destination);
-    const unsigned char* src =
-        reinterpret_cast<const unsigned char*>(source);
+    const unsigned char* src = reinterpret_cast<const unsigned char*>(source);
 
     if (dst == src || size == 0)
         return destination;
