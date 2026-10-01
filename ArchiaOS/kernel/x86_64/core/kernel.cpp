@@ -8,6 +8,7 @@
 #include "../memory/paging.hpp"
 #include "../cpu/features.hpp"
 #include "../cpu/security.hpp"
+#include "../cpu/smp.hpp"
 
 using UINT32 = unsigned int;
 using UINT64 = unsigned long long;
@@ -268,6 +269,14 @@ extern "C" void kernel_main(BootInfo* bootInfo)
 
     debug_str("ACPI: RSDP/MADT OK\n");
     debug_str("ACPI: CPU/IOAPIC tables parsed\n");
+
+    debug_str("SMP: starting application processors\n");
+    if (!smp_initialize(acpi))
+    {
+        debug_str("[KERNEL] SMP INIT FAILED\\n");
+        halt();
+    }
+    debug_str("SMP: APPLICATION PROCESSORS ONLINE\n");
 
     if (bootInfo->framebuffer_base)
     {
