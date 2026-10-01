@@ -228,11 +228,11 @@ extern "C" void paging_run_tests()
 
     test_str("PAGING 4K RO/NX BITS PASS\n");
 
-    const cachePage = pmm_alloc_page();
+    const u64 cachePage = pmm_alloc_page();
     if (cachePage == 0)
         fail("PAGING TEST FAIL: CACHE ALLOCATION\n");
 
-    const uncachedFlags{
+    const PagingFlags uncachedFlags{
         false,
         false,
         false,
