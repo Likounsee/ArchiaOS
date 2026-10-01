@@ -23,7 +23,7 @@ smp_trampoline_start:
     movw %ax, %es
     movw %ax, %ss
 
-    xorw %bx, %bx
+    xorl %ebx, %ebx
     movw %cs, %bx
     shll $4, %ebx
 
