@@ -266,42 +266,27 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     debug_str("ACPI: RSDP/MADT OK\n");
     debug_str("ACPI: CPU/IOAPIC tables parsed\n");
 
-    volatile UINT32* fb =
-        reinterpret_cast<volatile UINT32*>(bootInfo->framebuffer_base);
+    if (bootInfo->framebuffer_base)
+    {
+        /* Framebuffer is MMIO/video memory: use UC page mappings. */
+        const UINT64 first = bootInfo->framebuffer_base & ~(NOVOS_PAGE_SIZE - 1ULL);
+        const UINT64 end = bootInfo->framebuffer_base + bootInfo->framebuffer_size;
+        for (UINT64 page = first; page < end; page += NOVOS_PAGE_SIZE)
+        {
+            if (!paging_map_4k(page, page, PagingFlags{true, false, true, true, false}))
+            {
+                debug_str("[KERNEL] FRAMEBUFFER MMIO MAP FAILED\\n");
+                halt();
+            }
+        }
 
-    const UINT32 pitchPixels =
-        bootInfo->framebuffer_pitch / 4;
-
-    const UINT32 background =
-        bootInfo->framebuffer_pixel_format == 0
-            ? 0x00101820U
-            : 0x00201810U;
-
-    fill_rect(
-        fb,
-        pitchPixels,
-        bootInfo->framebuffer_width,
-        bootInfo->framebuffer_height,
-        0, 0,
-        bootInfo->framebuffer_width,
-        bootInfo->framebuffer_height,
-        background);
-
-    fill_rect(
-        fb,
-        pitchPixels,
-        bootInfo->framebuffer_width,
-        bootInfo->framebuffer_height,
-        48, 48, 640, 96,
-        0x00FFFFFFU);
-
-    fill_rect(
-        fb,
-        pitchPixels,
-        bootInfo->framebuffer_width,
-        bootInfo->framebuffer_height,
-        60, 60, 616, 72,
-        background);
+        volatile UINT32* fb = reinterpret_cast<volatile UINT32*>(bootInfo->framebuffer_base);
+        const UINT32 pitchPixels = bootInfo->framebuffer_pitch / 4;
+        const UINT32 background = bootInfo->framebuffer_pixel_format == 0 ? 0x00101820U : 0x00201810U;
+        fill_rect(fb, pitchPixels, bootInfo->framebuffer_width, bootInfo->framebuffer_height, 0, 0, bootInfo->framebuffer_width, bootInfo->framebuffer_height, background);
+        fill_rect(fb, pitchPixels, bootInfo->framebuffer_width, bootInfo->framebuffer_height, 48, 48, 640, 96, 0x00FFFFFFU);
+        fill_rect(fb, pitchPixels, bootInfo->framebuffer_width, bootInfo->framebuffer_height, 60, 60, 616, 72, background);
+    }
 
     halt();
 }
