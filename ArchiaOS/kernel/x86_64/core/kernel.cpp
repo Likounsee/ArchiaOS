@@ -256,6 +256,14 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     }
     debug_str("IRQ: DISPATCH CHAIN OK\n");
 
+    debug_str("SCHEDULER: initializing\n");
+    if (!scheduler_initialize(1) || !scheduler_run_test())
+    {
+        debug_str("[KERNEL] SCHEDULER TEST FAILED\n");
+        halt();
+    }
+    debug_str("SCHEDULER: ROUND-ROBIN TEST OK\n");
+
     debug_str("ACPI: parsing RSDP/MADT\n");
     if (!acpi_initialize(bootInfo->acpi_rsdp_address))
     {
