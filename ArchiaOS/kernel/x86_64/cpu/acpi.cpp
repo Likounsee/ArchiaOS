@@ -66,12 +66,18 @@ static bool checksum_ok(unsigned long long address, unsigned int length)
  */
 static bool address_is_mapped(unsigned long long address)
 {
-    /*
-     * Bootstrap paging identity-maps the first 64 GiB. ACPI tables are
-     * physical addresses supplied by firmware and are not guaranteed to
-     * live below 4 GiB, especially XSDT entries on modern systems.
-     */
     return address != 0 && address < 0x1000000000ULL;
+}
+
+static bool range_is_mapped(
+    unsigned long long address,
+    unsigned long long length)
+{
+    if (length == 0 || !address_is_mapped(address))
+        return false;
+
+    const unsigned long long limit = 0x1000000000ULL;
+    return length <= limit - address;
 }
 
 static unsigned long long find_rsdp_in_range(
@@ -131,7 +137,7 @@ static unsigned long long find_madt(
     unsigned long long root_address,
     bool xsdt)
 {
-    if (!address_is_mapped(root_address))
+    if (!range_is_mapped(root_address, 36))
         return 0;
 
     if (!signature4(root_address, xsdt ? "XSDT" : "RSDT"))
@@ -139,13 +145,16 @@ static unsigned long long find_madt(
 
     unsigned int length = read32(root_address + 4);
 
-    if (length < 36 || length > 0x100000)
+    if (length < 36 || length > 0x100000 ||
+        !range_is_mapped(root_address, length))
         return 0;
 
     if (!checksum_ok(root_address, length))
         return 0;
 
     unsigned int entry_size = xsdt ? 8 : 4;
+    if ((length - 36) % entry_size != 0)
+        return 0;
     unsigned int entries = (length - 36) / entry_size;
 
     for (unsigned int i = 0; i < entries; ++i)
@@ -172,7 +181,7 @@ static unsigned long long find_madt(
 
 static bool parse_madt(unsigned long long madt)
 {
-    if (!address_is_mapped(madt))
+    if (!range_is_mapped(madt, 36))
         return false;
 
     if (!signature4(madt, "APIC"))
@@ -180,7 +189,8 @@ static bool parse_madt(unsigned long long madt)
 
     unsigned int length = read32(madt + 4);
 
-    if (length < 44 || length > 0x100000)
+    if (length < 44 || length > 0x100000 ||
+        !range_is_mapped(madt, length))
         return false;
 
     if (!checksum_ok(madt, length))
@@ -333,10 +343,17 @@ extern "C" bool acpi_initialize(unsigned long long rsdp_address)
     /*
      * Validate the selected root table before looking for MADT.
      */
+    if (!range_is_mapped(root_address, 36))
+    {
+        acpi_status = ACPI_STATUS_ROOT_INVALID;
+        return false;
+    }
+
     unsigned int root_length = read32(root_address + 4);
 
     if (root_length < 36 ||
         root_length > 0x100000 ||
+        !range_is_mapped(root_address, root_length) ||
         !checksum_ok(root_address, root_length))
     {
         acpi_status = ACPI_STATUS_ROOT_INVALID;
