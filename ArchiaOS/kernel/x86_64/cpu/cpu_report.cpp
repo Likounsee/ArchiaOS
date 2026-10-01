@@ -70,7 +70,7 @@ extern "C" void cpu_print_report()
 
     debug_str("CPU: physical address bits: ");
     debug_hex(c->physical_address_bits);
-    debug_char('\\n');
+    debug_char('\n');
 
     debug_str("CPU: topology logical: ");
     debug_hex(c->topology.logical_processors);
