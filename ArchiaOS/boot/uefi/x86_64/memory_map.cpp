@@ -81,6 +81,46 @@ static EFI_STATUS capture_final_memory_map(
         &descriptorSize,
         &descriptorVersion);
 
+    if (status == EFI_BUFFER_TOO_SMALL)
+    {
+        auto allocatePool =
+            reinterpret_cast<EFI_ALLOCATE_POOL>(
+                st->BootServices->AllocatePool);
+        auto freePool =
+            reinterpret_cast<EFI_FREE_POOL>(
+                st->BootServices->FreePool);
+
+        if (!allocatePool || !freePool ||
+            descriptorSize == 0 ||
+            size > (~static_cast<UINTN>(0) -
+                    descriptorSize * 32))
+            return EFI_OUT_OF_RESOURCES;
+
+        const UINTN newCapacity = size + descriptorSize * 32;
+        void* newBuffer = nullptr;
+        status = allocatePool(
+            EfiLoaderData,
+            newCapacity,
+            &newBuffer);
+        if (status != EFI_SUCCESS)
+            return status;
+
+        freePool(map->buffer);
+        map->buffer = newBuffer;
+        map->capacity = newCapacity;
+
+        size = map->capacity;
+        descriptorSize = map->descriptorSize;
+        descriptorVersion = map->descriptorVersion;
+
+        status = getMemoryMap(
+            &size,
+            reinterpret_cast<EFI_MEMORY_DESCRIPTOR*>(map->buffer),
+            &key,
+            &descriptorSize,
+            &descriptorVersion);
+    }
+
     if (status != EFI_SUCCESS)
         return status;
 
