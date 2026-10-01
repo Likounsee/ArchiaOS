@@ -116,7 +116,7 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         halt();
     }
 
-    constexpr UINT64 bootstrapPhysicalLimit = 0x1000000000ULL;
+    constexpr UINT64 bootstrapPhysicalLimit = NOVOS_PMM_MAX_PHYSICAL_ADDRESS;
     const auto physical_range_ok = [](UINT64 base, UINT64 size) -> bool
     {
         return base != 0 && size != 0 &&
