@@ -53,14 +53,14 @@ static void copy_brand()
     if (cpu_info.max_extended_leaf < 0x80000004U)
         return;
 
-    unsigned int* out = reinterpret_cast<unsigned int*>(cpu_info.brand);
     for (unsigned int leaf = 0; leaf < 3; ++leaf)
     {
         CpuidResult r = cpu_cpuid(0x80000002U + leaf, 0);
-        out[leaf * 4 + 0] = r.eax;
-        out[leaf * 4 + 1] = r.ebx;
-        out[leaf * 4 + 2] = r.ecx;
-        out[leaf * 4 + 3] = r.edx;
+        const unsigned int words[4] = {r.eax, r.ebx, r.ecx, r.edx};
+        for (unsigned int word = 0; word < 4; ++word)
+            for (unsigned int byte = 0; byte < 4; ++byte)
+                cpu_info.brand[leaf * 16 + word * 4 + byte] =
+                    static_cast<char>((words[word] >> (byte * 8)) & 0xFFU);
     }
     cpu_info.brand[48] = '\0';
 }
