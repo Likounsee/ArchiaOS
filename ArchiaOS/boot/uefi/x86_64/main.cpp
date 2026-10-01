@@ -5,6 +5,7 @@
 #include "framebuffer.h"
 #include "memory_map.h"
 #include "handoff.h"
+#include "boot_paging.h"
 #include "../../../common/boot_info.h"
 
 extern "C" void* memset(void* destination, int value, UINTN size)
@@ -92,6 +93,9 @@ static EFI_STATUS allocate_pmm_bitmap(
     setMem(reinterpret_cast<void*>(address), static_cast<UINTN>(pages * 4096ULL), 0);
     bootInfo->pmm_bitmap_base = address;
     bootInfo->pmm_bitmap_size = pages * 4096ULL;
+    map->size = size;
+    map->descriptorSize = descriptorSize;
+    map->descriptorVersion = version;
     return EFI_SUCCESS;
 }
 
@@ -246,5 +250,5 @@ extern "C" EFI_STATUS EFIAPI efi_main(
      * boot_debug or any EFI service before the kernel handoff.
      * handoff.S converts Microsoft x64 -> SysV AMD64 and jumps.
      */
-    archiaos_x86_64_handoff(kernel.entry, bootInfo);
+    archiaos_x86_64_handoff(kernel.entry, bootInfo, bootPml4Physical);
 }
