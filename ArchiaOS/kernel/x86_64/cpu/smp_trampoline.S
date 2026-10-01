@@ -111,11 +111,12 @@ smp_trampoline_pmode:
     lgdt (%di)
 
     /* Build a protected-mode 16:32 far pointer to long-mode code. */
-    movw $(smp_trampoline_lmode_ptr - smp_trampoline_start), %di
+    movl %ebx, %edi
+    addl $(smp_trampoline_lmode_ptr - smp_trampoline_start), %edi
     movl %ebx, %eax
     addl $(smp_trampoline_lmode - smp_trampoline_start), %eax
-    movl %eax, 0(%di)
-    movw $0x0018, 4(%di)
+    movl %eax, 0(%edi)
+    movw $0x0018, 4(%edi)
 
     movb $0x44, %al
     movw $0xE9, %dx
