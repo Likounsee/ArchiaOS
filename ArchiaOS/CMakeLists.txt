@@ -98,8 +98,10 @@ function(archiaos_kernel_compile output source)
     add_custom_command(
         OUTPUT ${output}
         COMMAND "${ARCHIAOS_CLANG}" -target x86_64-pc-none-elf
-            -std=c++20 -ffreestanding -fno-exceptions -fno-rtti
-            -fno-stack-protector -mno-red-zone -mno-sse -mno-sse2
+            -std=c++20 -ffreestanding -O2 -fno-exceptions -fno-rtti
+            -fno-stack-protector -fno-pie -fno-asynchronous-unwind-tables
+            -fno-threadsafe-statics -mgeneral-regs-only
+            -mno-red-zone -mno-sse -mno-sse2
             -I"${ARCHIAOS_COMMON}" -I"${ARCHIAOS_CPU_DIR}" -I"${ARCHIAOS_MEMORY_DIR}"
             -c "${source}" -o "${output}"
         DEPENDS ${source} ${ARCHIAOS_COMMON}/boot_info.h
@@ -121,7 +123,8 @@ function(archiaos_kernel_asm_compile output source)
     add_custom_command(
         OUTPUT ${output}
         COMMAND "${ARCHIAOS_CLANG}" -target x86_64-pc-none-elf
-            -ffreestanding -mno-red-zone
+            -ffreestanding -O2 -fno-pie -fno-asynchronous-unwind-tables
+            -mno-red-zone
             -c "${source}" -o "${output}"
         DEPENDS ${source}
     )
