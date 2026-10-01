@@ -102,6 +102,14 @@ smp_trampoline_pmode:
     movw $0xE9, %dx
     outb %al, %dx
 
+    /* Reload GDTR after CR3/CR0 transition so the protected-mode CPU
+       definitely uses the physical trampoline GDT for the far jump. */
+    movl %ebx, %eax
+    addl $(smp_trampoline_gdt - smp_trampoline_start), %eax
+    movw $(smp_trampoline_gdtr - smp_trampoline_start), %di
+    movl %eax, 2(%di)
+    lgdt (%di)
+
     /* Build a protected-mode 16:32 far pointer to long-mode code. */
     movw $(smp_trampoline_lmode_ptr - smp_trampoline_start), %di
     movl %ebx, %eax
