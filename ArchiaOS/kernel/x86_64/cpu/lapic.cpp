@@ -382,10 +382,6 @@ extern "C" bool lapic_startup_cpu(
         return false;
     lapic_debug("LAPIC: SIPI1 SENT\\n");
 
-    lapic_debug("LAPIC: SIPI2\\n");
-    if (!lapic_send_ipi(apic_id, (6ULL << 8) | startup_vector))
-        return false;
-    lapic_debug("LAPIC: SIPI2 SENT\\n");
 
     return true;
 }
