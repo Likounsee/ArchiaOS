@@ -2115,6 +2115,11 @@ idt_initialize:
 .Lidt_loop:
     mov (%rsi,%rcx,8), %rax
     call idt_set_gate0
+    /* Vector 8 (#DF) must use TSS IST1. */
+    cmp $8, %ecx
+    jne .Lidt_no_ist
+    movb $1, 4(%rdi)
+.Lidt_no_ist:
     add $16, %rdi
     inc %ecx
     cmp $256, %ecx

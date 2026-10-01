@@ -12,6 +12,23 @@ static u64* pdpt = nullptr;
 static u64* pd[NOVOS_PAGE_TABLE_COUNT] = {};
 static bool paging_active = false;
 
+static inline void invalidate_page_aliases(u64 virtualAddress)
+{
+    asm volatile("invlpg (%0)" : : "r"(virtualAddress) : "memory");
+
+    if (virtualAddress < NOVOS_IDENTITY_MAP_SIZE)
+    {
+        const u64 alias = NOVOS_HHDM_BASE + virtualAddress;
+        asm volatile("invlpg (%0)" : : "r"(alias) : "memory");
+    }
+    else if (virtualAddress >= NOVOS_HHDM_BASE &&
+             virtualAddress < NOVOS_HHDM_BASE + NOVOS_IDENTITY_MAP_SIZE)
+    {
+        const u64 alias = virtualAddress - NOVOS_HHDM_BASE;
+        asm volatile("invlpg (%0)" : : "r"(alias) : "memory");
+    }
+}
+
 static inline u64* table_pointer(u64 physicalAddress)
 {
     /*
@@ -138,41 +155,44 @@ static bool setup_identity_2m()
     if (pml4 != nullptr)
         return true;
 
-    const u64 pml4Physical = pmm_alloc_page();
-    const u64 pdptPhysical = pmm_alloc_page();
+    u64 allocated_pd[NOVOS_PAGE_TABLE_COUNT] = {};
+    u64 pml4Physical = pmm_alloc_page();
+    u64 pdptPhysical = pmm_alloc_page();
 
     if (pml4Physical == 0 || pdptPhysical == 0)
+    {
+        if (pml4Physical != 0)
+            pmm_free_page(pml4Physical);
+        if (pdptPhysical != 0)
+            pmm_free_page(pdptPhysical);
         return false;
+    }
 
-    pml4_physical = pml4Physical;
-    pml4 = reinterpret_cast<u64*>(pml4Physical);
-    pdpt = reinterpret_cast<u64*>(pdptPhysical);
-
+    auto* localPml4 = reinterpret_cast<u64*>(pml4Physical);
+    auto* localPdpt = reinterpret_cast<u64*>(pdptPhysical);
     zero_page(pml4Physical);
     zero_page(pdptPhysical);
 
-    /*
-     * Early address space:
-     *   0x0000000000000000..0x0000000FFFFFFFFF = physical identity map
-     *   0xFFFF800000000000..0xFFFF80FFFFFFFFFF = HHDM/direct map
-     *
-     * Both virtual ranges intentionally reference the same page tables.
-     * The HHDM therefore adds no second copy of the 64 GiB mapping and gives
-     * the kernel a stable canonical virtual address for every managed frame.
-     */
-    pml4[0] = table_entry(pdptPhysical);
-    pml4[256] = table_entry(pdptPhysical);
+    localPml4[0] = table_entry(pdptPhysical);
+    localPml4[256] = table_entry(pdptPhysical);
 
     for (u64 pdptIndex = 0; pdptIndex < NOVOS_PAGE_TABLE_COUNT; ++pdptIndex)
     {
         const u64 pdPhysical = pmm_alloc_page();
-
         if (pdPhysical == 0)
+        {
+            for (u64 i = 0; i < NOVOS_PAGE_TABLE_COUNT; ++i)
+                if (allocated_pd[i] != 0)
+                    pmm_free_page(allocated_pd[i]);
+            pmm_free_page(pdptPhysical);
+            pmm_free_page(pml4Physical);
             return false;
+        }
 
-        pd[pdptIndex] = reinterpret_cast<u64*>(pdPhysical);
+        allocated_pd[pdptIndex] = pdPhysical;
+        auto* localPd = reinterpret_cast<u64*>(pdPhysical);
         zero_page(pdPhysical);
-        pdpt[pdptIndex] = table_entry(pdPhysical);
+        localPdpt[pdptIndex] = table_entry(pdPhysical);
 
         for (u64 i = 0; i < 512; ++i)
         {
@@ -180,13 +200,18 @@ static bool setup_identity_2m()
                 pdptIndex * NOVOS_PDPT_COVERAGE +
                 i * NOVOS_2M_PAGE_SIZE;
 
-            pd[pdptIndex][i] =
-                physicalAddress |
-                NOVOS_PAGE_PRESENT |
-                NOVOS_PAGE_WRITE |
-                NOVOS_PAGE_HUGE;
+            localPd[i] = physicalAddress |
+                         NOVOS_PAGE_PRESENT |
+                         NOVOS_PAGE_WRITE |
+                         NOVOS_PAGE_HUGE;
         }
     }
+
+    pml4_physical = pml4Physical;
+    pml4 = localPml4;
+    pdpt = localPdpt;
+    for (u64 i = 0; i < NOVOS_PAGE_TABLE_COUNT; ++i)
+        pd[i] = reinterpret_cast<u64*>(allocated_pd[i]);
 
     return true;
 }
@@ -277,7 +302,7 @@ extern "C" bool paging_map_4k(
 
     *entry = physicalAddress | flagsValue;
 
-    asm volatile("invlpg (%0)" : : "r"(virtualAddress) : "memory");
+    invalidate_page_aliases(virtualAddress);
     return true;
 }
 
@@ -291,7 +316,7 @@ extern "C" bool paging_unmap_4k(u64 virtualAddress)
         return false;
 
     *entry = 0;
-    asm volatile("invlpg (%0)" : : "r"(virtualAddress) : "memory");
+    invalidate_page_aliases(virtualAddress);
     return true;
 }
 
@@ -351,10 +376,14 @@ extern "C" bool paging_activate()
 extern "C" bool paging_is_enabled()
 {
     u64 cr0 = 0;
+    u64 cr3 = 0;
 
     asm volatile(
-        "mov %%cr0, %0"
-        : "=r"(cr0));
+        "mov %%cr0, %0\n"
+        "mov %%cr3, %1"
+        : "=r"(cr0), "=r"(cr3));
 
-    return (cr0 & (1ULL << 31)) != 0;
+    return (cr0 & (1ULL << 31)) != 0 &&
+           pml4_physical != 0 &&
+           (cr3 & ~0xFFFULL) == pml4_physical;
 }

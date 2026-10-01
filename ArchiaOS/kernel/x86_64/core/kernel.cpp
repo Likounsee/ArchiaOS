@@ -116,6 +116,32 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         halt();
     }
 
+    constexpr UINT64 bootstrapPhysicalLimit = 0x1000000000ULL;
+    const auto physical_range_ok = [](UINT64 base, UINT64 size) -> bool
+    {
+        return base != 0 && size != 0 &&
+               base < bootstrapPhysicalLimit &&
+               size <= bootstrapPhysicalLimit - base;
+    };
+
+    if (!physical_range_ok(bootInfo->kernel_image_base,
+                           bootInfo->kernel_image_size) ||
+        !physical_range_ok(bootInfo->boot_info_address,
+                           bootInfo->boot_info_size) ||
+        !physical_range_ok(bootInfo->memory_map_address,
+                           bootInfo->memory_map_size))
+    {
+        debug_str("[KERNEL] BOOT PHYSICAL RANGE EXCEEDS BOOTSTRAP LIMIT\\n");
+        halt();
+    }
+
+    if (!physical_range_ok(bootInfo->framebuffer_base,
+                           bootInfo->framebuffer_size))
+    {
+        debug_str("[KERNEL] FRAMEBUFFER PHYSICAL RANGE EXCEEDS BOOTSTRAP LIMIT\\n");
+        halt();
+    }
+
     if (!bootInfo->framebuffer_base ||
         !bootInfo->framebuffer_width ||
         !bootInfo->framebuffer_height)
@@ -163,6 +189,8 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     idt_initialize();
     debug_str("CPU: IDT 256 VECTORS OK\n");
 
+    debug_str("PMM: initializing\n");
+    pmm_initialize(bootInfo);
     debug_str("PMM: running tests\n");
     pmm_run_tests(bootInfo);
     debug_str("PMM: TESTS OK\n");
@@ -181,11 +209,23 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     cpu_security_print_report();
 
     debug_str("MM: initializing paging\n");
+    if (!paging_initialize())
+    {
+        debug_str("[KERNEL] PAGING INIT FAILED\n");
+        halt();
+    }
     paging_run_tests();
     debug_str("MM: paging ACTIVE\n");
 
     debug_str("CPU: testing invalid opcode handler\n");
+    exception_expect_invalid_opcode(
+        reinterpret_cast<unsigned long long>(&idt_test_invalid_opcode));
     idt_test_invalid_opcode();
+    if (exception_invalid_opcode_test_active())
+    {
+        debug_str("[KERNEL] INVALID OPCODE TEST DID NOT TRAP\n");
+        halt();
+    }
     debug_str("CPU: INVALID OPCODE HANDLER OK\n");
 
     debug_str("IRQ: initializing LAPIC\n");
