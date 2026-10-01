@@ -132,7 +132,7 @@ static bool reclaimable_efi_type(u32 type)
            type == 7;   /* EfiConventionalMemory */
 }
 
-extern "C" void pmm_initialize(BootInfo* bootInfo)
+extern "C" bool pmm_initialize(BootInfo* bootInfo)
 {
     pmm_bitmap = nullptr;
     pmm_reserved_bitmap = nullptr;
@@ -166,7 +166,7 @@ extern "C" void pmm_initialize(BootInfo* bootInfo)
         bootInfo->memory_descriptor_size <
             sizeof(EfiMemoryDescriptor))
     {
-        return;
+        return false;
     }
 
     const u64 entry_count =
@@ -219,6 +219,8 @@ extern "C" void pmm_initialize(BootInfo* bootInfo)
         if (pmm_free_pages > 0)
             --pmm_free_pages;
     }
+
+    return true;
 }
 
 extern "C" u64 pmm_alloc_page()
