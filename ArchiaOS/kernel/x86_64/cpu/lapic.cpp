@@ -154,7 +154,7 @@ extern "C" bool lapic_initialize()
     lapic_write(0x350, 0x835, 0x10000U | 0xFFU);
     lapic_write(0x360, 0x836, 0x10000U | 0xFFU);
     lapic_write(0x370, 0x837, 0x10000U | 0xFEU);
-    lapic_write(0x080, 0x828, 0);
+    lapic_write(0x080, 0x808, 0);
     lapic_write(LAPIC_LVT_TIMER, IA32_X2APIC_LVT_TIMER, 0x10000U | 0x20U);
     lapic_write(LAPIC_TIMER_DIVIDE, IA32_X2APIC_DIVIDE, 0x3U);
 
