@@ -91,6 +91,7 @@ jobs:
               "PAGING HHDM PASS" \
               "PAGING CR3 ACTIVATION PASS" \
               "PAGING 4K RO/NX BITS PASS" \
+              "PAGING CACHE FLAGS PASS" \
               "PAGING NX EXECUTION FAULT PASS" \
               "PAGING RO WRITE FAULT PASS" \
               "PAGING PAGE FAULT RECOVERY PASS" \
@@ -104,4 +105,9 @@ jobs:
                 exit 1
               }
             done
+            if ! grep -q "PAGING 1G SPLIT PASS" "qemu-${cpu}.log" && \
+               ! grep -q "PAGING 1G SPLIT SKIPPED" "qemu-${cpu}.log"; then
+              echo "Missing 1GiB paging capability marker for ${cpu}"
+              exit 1
+            fi
           done
