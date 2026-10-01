@@ -54,7 +54,7 @@ extern "C" void paging_run_tests()
             fail("PAGING TEST FAIL: TRANSLATION\n");
     }
 
-    test_str("PAGING IDENTITY MAP PASS (64 GiB)\n");
+    test_str("PAGING IDENTITY MAP PASS (256 GiB)\n");
 
     /*
      * The high-half direct map must resolve the same physical frames as
@@ -90,7 +90,7 @@ extern "C" void paging_run_tests()
         fail("PAGING TEST FAIL: HHDM RANGE\n");
     }
 
-    test_str("PAGING HHDM 64GiB PASS\n");
+    test_str("PAGING HHDM 256GiB PASS\n");
 
     if (!paging_activate())
         fail("PAGING TEST FAIL: ACTIVATION\n");
@@ -135,6 +135,8 @@ extern "C" void paging_run_tests()
         fail("PAGING TEST FAIL: 4K ALLOCATION\n");
 
     const PagingFlags readOnlyNoExecute{
+        false,
+        false,
         false,
         false,
         false
