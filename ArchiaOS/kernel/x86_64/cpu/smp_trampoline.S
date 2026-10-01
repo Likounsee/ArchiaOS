@@ -37,6 +37,8 @@ smp_trampoline_start:
     orl $1, %eax
     movl %eax, %cr0
 
+    /* Operand-size override: 32-bit offset while still in 16-bit real mode. */
+    .byte 0x66
     .byte 0xEA
     .long (smp_trampoline_pmode - smp_trampoline_start)
     .word 0x0008
