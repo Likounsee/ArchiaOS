@@ -330,6 +330,18 @@ extern "C" unsigned int lapic_current_id()
     return *lapic_register(0x020);
 }
 
+static void lapic_startup_delay()
+{
+    /*
+     * AP startup timing is architecturally significant: INIT must remain
+     * asserted long enough for the target to reset, and SIPIs must not be
+     * issued back-to-back with INIT deassertion. A bounded pause loop keeps
+     * this path independent of the timer interrupt subsystem.
+     */
+    for (volatile unsigned int i = 0; i < 10000000U; ++i)
+        asm volatile("pause");
+}
+
 static bool lapic_send_ipi(
     unsigned int apic_id,
     unsigned long long command)
@@ -371,17 +383,24 @@ extern "C" bool lapic_startup_cpu(
     if (!lapic_send_ipi(apic_id, (5ULL << 8) | (1ULL << 14)))
         return false;
     lapic_debug("LAPIC: INIT ASSERT SENT\\n");
+    lapic_startup_delay();
 
     lapic_debug("LAPIC: INIT DEASSERT\\n");
     if (!lapic_send_ipi(apic_id, (5ULL << 8)))
         return false;
     lapic_debug("LAPIC: INIT DEASSERT SENT\\n");
+    lapic_startup_delay();
 
     lapic_debug("LAPIC: SIPI1\\n");
     if (!lapic_send_ipi(apic_id, (6ULL << 8) | startup_vector))
         return false;
     lapic_debug("LAPIC: SIPI1 SENT\\n");
+    lapic_startup_delay();
 
+    lapic_debug("LAPIC: SIPI2\\n");
+    if (!lapic_send_ipi(apic_id, (6ULL << 8) | startup_vector))
+        return false;
+    lapic_debug("LAPIC: SIPI2 SENT\\n");
 
     return true;
 }
