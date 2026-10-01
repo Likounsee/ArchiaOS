@@ -278,7 +278,7 @@ extern "C" void kernel_main(BootInfo* bootInfo)
             static_cast<UINT64>(bootInfo->framebuffer_height);
         for (UINT64 page = first; page < end; page += NOVOS_PAGE_SIZE)
         {
-            if (!paging_map_4k(page, page, PagingFlags{true, false, true, true, false}))
+            if (!paging_map_4k(page, page, PagingFlags{true, false, true, true, true}))
             {
                 debug_str("[KERNEL] FRAMEBUFFER MMIO MAP FAILED\\n");
                 halt();
