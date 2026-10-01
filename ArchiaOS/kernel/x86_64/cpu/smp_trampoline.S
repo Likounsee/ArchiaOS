@@ -29,12 +29,10 @@ smp_trampoline_start:
 
     movl %ebx, %eax
     addl $(smp_trampoline_gdt - smp_trampoline_start), %eax
-    movl %eax, (smp_trampoline_gdtr + 2 - smp_trampoline_start)
-    movb $0x47, %al
-    movw $0xE9, %dx
-    outb %al, %dx
 
-    lgdt (smp_trampoline_gdtr - smp_trampoline_start)
+    movw $(smp_trampoline_gdtr - smp_trampoline_start), %di
+    movl %eax, 2(%di)
+    lgdt (%di)
     movb $0x45, %al
     movw $0xE9, %dx
     outb %al, %dx
