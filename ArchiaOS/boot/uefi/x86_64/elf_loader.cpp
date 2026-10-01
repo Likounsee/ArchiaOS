@@ -200,7 +200,22 @@ EFI_STATUS load_kernel_elf(
         if ((ph[i].p_flags & PF_X) &&
             eh->e_entry >= ph[i].p_vaddr &&
             eh->e_entry < memEnd)
-            entryExecutable = true;
+        {
+            /* Entry must point into bytes actually present in the file,
+               not merely into a zero-filled executable BSS tail. */
+            UINT64 fileBackedEnd = ph[i].p_vaddr + ph[i].p_filesz;
+            if (eh->e_entry < fileBackedEnd)
+                entryExecutable = true;
+        }
+
+        /* The current bootstrap loader cannot represent W+X permissions;
+           reject such a kernel instead of silently loading an executable
+           writable segment. */
+        if ((ph[i].p_flags & (PF_X | 2U)) == (PF_X | 2U))
+        {
+            freePool(image);
+            return EFI_INVALID_PARAMETER;
+        }
 
         for (UINT16 j = 0; j < i; ++j)
         {
