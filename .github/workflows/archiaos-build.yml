@@ -45,9 +45,6 @@ jobs:
           llvm-readobj --program-headers ArchiaOS/build/ARCHIAOS_kernel.elf
           llvm-objdump -d ArchiaOS/build/ARCHIAOS_kernel.elf | head -n 120
           llvm-objdump -d --start-address=0x1004B0 --stop-address=0x1004F0 ArchiaOS/build/ARCHIAOS_kernel.elf
-          echo "===== SMP TRAMPOLINE OBJECT ====="
-          llvm-objdump -dr ArchiaOS/build/archiaos_kernel_smp_trampoline.obj
-          llvm-nm -n ArchiaOS/build/archiaos_kernel_smp_trampoline.obj
 
       - name: Prepare writable OVMF variables
         run: cp /usr/share/OVMF/OVMF_VARS_4M.fd ArchiaOS/build/OVMF_VARS_4M.fd
@@ -115,4 +112,25 @@ jobs:
               echo "Missing 1GiB paging capability marker for ${cpu}"
               exit 1
             fi
+          done
+
+      - name: SMP scalability smoke test
+        run: |
+          set -e
+          for smp in 4 8; do
+            echo "===== SMP SCALE: $smp CPUs ====="
+            cp /usr/share/OVMF/OVMF_VARS_4M.fd "ArchiaOS/build/OVMF_VARS_scale_${smp}.fd"
+            timeout 20s qemu-system-x86_64 \
+              -machine q35 \
+              -cpu qemu64 \
+              -m 256M \
+              -smp "$smp" \
+              -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
+              -drive if=pflash,format=raw,file="ArchiaOS/build/OVMF_VARS_scale_${smp}.fd" \
+              -drive format=raw,file=fat:rw:ArchiaOS/build/esp \
+              -display none -serial none -monitor none \
+              -debugcon stdio -global isa-debugcon.iobase=0xe9 \
+              -no-reboot -no-shutdown > "qemu-scale-${smp}.log" 2>&1 || test $? -eq 124
+            cat "qemu-scale-${smp}.log"
+            grep -q "SMP: APPLICATION PROCESSORS ONLINE" "qemu-scale-${smp}.log"
           done
