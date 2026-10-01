@@ -27,7 +27,8 @@ extern "C" void irq_dispatch(ExceptionFrame* frame)
     if (vector == 0x20)
         lapic_timer_interrupt();
 
-    if (vector >= 0x20 && vector <= 0xEF)
+    /* Vector 0xFF is the LAPIC spurious vector and must not receive EOI. */
+    if (vector >= 0x20 && vector <= 0xFE)
         lapic_eoi();
 }
 
