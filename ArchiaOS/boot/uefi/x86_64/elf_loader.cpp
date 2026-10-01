@@ -37,6 +37,7 @@ static constexpr UINT8 ELFCLASS64 = 2;
 static constexpr UINT8 ELFDATA2LSB = 1;
 static constexpr UINT32 PT_LOAD = 1;
 static constexpr UINT32 PF_X = 1;
+static constexpr UINT32 PF_W = 2;
 static constexpr UINT64 PAGE = 4096;
 using EFI_FREE_PAGES = EFI_STATUS(EFIAPI*)(EFI_PHYSICAL_ADDRESS, UINTN);
 
@@ -211,7 +212,7 @@ EFI_STATUS load_kernel_elf(
         /* The current bootstrap loader cannot represent W+X permissions;
            reject such a kernel instead of silently loading an executable
            writable segment. */
-        if ((ph[i].p_flags & (PF_X | 2U)) == (PF_X | 2U))
+        if ((ph[i].p_flags & (PF_X | PF_W)) == (PF_X | 2U))
         {
             freePool(image);
             return EFI_INVALID_PARAMETER;
