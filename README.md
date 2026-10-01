@@ -174,6 +174,8 @@ La couverture physique bootstrap actuelle est limitée à 512 GiB. Ce plafond es
 
 Le paging actuel comprend :
 - PML4 / PDPT / PD ;
+- mappings 1 GiB, 2 MiB et 4 KiB lorsque supportés ;
+- split à la demande d'une feuille 1 GiB vers des tables plus fines ;
 - mappings 2 MiB et 4 KiB ;
 - Identity mapping bootstrap ;
 - hiérarchie HHDM séparée ;
@@ -195,6 +197,7 @@ Le système de mémoire virtuelle complet, les address spaces par processus et l
 - GDT initialisée ;
 - TSS chargée ;
 - IST1 configurée pour #DF ;
+- IST2 dédiée au NMI et IST3 au #MC ;
 - 256 vecteurs IDT ;
 - exceptions avec error code matériel distinguées ;
 - récupération #UD et #PF uniquement pour les tests explicitement armés ;
@@ -204,7 +207,9 @@ Le système de mémoire virtuelle complet, les address spaces par processus et l
 
 Le Local APIC et son timer fonctionnent actuellement sous QEMU.
 
-Restent notamment à compléter : calibration robuste du timer, routage IOAPIC, x2APIC complet, SMP/AP startup, structures per-CPU et scheduler.
+Le timer utilise une calibration basée sur l'Invariant TSC lorsqu'une fréquence TSC architecturale est disponible (CPUID 0x15, avec repli CPUID 0x16), puis conserve un fallback sûr lorsque la fréquence n'est pas énumérée.
+
+Restent notamment à compléter : routage IOAPIC, x2APIC complet, SMP/AP startup, structures per-CPU et scheduler.
 
 ## ACPI
 
@@ -215,6 +220,8 @@ Les accès aux structures ACPI sont contrôlés par des vérifications de bornes
 ## ELF loader
 
 Le loader vérifie notamment ELF64/x86_64, les bornes des headers, les PT_LOAD, l'alignement, l'entry point, l'absence de W+X, l'entry point file-backed, le rollback des allocations et le zeroing des pages allouées.
+
+Les segments ELF sont désormais alloués comme mémoire UEFI LoaderData : le type mémoire UEFI décrit la propriété/lifetime du chargement, tandis que les permissions finales d'exécution, d'écriture et de lecture sont établies par le paging du kernel.
 
 ## Framebuffer
 
@@ -286,7 +293,7 @@ L'audit initial a identifié 43 findings.
 
 Les corrections intégrées couvrent notamment #UD, #DF/IST1, protection des frames réservées, rollback paging, séparation Identity/HHDM, validation ACPI, durcissement ELF, validation BootInfo, détection CPU/physical address width, flags de compilation renforcés et memory-map dynamique avant ExitBootServices.
 
-Des points restent ouverts : pages 1 GiB complètes, attributs cache PAT/PWT/PCD/G dans tous les chemins, gestion complète NMI/#MC et frame d'exception, calibration LAPIC, allocation kernel non fixe, traitement définitif du type mémoire ELF, linker script plus complet, migration high-half définitive, SMP, scheduler, userspace et address spaces.
+Des points restent ouverts : allocation physique du kernel encore contrainte par son modèle d'adressage actuel, support complet de la plage MAXPHYADDR au-delà du plafond bootstrap 512 GiB, politique PAT/cache complète dans tous les futurs chemins VM, frame d'exception inter-privilege plus complète, routage IOAPIC, x2APIC complet, linker/relocation pour une vraie allocation kernel indépendante, migration high-half définitive, SMP, scheduler, userspace et address spaces.
 
 ## Prochaines étapes
 
@@ -297,7 +304,8 @@ Des points restent ouverts : pages 1 GiB complètes, attributs cache PAT/PWT/PCD
 - [x] bootstrap paging
 - [x] CR3
 - [x] HHDM bootstrap
-- [ ] pages 1 GiB
+- [x] pages 1 GiB bootstrap + split à la demande
+- [x] flags cache PWT/PCD sur les mappings 4 KiB
 - [ ] virtual address manager
 - [ ] kernel heap
 - [ ] address spaces
@@ -310,7 +318,8 @@ Des points restent ouverts : pages 1 GiB complètes, attributs cache PAT/PWT/PCD
 - [x] IDT
 - [x] exceptions de base
 - [x] LAPIC
-- [x] timer bootstrap
+- [x] timer bootstrap calibré avec fallback
+- [x] IST dédiées NMI / #MC
 - [ ] IOAPIC routing
 - [ ] x2APIC complet
 - [ ] SMP
