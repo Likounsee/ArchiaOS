@@ -8,7 +8,7 @@
 #include "../memory/paging.hpp"
 
 static constexpr uint64_t TRAMPOLINE_LIMIT = 0x100000ULL;
-static constexpr uint64_t TRAMPOLINE_MAILBOX_OFFSET = 0x200ULL;
+static constexpr uint64_t TRAMPOLINE_MAILBOX_OFFSET = 0x400ULL;
 
 extern "C" unsigned char smp_trampoline_start[];
 extern "C" unsigned char smp_trampoline_end[];
