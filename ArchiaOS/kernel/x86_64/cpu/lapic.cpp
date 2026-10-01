@@ -124,9 +124,12 @@ extern "C" bool lapic_initialize()
     if (x2apic_mode && !x2apic_supported)
         return false;
 
-    lapic_base = reinterpret_cast<volatile unsigned char*>(apic_base & APIC_BASE_MASK);
+    if (x2apic_mode)
+        lapic_base = nullptr;
+    else
+        lapic_base = reinterpret_cast<volatile unsigned char*>(apic_base & APIC_BASE_MASK);
 
-    if (lapic_base == nullptr)
+    if (!x2apic_mode && lapic_base == nullptr)
         return false;
 
     const unsigned long long svr =
