@@ -125,6 +125,18 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
             PagingFlags{true, false, true, false, false}))
         return false;
 
+    /*
+     * The AP executes the trampoline through its physical/identity address
+     * immediately after CR0.PG is enabled. Explicitly install the same
+     * executable 4 KiB mapping in the identity half; relying on the shared
+     * bootstrap hierarchy is too implicit for this critical transition.
+     */
+    if (!paging_map_4k(
+            trampolinePhysical,
+            trampolinePhysical,
+            PagingFlags{true, false, true, false, false}))
+        return false;
+
     auto* trampoline =
         reinterpret_cast<unsigned char*>(trampolineVirtual);
 
