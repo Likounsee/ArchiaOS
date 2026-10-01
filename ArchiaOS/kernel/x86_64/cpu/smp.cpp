@@ -9,11 +9,14 @@
 
 static constexpr uint64_t TRAMPOLINE_LIMIT = 0x100000ULL;
 static constexpr uint64_t TRAMPOLINE_MAILBOX_OFFSET = 0x200ULL;
+static constexpr uint64_t TRAMPOLINE_CR3_LIMIT = 0x100000000ULL;
 
 extern "C" unsigned char smp_trampoline_start[];
 extern "C" unsigned char smp_trampoline_end[];
 
 static volatile uint32_t online_count = 0;
+
+static inline uint64_t smp_read_cr0()\n{\n    uint64_t value;\n    asm volatile("mov %%cr0,%0" : "=r"(value));\n    return value;\n}\n\nstatic inline uint64_t smp_read_cr4()\n{\n    uint64_t value;\n    asm volatile("mov %%cr4,%0" : "=r"(value));\n    return value;\n}\n\nstatic inline uint64_t smp_read_efer()\n{\n    uint32_t low;\n    uint32_t high;\n    asm volatile("rdmsr" : "=a"(low), "=d"(high) : "c"(0xC0000080U));\n    return (static_cast<uint64_t>(high) << 32) | low;\n}
 
 static inline void smp_debug(const char* s)
 {
