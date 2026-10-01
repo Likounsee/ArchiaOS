@@ -72,12 +72,18 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
     if (trampolinePhysical == 0)
         return false;
 
-    auto* trampoline =
-        reinterpret_cast<unsigned char*>(
-            paging_physical_to_virtual(trampolinePhysical));
+    const uint64_t trampolineVirtual =
+        paging_physical_to_virtual(trampolinePhysical);
 
-    if (trampoline == nullptr)
+    if (trampolineVirtual == 0 ||
+        !paging_map_4k(
+            trampolineVirtual,
+            trampolinePhysical,
+            PagingFlags{true, false, true, false, false}))
         return false;
+
+    auto* trampoline =
+        reinterpret_cast<unsigned char*>(trampolineVirtual);
 
     for (uint64_t i = 0; i < NOVOS_PAGE_SIZE; ++i)
         trampoline[i] = 0;
@@ -119,7 +125,11 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
         const uint64_t stackVirtual =
             paging_physical_to_virtual(stackPhysical);
 
-        if (stackVirtual == 0)
+        if (stackVirtual == 0 ||
+            !paging_map_4k(
+                stackVirtual,
+                stackPhysical,
+                PagingFlags{true, false, false, false, false}))
             return false;
 
         mailbox->cr3_physical = cr3;
