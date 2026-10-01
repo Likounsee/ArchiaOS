@@ -256,6 +256,33 @@ extern "C" u64 pmm_alloc_page()
     return 0;
 }
 
+extern "C" u64 pmm_alloc_page_below(u64 exclusiveLimit)
+{
+    if (exclusiveLimit <= NOVOS_PAGE_SIZE)
+        return 0;
+
+    u64 maxFrame = exclusiveLimit / NOVOS_PAGE_SIZE;
+    if (maxFrame > pmm_max_frames)
+        maxFrame = pmm_max_frames;
+
+    /*
+     * AP startup vectors are required below 1 MiB. Scan only the bounded
+     * low-memory portion instead of changing the general allocator policy.
+     */
+    for (u64 frame = 1; frame < maxFrame; ++frame)
+    {
+        if (!bitmap_test(frame))
+        {
+            bitmap_set(frame);
+            if (pmm_free_pages > 0)
+                --pmm_free_pages;
+            return frame * NOVOS_PAGE_SIZE;
+        }
+    }
+
+    return 0;
+}
+
 extern "C" u64 pmm_alloc_contiguous(u64 pageCount)
 {
     if (pageCount == 0 ||
