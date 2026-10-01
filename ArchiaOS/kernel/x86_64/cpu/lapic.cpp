@@ -376,11 +376,6 @@ static bool lapic_send_ipi(
         return true;
     }
 
-    /*
-     * The ICR delivery-status bit can remain asserted for an extended
-     * interval on virtual LAPICs. Startup IPIs are serialized here by the
-     * caller, so avoid spinning indefinitely on that advisory status bit.
-     */
     *lapic_register(0x310) = broadcast ? 0U : (apic_id << 24);
     *lapic_register(0x300) = static_cast<unsigned int>(command) |
         (broadcast ? (3U << 18) : 0U);
@@ -397,20 +392,23 @@ extern "C" bool lapic_startup_cpu(
     if (apic_id == lapic_current_id())
         return true;
 
-    /* Broadcast to all APs, excluding the BSP, which is the safest way to
-       recover APs left in an unknown firmware parking state after EBS. */
-    lapic_debug("LAPIC: BROADCAST INIT\\n");
-    if (!lapic_send_ipi(apic_id, (5ULL << 8) | (1ULL << 14), true))
+    lapic_debug("LAPIC: INIT TARGET\\n");
+    if (!lapic_send_ipi(apic_id, (5ULL << 8), false))
         return false;
     lapic_startup_delay();
 
-    lapic_debug("LAPIC: BROADCAST SIPI1\\n");
-    if (!lapic_send_ipi(apic_id, (6ULL << 8) | startup_vector, true))
+    lapic_debug("LAPIC: INIT DEASSERT\\n");
+    if (!lapic_send_ipi(apic_id, (5ULL << 8) | (1ULL << 14), false))
         return false;
     lapic_startup_delay();
 
-    lapic_debug("LAPIC: BROADCAST SIPI2\\n");
-    if (!lapic_send_ipi(apic_id, (6ULL << 8) | startup_vector, true))
+    lapic_debug("LAPIC: SIPI1 TARGET\\n");
+    if (!lapic_send_ipi(apic_id, (6ULL << 8) | startup_vector, false))
+        return false;
+    lapic_startup_delay();
+
+    lapic_debug("LAPIC: SIPI2 TARGET\\n");
+    if (!lapic_send_ipi(apic_id, (6ULL << 8) | startup_vector, false))
         return false;
 
     return true;
