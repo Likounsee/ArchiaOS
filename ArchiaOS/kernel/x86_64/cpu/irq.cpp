@@ -1,6 +1,17 @@
 #include "irq.hpp"
 #include "lapic.hpp"
 
+static volatile unsigned long long irq_dispatch_count = 0;
+static volatile unsigned long long keyboard_irq_count = 0;
+static volatile unsigned char keyboard_last_scancode = 0;
+
+static inline unsigned char io_in8(unsigned short port)
+{
+    unsigned char value;
+    asm volatile ("inb %1,%0" : "=a"(value) : "Nd"(port));
+    return value;
+}
+
 static inline void pic_mask_all()
 {
     const unsigned char mask = 0xFF;
@@ -22,10 +33,18 @@ extern "C" void irq_dispatch(ExceptionFrame* frame)
     if (frame == nullptr)
         return;
 
-    unsigned long long vector = frame->vector;
+    const unsigned long long vector = frame->vector;
+
+    if (vector >= 0x20 && vector <= 0xFE)
+        ++irq_dispatch_count;
 
     if (vector == 0x20)
         lapic_timer_interrupt();
+    else if (vector == 0x21)
+    {
+        keyboard_last_scancode = io_in8(0x60);
+        ++keyboard_irq_count;
+    }
 
     /* Vector 0xFF is the LAPIC spurious vector and must not receive EOI. */
     if (vector >= 0x20 && vector <= 0xFE)
@@ -50,6 +69,7 @@ extern "C" unsigned long long irq_get_ticks()
 extern "C" bool irq_test_timer()
 {
     irq_disable();
+    irq_dispatch_count = 0;
 
     lapic_timer_start();
 
@@ -65,7 +85,7 @@ extern "C" bool irq_test_timer()
         {
             irq_disable();
             lapic_stop_timer();
-            return true;
+            return irq_dispatch_count >= 3;
         }
 
         asm volatile ("pause");
@@ -75,3 +95,5 @@ extern "C" bool irq_test_timer()
     lapic_stop_timer();
     return false;
 }
+
+extern "C" unsigned long long irq_dispatch_count_get()\n{\n    return irq_dispatch_count;\n}\n\nextern "C" unsigned long long irq_keyboard_count_get()\n{\n    return keyboard_irq_count;\n}\n\nextern "C" unsigned char irq_keyboard_last_scancode()\n{\n    return keyboard_last_scancode;\n}\n
