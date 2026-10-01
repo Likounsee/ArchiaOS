@@ -39,9 +39,11 @@ static bool bit(unsigned int value, unsigned int position)
 
 static void copy_vendor(const CpuidResult& r)
 {
-    *reinterpret_cast<unsigned int*>(&cpu_info.vendor[0]) = r.ebx;
-    *reinterpret_cast<unsigned int*>(&cpu_info.vendor[4]) = r.edx;
-    *reinterpret_cast<unsigned int*>(&cpu_info.vendor[8]) = r.ecx;
+    const unsigned int words[3] = {r.ebx, r.edx, r.ecx};
+    for (unsigned int word = 0; word < 3; ++word)
+        for (unsigned int byte = 0; byte < 4; ++byte)
+            cpu_info.vendor[word * 4 + byte] =
+                static_cast<char>((words[word] >> (byte * 8)) & 0xFFU);
     cpu_info.vendor[12] = '\0';
 }
 
@@ -273,7 +275,7 @@ static void enumerate_topology()
         cpu_info.topology.threads_per_core = threads;
         cpu_info.topology.cores_per_package = cores;
         cpu_info.topology.package_count = 1;
-        cpu_info.topology.initial_apic_id = topo.eax;
+        cpu_info.topology.initial_apic_id = (topo.eax >> 24) & 0xFFU;
         cpu_info.topology.enumerated = true;
         return;
     }
