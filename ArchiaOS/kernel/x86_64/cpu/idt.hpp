@@ -33,3 +33,5 @@ extern "C" void exception_expect_page_fault(unsigned long long recovery_rip, uns
 extern "C" bool exception_page_fault_test_active();
 extern "C" void exception_expect_invalid_opcode(unsigned long long rip);
 extern "C" bool exception_invalid_opcode_test_active();
+
+extern "C" void idt_load_current();
