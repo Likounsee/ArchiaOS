@@ -15,7 +15,6 @@ static constexpr unsigned int IA32_X2APIC_EOI = 0x80B;
 static bool x2apic_mode = false;
 static volatile unsigned char* lapic_base = nullptr;
 
-static constexpr unsigned long long LAPIC_ID = 0x020;
 static constexpr unsigned long long LAPIC_EOI = 0x0B0;
 static constexpr unsigned long long LAPIC_SVR = 0x0F0;
 static constexpr unsigned long long LAPIC_LVT_TIMER = 0x320;
