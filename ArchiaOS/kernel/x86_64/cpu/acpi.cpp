@@ -214,7 +214,11 @@ static bool parse_madt(unsigned long long madt)
             unsigned int flags = read32(current + 4);
 
             if (flags & 1U)
+            {
+                if (acpi_info.processor_count < AcpiInfo::MAX_PROCESSORS)
+                    acpi_info.processor_apic_ids[acpi_info.processor_count] = read8(current + 3);
                 ++acpi_info.processor_count;
+            }
         }
         else if (type == 9 && entry_length >= 16)
         {
@@ -227,7 +231,11 @@ static bool parse_madt(unsigned long long madt)
             unsigned int flags = read32(current + 8);
 
             if (flags & 1U)
+            {
+                if (acpi_info.processor_count < AcpiInfo::MAX_PROCESSORS)
+                    acpi_info.processor_apic_ids[acpi_info.processor_count] = read32(current + 4);
                 ++acpi_info.processor_count;
+            }
         }
         else if (type == 1 && entry_length >= 12)
         {
