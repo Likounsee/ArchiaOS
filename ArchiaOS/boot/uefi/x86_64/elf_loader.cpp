@@ -246,81 +246,66 @@ EFI_STATUS load_kernel_elf(
         reinterpret_cast<EFI_FREE_PAGES>(
             st->BootServices->FreePages);
 
-    auto rollback_segments = [&](UINT16 count)
+    /*
+     * The kernel is linked at its final higher-half VMA, but its physical
+     * placement is independent. Allocate one contiguous physical image and
+     * let the temporary boot page tables map VMA -> physical image.
+     */
+    UINT64 imageLast;
+    if (add_overflow(highest, PAGE - 1, &imageLast))
     {
-        for (UINT16 j = 0; j < count; ++j)
-        {
-            if (ph[j].p_type != PT_LOAD)
-                continue;
+        freePool(image);
+        return EFI_INVALID_PARAMETER;
+    }
+    imageLast &= ~(PAGE - 1);
 
-            UINT64 segmentEnd = ph[j].p_vaddr + ph[j].p_memsz;
-            UINT64 last = (segmentEnd + PAGE - 1) & ~(PAGE - 1);
-            UINT64 pages = (last - ph[j].p_vaddr) / PAGE;
-            if (pages != 0)
-                freePages(ph[j].p_vaddr, static_cast<UINTN>(pages));
-        }
-    };
+    UINT64 imagePages = (imageLast - lowest) / PAGE;
+    if (imagePages == 0 || imagePages > 0xFFFFFFFFULL)
+    {
+        freePool(image);
+        return EFI_INVALID_PARAMETER;
+    }
+
+    EFI_PHYSICAL_ADDRESS physicalBase = 0;
+    status = allocatePages(
+        EFI_ALLOCATE_ANY_PAGES,
+        EfiLoaderData,
+        static_cast<UINTN>(imagePages),
+        &physicalBase);
+
+    if (status != EFI_SUCCESS)
+    {
+        freePool(image);
+        return status;
+    }
+
+    auto setMem =
+        reinterpret_cast<EFI_SET_MEM>(
+            st->BootServices->SetMem);
+
+    if (!setMem)
+    {
+        freePages(physicalBase, static_cast<UINTN>(imagePages));
+        freePool(image);
+        return EFI_UNSUPPORTED;
+    }
+
+    setMem(
+        reinterpret_cast<void*>(physicalBase),
+        static_cast<UINTN>(imagePages * PAGE),
+        0);
 
     for (UINT16 i = 0; i < eh->e_phnum; ++i)
     {
         if (ph[i].p_type != PT_LOAD)
             continue;
 
-        UINT64 segmentEnd = ph[i].p_vaddr + ph[i].p_memsz;
-        UINT64 last;
-        if (add_overflow(segmentEnd, PAGE - 1, &last))
-        {
-            freePool(image);
-            return EFI_INVALID_PARAMETER;
-        }
-        last &= ~(PAGE - 1);
-        UINT64 pages = (last - ph[i].p_vaddr) / PAGE;
+        const UINT64 destinationOffset =
+            ph[i].p_vaddr - lowest;
 
-        if (last < segmentEnd || pages == 0 || pages > 0xFFFFFFFFULL)
-        {
-            freePool(image);
-            return EFI_INVALID_PARAMETER;
-        }
+        UINT8* destination =
+            reinterpret_cast<UINT8*>(physicalBase + destinationOffset);
 
-        EFI_PHYSICAL_ADDRESS address = ph[i].p_vaddr;
-        /*
-         * The loader's UEFI memory type describes ownership/lifetime, not
-         * the final CPU page permissions. After ExitBootServices() the
-         * kernel's own page tables are authoritative. Keep every ELF
-         * segment in LoaderData so an executable segment is not advertised
-         * as firmware executable memory before the kernel establishes its
-         * final mappings.
-         */
-        const EFI_MEMORY_TYPE memoryType = EfiLoaderData;
-
-        status = allocatePages(
-            EFI_ALLOCATE_ADDRESS,
-            memoryType,
-            static_cast<UINTN>(pages),
-            &address);
-
-        if (status != EFI_SUCCESS || address != ph[i].p_vaddr)
-        {
-            if (status == EFI_SUCCESS && address != ph[i].p_vaddr)
-                freePages(address, static_cast<UINTN>(pages));
-            rollback_segments(i);
-            freePool(image);
-            return status != EFI_SUCCESS ? status : EFI_INVALID_PARAMETER;
-        }
-
-        UINT8* destination = reinterpret_cast<UINT8*>(address);
-        /* EFI does not guarantee newly allocated pages are zeroed. Clear the
-           entire allocation first so padding and the final partial BSS page
-           cannot expose stale firmware/loader contents. */
-        auto setMem = reinterpret_cast<EFI_SET_MEM>(st->BootServices->SetMem);
-        if (!setMem)
-        {
-            freePages(address, static_cast<UINTN>(pages));
-            rollback_segments(i);
-            freePool(image);
-            return EFI_UNSUPPORTED;
-        }
-        setMem(destination, static_cast<UINTN>(pages * PAGE), 0);
         for (UINT64 j = 0; j < ph[i].p_filesz; ++j)
             destination[j] = image[ph[i].p_offset + j];
     }
