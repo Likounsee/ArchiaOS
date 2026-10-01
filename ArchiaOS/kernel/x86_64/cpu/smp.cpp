@@ -9,7 +9,6 @@
 
 static constexpr uint64_t TRAMPOLINE_LIMIT = 0x100000ULL;
 static constexpr uint64_t TRAMPOLINE_MAILBOX_OFFSET = 0x200ULL;
-static constexpr uint64_t TRAMPOLINE_CR3_LIMIT = 0x100000000ULL;
 
 extern "C" unsigned char smp_trampoline_start[];
 extern "C" unsigned char smp_trampoline_end[];
@@ -158,6 +157,13 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
             trampoline + TRAMPOLINE_MAILBOX_OFFSET);
 
     const uint64_t cr3 = paging_pml4_physical();
+    if (cr3 == 0 || cr3 >= 0x100000000ULL)
+        return false;
+
+    const uint64_t cr0 = smp_read_cr0();
+    const uint64_t cr4 = smp_read_cr4() & ~(1ULL << 17);
+    const uint64_t efer = smp_read_efer();
+
     const uint64_t entry =
         reinterpret_cast<uint64_t>(&smp_ap_entry);
 
@@ -189,6 +195,9 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
         mailbox->entry_virtual = entry;
         mailbox->stack_virtual =
             (stackVirtual + NOVOS_PAGE_SIZE) & ~0xFULL;
+        mailbox->cr0 = cr0;
+        mailbox->cr4 = cr4;
+        mailbox->efer = efer;
         mailbox->processor_index = index;
         mailbox->apic_id = apicId;
         __atomic_store_n(&mailbox->started, 0U, __ATOMIC_RELEASE);
