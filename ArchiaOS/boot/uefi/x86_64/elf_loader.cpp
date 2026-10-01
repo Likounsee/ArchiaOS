@@ -302,11 +302,13 @@ EFI_STATUS load_kernel_elf(
         }
 
         UINT8* destination = reinterpret_cast<UINT8*>(address);
+        /* EFI does not guarantee newly allocated pages are zeroed. Clear the
+           entire allocation first so padding and the final partial BSS page
+           cannot expose stale firmware/loader contents. */
+        for (UINT64 j = 0; j < pages * PAGE; ++j)
+            destination[j] = 0;
         for (UINT64 j = 0; j < ph[i].p_filesz; ++j)
             destination[j] = image[ph[i].p_offset + j];
-
-        for (UINT64 j = ph[i].p_filesz; j < ph[i].p_memsz; ++j)
-            destination[j] = 0;
     }
 
     const UINT64 loadedEntry = eh->e_entry;
