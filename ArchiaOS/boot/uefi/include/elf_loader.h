@@ -7,6 +7,7 @@ struct LoadedKernel
     UINT64 entry;
     UINT64 base;
     UINT64 size;
+    UINT64 virtual_base;
 };
 
 EFI_STATUS load_kernel_elf(
