@@ -3,14 +3,14 @@
 .global smp_trampoline_end
 .type smp_trampoline_start,@function
 
-.set SMP_MAILBOX_CR3,      0x200
-.set SMP_MAILBOX_ENTRY,    0x208
-.set SMP_MAILBOX_STACK,    0x210
-.set SMP_MAILBOX_CR0,      0x218
-.set SMP_MAILBOX_CR4,      0x220
-.set SMP_MAILBOX_EFER,     0x228
-.set SMP_MAILBOX_INDEX,    0x230
-.set SMP_MAILBOX_APIC_ID,  0x234
+.set SMP_MAILBOX_CR3,      0x400
+.set SMP_MAILBOX_ENTRY,    0x408
+.set SMP_MAILBOX_STACK,    0x410
+.set SMP_MAILBOX_CR0,      0x418
+.set SMP_MAILBOX_CR4,      0x420
+.set SMP_MAILBOX_EFER,     0x428
+.set SMP_MAILBOX_INDEX,    0x430
+.set SMP_MAILBOX_APIC_ID,  0x434
 
 .code16
 smp_trampoline_start:
