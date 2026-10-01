@@ -159,11 +159,11 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool split)
     u64* pde =
         &table2[(virtualAddress >> 21) & 0x1FF];
 
-    if (user && (*pde & NOVOS_PAGE_PRESENT))
-        *pde |= NOVOS_PAGE_USER;
-
     if (split && !split_2m_pde(pde))
         return nullptr;
+
+    if (user && (*pde & NOVOS_PAGE_PRESENT))
+        *pde |= NOVOS_PAGE_USER;
 
     auto* pt =
         table_pointer((*pde) & ~0xFFFULL);
