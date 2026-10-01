@@ -100,7 +100,7 @@ function(archiaos_kernel_compile output source)
         COMMAND "${ARCHIAOS_CLANG}" -target x86_64-pc-none-elf
             -std=c++20 -ffreestanding -O2 -Wall -Wextra -Werror -fno-builtin -fno-exceptions -fno-rtti
             -fno-stack-protector -fno-pie -fno-asynchronous-unwind-tables
-            -fno-threadsafe-statics -mgeneral-regs-only
+            -fno-threadsafe-statics -mgeneral-regs-only -mcmodel=kernel
             -mno-red-zone -mno-sse -mno-sse2
             -I"${ARCHIAOS_COMMON}" -I"${ARCHIAOS_CPU_DIR}" -I"${ARCHIAOS_MEMORY_DIR}"
             -c "${source}" -o "${output}"
