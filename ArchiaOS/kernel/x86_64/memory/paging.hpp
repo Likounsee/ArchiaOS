@@ -29,6 +29,8 @@ struct PagingFlags
     bool writable;
     bool user;
     bool executable;
+    bool cache_disable;
+    bool write_through;
 };
 
 extern "C" bool paging_initialize();
