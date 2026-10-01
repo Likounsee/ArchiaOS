@@ -76,7 +76,7 @@ static bool range_is_mapped(
     if (length == 0 || !address_is_mapped(address))
         return false;
 
-    const unsigned long long limit = 0x1000000000ULL;
+    const unsigned long long limit = 0x8000000000ULL;
     return length <= limit - address;
 }
 
