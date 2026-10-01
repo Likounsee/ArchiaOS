@@ -186,7 +186,8 @@ function(archiaos_boot_compile output source)
         OUTPUT ${output}
         COMMAND "${ARCHIAOS_CLANG}" -target x86_64-pc-win32-coff
             -std=c++20 -ffreestanding -fshort-wchar -fno-builtin
-            -fno-exceptions -fno-rtti -fno-stack-protector
+            -fno-exceptions -fno-rtti -fno-stack-protector -fno-pie -fno-asynchronous-unwind-tables
+            -fno-threadsafe-statics -mgeneral-regs-only -Wall -Wextra -Werror
             -mno-red-zone -mno-sse -mno-sse2
             -DNOVOS_BOOT_DEBUG=1
             -I"${ARCHIAOS_BOOT_INC}" -I"${ARCHIAOS_COMMON}"
