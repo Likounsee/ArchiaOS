@@ -15,7 +15,26 @@ gdt_pointer:
     .quad gdt_table
 
 .section .text
+.global gdt_load_current
 .global gdt_initialize
+.type gdt_load_current, @function
+gdt_load_current:
+    lea gdt_pointer(%rip), %rax
+    lgdt (%rax)
+    pushq $0x08
+    leaq .Lreload_cs_current(%rip), %rax
+    pushq %rax
+    lretq
+.Lreload_cs_current:
+    mov $0x10, %ax
+    mov %ax, %ds
+    mov %ax, %es
+    mov %ax, %ss
+    xor %eax, %eax
+    mov %ax, %fs
+    mov %ax, %gs
+    ret
+
 .type gdt_initialize, @function
 
 gdt_initialize:
