@@ -30,9 +30,19 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
 {
     debug_str("PMM TEST START\n");
 
-    pmm_initialize(bootInfo);
-
     u64 free_before = pmm_free_page_count();
+
+    if (bootInfo->kernel_image_base != 0)
+    {
+        const u64 reserved_page =
+            bootInfo->kernel_image_base & ~(NOVOS_PAGE_SIZE - 1ULL);
+        pmm_free_page(reserved_page);
+        if (pmm_free_page_count() != free_before)
+        {
+            debug_str("PMM TEST FAIL: RESERVED FRAME FREED\\n");
+            for (;;) asm volatile ("cli; hlt");
+        }
+    }
 
     if (free_before == 0)
     {
