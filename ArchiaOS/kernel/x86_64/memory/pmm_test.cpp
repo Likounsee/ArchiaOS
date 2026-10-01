@@ -39,7 +39,7 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
         pmm_free_page(reserved_page);
         if (pmm_free_page_count() != free_before)
         {
-            debug_str("PMM TEST FAIL: RESERVED FRAME FREED\\n");
+            debug_str("PMM TEST FAIL: RESERVED FRAME FREED\n");
             for (;;) asm volatile ("cli; hlt");
         }
     }
@@ -93,7 +93,7 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
         (contiguous & 0xFFFULL) != 0 ||
         pmm_free_page_count() + 4 != free_before_contiguous)
     {
-        debug_str("PMM TEST FAIL: CONTIGUOUS ALLOCATION\\n");
+        debug_str("PMM TEST FAIL: CONTIGUOUS ALLOCATION\n");
         for (;;) asm volatile ("cli; hlt");
     }
 
@@ -110,7 +110,7 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
             page == 0 ||
             page >= NOVOS_PMM_MAX_PHYSICAL_ADDRESS)
         {
-            debug_str("PMM TEST FAIL: CONTIGUOUS RANGE\\n");
+            debug_str("PMM TEST FAIL: CONTIGUOUS RANGE\n");
             for (;;) asm volatile ("cli; hlt");
         }
     }
@@ -122,7 +122,7 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
 
     if (pmm_free_page_count() != free_before_contiguous)
     {
-        debug_str("PMM TEST FAIL: CONTIGUOUS FREE\\n");
+        debug_str("PMM TEST FAIL: CONTIGUOUS FREE\n");
         for (;;) asm volatile ("cli; hlt");
     }
 

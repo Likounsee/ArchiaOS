@@ -37,6 +37,64 @@ static EFI_STATUS allocate_boot_info(EFI_SYSTEM_TABLE* st, BootInfo** out)
     return EFI_SUCCESS;
 }
 
+
+static EFI_STATUS allocate_pmm_bitmap(
+    EFI_SYSTEM_TABLE* st,
+    FinalMemoryMap* map,
+    BootInfo* bootInfo)
+{
+    auto getMemoryMap = reinterpret_cast<EFI_GET_MEMORY_MAP>(st->BootServices->GetMemoryMap);
+    auto allocatePages = reinterpret_cast<EFI_ALLOCATE_PAGES>(st->BootServices->AllocatePages);
+    auto setMem = reinterpret_cast<EFI_SET_MEM>(st->BootServices->SetMem);
+    if (!getMemoryMap || !allocatePages || !setMem || !map || !map->buffer || !bootInfo)
+        return EFI_INVALID_PARAMETER;
+
+    UINTN size = map->capacity;
+    UINTN key = 0;
+    UINTN descriptorSize = map->descriptorSize;
+    UINT32 version = map->descriptorVersion;
+    EFI_STATUS status = getMemoryMap(&size, reinterpret_cast<EFI_MEMORY_DESCRIPTOR*>(map->buffer), &key, &descriptorSize, &version);
+    if (status != EFI_SUCCESS || descriptorSize < sizeof(EFI_MEMORY_DESCRIPTOR) || size % descriptorSize != 0)
+        return status != EFI_SUCCESS ? status : EFI_INVALID_PARAMETER;
+
+    constexpr UINT64 maxPhysical = 0x4000000000ULL;
+    UINT64 highest = 0;
+    for (UINTN offset = 0; offset < size; offset += descriptorSize)
+    {
+        auto* d = reinterpret_cast<EFI_MEMORY_DESCRIPTOR*>(reinterpret_cast<UINT8*>(map->buffer) + offset);
+        if (d->Type != EfiLoaderCode && d->Type != EfiLoaderData &&
+            d->Type != EfiBootServicesCode && d->Type != EfiBootServicesData &&
+            d->Type != EfiConventionalMemory)
+            continue;
+        if (d->PhysicalStart >= maxPhysical)
+            continue;
+        UINT64 pages = d->NumberOfPages;
+        UINT64 available = (maxPhysical - d->PhysicalStart) / 4096ULL;
+        if (pages > available) pages = available;
+        UINT64 end = d->PhysicalStart + pages * 4096ULL;
+        if (end > highest) highest = end;
+    }
+    if (highest < 0x200000ULL)
+        return EFI_OUT_OF_RESOURCES;
+
+    const UINT64 frames = (highest + 4095ULL) / 4096ULL;
+    const UINT64 words = (frames + 63ULL) / 64ULL;
+    const UINT64 bitmapBytes = words * sizeof(UINT64);
+    const UINT64 totalBytes = bitmapBytes * 2ULL;
+    const UINT64 pages = (totalBytes + 4095ULL) / 4096ULL;
+    if (pages == 0 || pages > 0xFFFFFFFFULL)
+        return EFI_OUT_OF_RESOURCES;
+
+    EFI_PHYSICAL_ADDRESS address = 0;
+    status = allocatePages(EFI_ALLOCATE_ANY_PAGES, EfiLoaderData, static_cast<UINTN>(pages), &address);
+    if (status != EFI_SUCCESS)
+        return status;
+    setMem(reinterpret_cast<void*>(address), static_cast<UINTN>(pages * 4096ULL), 0);
+    bootInfo->pmm_bitmap_base = address;
+    bootInfo->pmm_bitmap_size = pages * 4096ULL;
+    return EFI_SUCCESS;
+}
+
 static UINT64 find_table(EFI_SYSTEM_TABLE* st, const EFI_GUID& guid)
 {
     if (!st || !st->ConfigurationTable)
@@ -163,6 +221,11 @@ extern "C" EFI_STATUS EFIAPI efi_main(
     }
 
     boot_debug("boot: Memory map prepared\r\n");
+
+    status = allocate_pmm_bitmap(systemTable, &memoryMap, bootInfo);
+    if (status != EFI_SUCCESS)
+        boot_halt();
+    boot_debug("boot: PMM bitmap allocated\r\n");
 
     boot_debug("boot: calling ExitBootServices\r\n");
 

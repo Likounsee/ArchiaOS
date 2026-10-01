@@ -87,7 +87,8 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         halt();
     }
 
-    if (bootInfo->version != NOVOS_BOOT_INFO_VERSION ||
+    if (bootInfo->version == 0 ||
+        bootInfo->version > NOVOS_BOOT_INFO_VERSION ||
         bootInfo->size < sizeof(BootInfo))
     {
         debug_str("[KERNEL] BootInfo BAD VERSION/SIZE\n");
@@ -110,13 +111,15 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         bootInfo->memory_map_size <
             bootInfo->memory_descriptor_size ||
         bootInfo->memory_map_size %
-            bootInfo->memory_descriptor_size != 0)
+            bootInfo->memory_descriptor_size != 0 ||
+        bootInfo->memory_descriptor_count !=
+            bootInfo->memory_map_size / bootInfo->memory_descriptor_size)
     {
         debug_str("[KERNEL] Memory map BAD\n");
         halt();
     }
 
-    constexpr UINT64 bootstrapPhysicalLimit = 0x1000000000ULL;
+    constexpr UINT64 bootstrapPhysicalLimit = NOVOS_PMM_MAX_PHYSICAL_ADDRESS;
     const auto physical_range_ok = [](UINT64 base, UINT64 size) -> bool
     {
         return base != 0 && size != 0 &&
@@ -266,42 +269,29 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     debug_str("ACPI: RSDP/MADT OK\n");
     debug_str("ACPI: CPU/IOAPIC tables parsed\n");
 
-    volatile UINT32* fb =
-        reinterpret_cast<volatile UINT32*>(bootInfo->framebuffer_base);
+    if (bootInfo->framebuffer_base)
+    {
+        /* Framebuffer is MMIO/video memory: use UC page mappings. */
+        const UINT64 first = bootInfo->framebuffer_base & ~(NOVOS_PAGE_SIZE - 1ULL);
+        const UINT64 end = bootInfo->framebuffer_base +
+            static_cast<UINT64>(bootInfo->framebuffer_pitch) *
+            static_cast<UINT64>(bootInfo->framebuffer_height);
+        for (UINT64 page = first; page < end; page += NOVOS_PAGE_SIZE)
+        {
+            if (!paging_map_4k(page, page, PagingFlags{true, false, true, true, false}))
+            {
+                debug_str("[KERNEL] FRAMEBUFFER MMIO MAP FAILED\\n");
+                halt();
+            }
+        }
 
-    const UINT32 pitchPixels =
-        bootInfo->framebuffer_pitch / 4;
-
-    const UINT32 background =
-        bootInfo->framebuffer_pixel_format == 0
-            ? 0x00101820U
-            : 0x00201810U;
-
-    fill_rect(
-        fb,
-        pitchPixels,
-        bootInfo->framebuffer_width,
-        bootInfo->framebuffer_height,
-        0, 0,
-        bootInfo->framebuffer_width,
-        bootInfo->framebuffer_height,
-        background);
-
-    fill_rect(
-        fb,
-        pitchPixels,
-        bootInfo->framebuffer_width,
-        bootInfo->framebuffer_height,
-        48, 48, 640, 96,
-        0x00FFFFFFU);
-
-    fill_rect(
-        fb,
-        pitchPixels,
-        bootInfo->framebuffer_width,
-        bootInfo->framebuffer_height,
-        60, 60, 616, 72,
-        background);
+        volatile UINT32* fb = reinterpret_cast<volatile UINT32*>(bootInfo->framebuffer_base);
+        const UINT32 pitchPixels = bootInfo->framebuffer_pitch / 4;
+        const UINT32 background = bootInfo->framebuffer_pixel_format == 0 ? 0x00101820U : 0x00201810U;
+        fill_rect(fb, pitchPixels, bootInfo->framebuffer_width, bootInfo->framebuffer_height, 0, 0, bootInfo->framebuffer_width, bootInfo->framebuffer_height, background);
+        fill_rect(fb, pitchPixels, bootInfo->framebuffer_width, bootInfo->framebuffer_height, 48, 48, 640, 96, 0x00FFFFFFU);
+        fill_rect(fb, pitchPixels, bootInfo->framebuffer_width, bootInfo->framebuffer_height, 60, 60, 616, 72, background);
+    }
 
     halt();
 }

@@ -5,7 +5,7 @@ static EFI_SYSTEM_TABLE* g_system_table = nullptr;
 static void debugcon_ascii(const char* text)
 {
     for (UINTN i = 0; text[i]; ++i)
-        asm volatile("outb %0,%1" : : "a"(text[i]), "Nd"(static_cast<unsigned short>(0xE9)));
+        asm volatile("outb %0,%1" : : "a"(text[i]), "Nd"(static_cast<unsigned short>(0xE9)) : "memory");
 }
 
 static void output_ascii(const char* text)

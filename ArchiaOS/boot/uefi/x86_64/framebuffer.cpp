@@ -23,17 +23,42 @@ EFI_STATUS discover_framebuffer(
         reinterpret_cast<void**>(&gop));
 
     if (status != EFI_SUCCESS || !gop || !gop->Mode || !gop->Mode->Info)
-        return status != EFI_SUCCESS ? status : EFI_UNSUPPORTED;
+    {
+        /* A text-only firmware is valid; graphics is optional to the kernel. */
+        info->framebuffer_base = 0;
+        info->framebuffer_size = 0;
+        return EFI_SUCCESS;
+    }
 
-    if (gop->Mode->Info->PixelFormat !=
-            PixelRedGreenBlueReserved8BitPerColor &&
-        gop->Mode->Info->PixelFormat !=
-            PixelBlueGreenRedReserved8BitPerColor)
+    auto* modeInfo = gop->Mode->Info;
+    if (modeInfo->PixelFormat == PixelBltOnly)
+    {
+        info->framebuffer_base = 0;
+        info->framebuffer_size = 0;
+        return EFI_SUCCESS;
+    }
+
+    if (modeInfo->PixelFormat == PixelBitMask)
+    {
+        const EFI_PIXEL_BITMASK& m = modeInfo->PixelInformation;
+        const bool rgb = m.RedMask == 0x000000FFU &&
+                         m.GreenMask == 0x0000FF00U &&
+                         m.BlueMask == 0x00FF0000U;
+        const bool bgr = m.BlueMask == 0x000000FFU &&
+                         m.GreenMask == 0x0000FF00U &&
+                         m.RedMask == 0x00FF0000U;
+        if (!rgb && !bgr)
+            return EFI_UNSUPPORTED;
+    }
+    else if (modeInfo->PixelFormat != PixelRedGreenBlueReserved8BitPerColor &&
+             modeInfo->PixelFormat != PixelBlueGreenRedReserved8BitPerColor)
+    {
         return EFI_UNSUPPORTED;
+    }
 
-    const UINT32 width = gop->Mode->Info->HorizontalResolution;
-    const UINT32 height = gop->Mode->Info->VerticalResolution;
-    const UINT32 pixelsPerScanLine = gop->Mode->Info->PixelsPerScanLine;
+    const UINT32 width = modeInfo->HorizontalResolution;
+    const UINT32 height = modeInfo->VerticalResolution;
+    const UINT32 pixelsPerScanLine = modeInfo->PixelsPerScanLine;
 
     if (gop->Mode->FrameBufferBase == 0 ||
         width == 0 || height == 0 || pixelsPerScanLine < width ||
@@ -55,8 +80,17 @@ EFI_STATUS discover_framebuffer(
     info->framebuffer_height = height;
     info->framebuffer_pitch = static_cast<UINT32>(pitch);
     info->framebuffer_bpp = 32;
-    info->framebuffer_pixel_format =
-        static_cast<UINT32>(gop->Mode->Info->PixelFormat);
+    if (modeInfo->PixelFormat == PixelBitMask)
+    {
+        const EFI_PIXEL_BITMASK& m = modeInfo->PixelInformation;
+        info->framebuffer_pixel_format =
+            (m.RedMask == 0x000000FFU) ? 0U : 1U;
+    }
+    else
+    {
+        info->framebuffer_pixel_format =
+            static_cast<UINT32>(modeInfo->PixelFormat);
+    }
 
     return EFI_SUCCESS;
 }

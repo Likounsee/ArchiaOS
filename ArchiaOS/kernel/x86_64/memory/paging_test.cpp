@@ -54,7 +54,7 @@ extern "C" void paging_run_tests()
             fail("PAGING TEST FAIL: TRANSLATION\n");
     }
 
-    test_str("PAGING IDENTITY MAP PASS (64 GiB)\n");
+    test_str("PAGING IDENTITY MAP PASS\n");
 
     /*
      * The high-half direct map must resolve the same physical frames as
@@ -67,7 +67,7 @@ extern "C" void paging_run_tests()
         0x0000000000200000ULL,
         0x0000000040000000ULL,
         0x0000000100000000ULL,
-        NOVOS_PMM_MAX_PHYSICAL_ADDRESS - NOVOS_PAGE_SIZE
+        paging_max_physical_address() - NOVOS_PAGE_SIZE
     };
 
     for (u64 physical : hhdmSamples)
@@ -83,14 +83,14 @@ extern "C" void paging_run_tests()
         }
     }
 
-    if (paging_physical_to_virtual(NOVOS_PMM_MAX_PHYSICAL_ADDRESS) != 0 ||
+    if (paging_physical_to_virtual(paging_max_physical_address()) != 0 ||
         paging_virtual_to_physical(NOVOS_HHDM_BASE +
-                                   NOVOS_PMM_MAX_PHYSICAL_ADDRESS) != 0)
+                                   paging_max_physical_address()) != 0)
     {
         fail("PAGING TEST FAIL: HHDM RANGE\n");
     }
 
-    test_str("PAGING HHDM 64GiB PASS\n");
+    test_str("PAGING HHDM PASS\n");
 
     if (!paging_activate())
         fail("PAGING TEST FAIL: ACTIVATION\n");
@@ -135,6 +135,8 @@ extern "C" void paging_run_tests()
         fail("PAGING TEST FAIL: 4K ALLOCATION\n");
 
     const PagingFlags readOnlyNoExecute{
+        false,
+        false,
         false,
         false,
         false

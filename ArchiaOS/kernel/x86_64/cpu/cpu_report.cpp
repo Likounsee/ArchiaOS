@@ -1,4 +1,5 @@
 #include "features.hpp"
+#include "security.hpp"
 
 static void debug_char(char c)
 {
@@ -68,6 +69,10 @@ extern "C" void cpu_print_report()
     debug_hex(c->stepping);
     debug_char('\n');
 
+    debug_str("CPU: physical address bits: ");
+    debug_hex(c->physical_address_bits);
+    debug_char('\n');
+
     debug_str("CPU: topology logical: ");
     debug_hex(c->topology.logical_processors);
     debug_str(" cores: ");
@@ -122,7 +127,18 @@ extern "C" void cpu_print_report()
     else
         debug_str("CPU: hardening profile: LIMITED\n");
 
-    debug_str("CPU: FEATURES DETECTED OK\n");
-    debug_str("CPU: SECURITY FEATURES DETECTED OK\n");
-    debug_str("CPU: TOPOLOGY DETECTED OK\n");
+    if (c->max_basic_leaf >= 1)
+        debug_str("CPU: FEATURES DETECTED OK\n");
+
+    const CpuSecurityState* security = cpu_security_get_state();
+    if (security &&
+        security->write_protect_enabled &&
+        (!security->nx_supported || security->nx_enabled) &&
+        (!security->umip_supported || security->umip_enabled) &&
+        (!security->smep_supported || security->smep_enabled) &&
+        (!security->smap_supported || security->smap_enabled))
+        debug_str("CPU: SECURITY FEATURES DETECTED OK\n");
+
+    if (c->topology.enumerated)
+        debug_str("CPU: TOPOLOGY DETECTED OK\n");
 }

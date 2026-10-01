@@ -16,6 +16,13 @@ extern "C" CpuidResult cpu_cpuid(unsigned int leaf, unsigned int subleaf)
 
 extern "C" unsigned long long cpu_read_xcr0()
 {
+    if (cpu_info.max_basic_leaf < 1)
+        return 0;
+
+    CpuidResult r = cpu_cpuid(1, 0);
+    if ((r.ecx & (1U << 26)) == 0 || (r.ecx & (1U << 27)) == 0)
+        return 0;
+
     unsigned int eax;
     unsigned int edx;
     asm volatile(
@@ -46,14 +53,14 @@ static void copy_brand()
     if (cpu_info.max_extended_leaf < 0x80000004U)
         return;
 
-    unsigned int* out = reinterpret_cast<unsigned int*>(cpu_info.brand);
     for (unsigned int leaf = 0; leaf < 3; ++leaf)
     {
         CpuidResult r = cpu_cpuid(0x80000002U + leaf, 0);
-        out[leaf * 4 + 0] = r.eax;
-        out[leaf * 4 + 1] = r.ebx;
-        out[leaf * 4 + 2] = r.ecx;
-        out[leaf * 4 + 3] = r.edx;
+        const unsigned int words[4] = {r.eax, r.ebx, r.ecx, r.edx};
+        for (unsigned int word = 0; word < 4; ++word)
+            for (unsigned int byte = 0; byte < 4; ++byte)
+                cpu_info.brand[leaf * 16 + word * 4 + byte] =
+                    static_cast<char>((words[word] >> (byte * 8)) & 0xFFU);
     }
     cpu_info.brand[48] = '\0';
 }
@@ -312,7 +319,17 @@ extern "C" void cpu_initialize()
     CpuidResult ext0 = cpu_cpuid(0x80000000U, 0);
     cpu_info.max_extended_leaf = ext0.eax;
 
-    decode_family_model(cpu_cpuid(1, 0));
+    CpuidResult leaf1{};
+    if (cpu_info.max_basic_leaf >= 1)
+    {
+        leaf1 = cpu_cpuid(1, 0);
+        decode_family_model(leaf1);
+    }
+
+    cpu_info.physical_address_bits = 32;
+    if (cpu_info.max_extended_leaf >= 0x80000008U)
+        cpu_info.physical_address_bits = cpu_cpuid(0x80000008U, 0).eax & 0xFFU;
+
     copy_brand();
     enumerate_features();
     enumerate_security_capabilities();

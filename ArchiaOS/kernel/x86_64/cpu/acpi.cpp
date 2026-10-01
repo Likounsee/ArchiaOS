@@ -59,14 +59,14 @@ static bool checksum_ok(unsigned long long address, unsigned int length)
 }
 
 /*
- * Early paging currently identity-maps the first 4 GiB.
+ * Early paging currently identity-maps the first 256 GiB.
  * ACPI firmware structures and MMIO used during early boot must
  * therefore stay inside that range until a full virtual-memory
  * manager is available.
  */
 static bool address_is_mapped(unsigned long long address)
 {
-    return address != 0 && address < 0x1000000000ULL;
+    return address != 0 && address < 0x4000000000ULL;
 }
 
 static bool range_is_mapped(

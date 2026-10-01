@@ -78,6 +78,7 @@ struct CpuInfo
     unsigned int family;
     unsigned int model;
     unsigned int stepping;
+    unsigned int physical_address_bits;
 
     CpuFeatures features;
     CpuTopology topology;

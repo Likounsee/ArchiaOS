@@ -130,19 +130,24 @@ extern "C" bool cpu_security_initialize()
             (read_cr4() & CR4_UMIP) != 0;
     }
 
-    /*
-     * SMEP/SMAP are deliberately not enabled yet. Our bootstrap address
-     * space is currently supervisor-only identity paging and the kernel has
-     * no user mappings. Enabling them becomes meaningful only when the page
-     * table layer can create and audit U/S mappings and the page-fault path
-     * is ready to handle the resulting protection faults.
-     */
-    state.smep_enabled = (read_cr4() & CR4_SMEP) != 0;
-    state.smap_enabled = (read_cr4() & CR4_SMAP) != 0;
+    /* The bootstrap address space is supervisor-only, so SMEP/SMAP can be
+       enabled safely now and inherited by future user address spaces. */
+    unsigned long long cr4 = read_cr4();
+    if (state.smep_supported)
+        cr4 |= CR4_SMEP;
+    if (state.smap_supported)
+        cr4 |= CR4_SMAP;
+    write_cr4(cr4);
+
+    cr4 = read_cr4();
+    state.smep_enabled = (cr4 & CR4_SMEP) != 0;
+    state.smap_enabled = (cr4 & CR4_SMAP) != 0;
 
     return state.write_protect_enabled &&
            (!state.nx_supported || state.nx_enabled) &&
-           (!state.umip_supported || state.umip_enabled);
+           (!state.umip_supported || state.umip_enabled) &&
+           (!state.smep_supported || state.smep_enabled) &&
+           (!state.smap_supported || state.smap_enabled);
 }
 
 extern "C" const CpuSecurityState* cpu_security_get_state()

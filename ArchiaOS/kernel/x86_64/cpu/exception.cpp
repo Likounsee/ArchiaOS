@@ -2,7 +2,7 @@
 
 static inline void debug_char(char c)
 {
-    asm volatile ("outb %0, %1" : : "a"(c), "Nd"(static_cast<unsigned short>(0xE9)));
+    asm volatile ("outb %0, %1" : : "a"(c), "Nd"(static_cast<unsigned short>(0xE9)) : "memory");
 }
 
 static void debug_str(const char* s)
@@ -87,11 +87,11 @@ extern "C" void exception_dispatch(ExceptionFrame* frame)
         {
             invalid_opcode_test_rip = 0;
             frame->rip += 2;
-            debug_str("[EXC] Controlled invalid-opcode recovery\\n");
+            debug_str("[EXC] Controlled invalid-opcode recovery\n");
             return;
         }
 
-        debug_str("[EXC] Fatal invalid-opcode exception\\n");
+        debug_str("[EXC] Fatal invalid-opcode exception\n");
         for (;;)
             asm volatile ("cli; hlt");
     }
@@ -139,12 +139,12 @@ extern "C" void exception_dispatch(ExceptionFrame* frame)
             const unsigned long long recovery = page_fault_test.recovery_rip;
             page_fault_test = {};
             frame->rip = recovery;
-            debug_str("[PF] controlled test recovery\\n");
+            debug_str("[PF] controlled test recovery\n");
             return;
         }
 
         if (page_fault_test.recovery_rip != 0)
-            debug_str("[PF] unexpected fault during armed test\\n");
+            debug_str("[PF] unexpected fault during armed test\n");
 
         for (;;)
             asm volatile ("cli; hlt");

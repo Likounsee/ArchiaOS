@@ -2059,6 +2059,7 @@ isr255:
 .global isr_common
 .type isr_common, @function
 isr_common:
+    cld
     pushq %rax
     pushq %rbx
     pushq %rcx
