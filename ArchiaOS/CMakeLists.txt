@@ -120,6 +120,7 @@ function(archiaos_kernel_compile output source)
             ${ARCHIAOS_CPU_DIR}/ioapic.hpp
             ${ARCHIAOS_CPU_DIR}/acpi.hpp
             ${ARCHIAOS_CPU_DIR}/smp.hpp
+            ${ARCHIAOS_CPU_DIR}/scheduler.hpp
             ${ARCHIAOS_MEMORY_DIR}/paging.hpp
             ${ARCHIAOS_MEMORY_DIR}/pmm.hpp
     )
