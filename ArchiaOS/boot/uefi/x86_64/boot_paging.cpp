@@ -207,8 +207,13 @@ EFI_STATUS prepare_boot_paging(
     if (highest == 0 || highest > MAX_PHYSICAL)
         return EFI_INVALID_PARAMETER;
 
-    const UINT64 pdCount =
-        (highest + 0x3FFFFFFFULL) / 0x40000000ULL;
+    /*
+     * Keep the bootstrap identity/HHDM hierarchy aligned with the kernel's
+     * 512 GiB physical-address bootstrap window. The PMM and paging tests
+     * intentionally exercise the full window even when the VM exposes less
+     * RAM than that, so the transition CR3 must cover the whole range.
+     */
+    const UINT64 pdCount = MAX_PHYSICAL / 0x40000000ULL;
 
     EFI_PHYSICAL_ADDRESS pml4Physical = 0;
     EFI_PHYSICAL_ADDRESS identityPdptPhysical = 0;
