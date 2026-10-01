@@ -78,17 +78,26 @@ static void decode_family_model(const CpuidResult& r)
 static void enumerate_security_capabilities()
 {
     CpuidResult leaf1 = cpu_cpuid(1, 0);
-    CpuidResult leaf7 = cpu_cpuid(7, 0);
 
     cpu_info.features.x2apic = bit(leaf1.ecx, 21);
     cpu_info.features.pcid = bit(leaf1.ecx, 17);
     cpu_info.features.tsc_deadline = bit(leaf1.ecx, 24);
 
-    cpu_info.features.invpcid = bit(leaf7.ebx, 10);
-    cpu_info.features.smap = bit(leaf7.ebx, 20);
-    cpu_info.features.sgx = bit(leaf7.ebx, 2);
-    cpu_info.features.umip = bit(leaf7.ecx, 2);
-    cpu_info.features.fsgsbase = bit(leaf7.ebx, 0);
+    cpu_info.features.invpcid = false;
+    cpu_info.features.smap = false;
+    cpu_info.features.sgx = false;
+    cpu_info.features.umip = false;
+    cpu_info.features.fsgsbase = false;
+
+    if (cpu_info.max_basic_leaf >= 7)
+    {
+        CpuidResult leaf7 = cpu_cpuid(7, 0);
+        cpu_info.features.invpcid = bit(leaf7.ebx, 10);
+        cpu_info.features.smap = bit(leaf7.ebx, 20);
+        cpu_info.features.sgx = bit(leaf7.ebx, 2);
+        cpu_info.features.umip = bit(leaf7.ecx, 2);
+        cpu_info.features.fsgsbase = bit(leaf7.ebx, 0);
+    }
 }
 
 static void enumerate_features()
@@ -125,7 +134,7 @@ static void enumerate_features()
     cpu_info.features.smap = false;
     cpu_info.features.umip = false;
     cpu_info.features.invpcid = false;
-    cpu_info.features.one_gib_pages = bit(r.edx, 26);
+    cpu_info.features.one_gib_pages = false;
     cpu_info.features.avx2 = false;
     cpu_info.features.avx512f = false;
     cpu_info.features.bmi1 = false;
@@ -150,6 +159,7 @@ static void enumerate_features()
     if (cpu_info.max_extended_leaf >= 0x80000001U)
     {
         CpuidResult ext = cpu_cpuid(0x80000001U, 0);
+        cpu_info.features.one_gib_pages = bit(ext.edx, 26);
         cpu_info.features.syscall_sysret = bit(ext.edx, 11);
         cpu_info.features.rdtscp = bit(ext.edx, 27);
         cpu_info.features.nx = bit(ext.edx, 20);
