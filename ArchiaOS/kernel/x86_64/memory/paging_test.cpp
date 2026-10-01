@@ -175,7 +175,7 @@ extern "C" void paging_run_tests()
     const unsigned long long nxRecovery =
         reinterpret_cast<unsigned long long>(&&nx_page_fault_recovered);
 
-    exception_expect_page_fault(nxRecovery);
+    exception_expect_page_fault(nxRecovery, testPage, 0x1FULL, 0x11ULL);
 
     asm volatile(
         "jmp *%%rax"
@@ -199,7 +199,7 @@ nx_page_fault_recovered:
     const unsigned long long roRecovery =
         reinterpret_cast<unsigned long long>(&&ro_write_fault_recovered);
 
-    exception_expect_page_fault(roRecovery);
+    exception_expect_page_fault(roRecovery, testPage, 0x1FULL, 0x03ULL);
 
     *reinterpret_cast<volatile unsigned char*>(testPage) = 0x5A;
 
@@ -223,7 +223,7 @@ ro_write_fault_recovered:
     const unsigned long long recovery =
         reinterpret_cast<unsigned long long>(&&page_fault_recovered);
 
-    exception_expect_page_fault(recovery);
+    exception_expect_page_fault(recovery, testPage, 0x1FULL, 0x00ULL);
 
     asm volatile(
         "movq (%%rax), %%rax"
