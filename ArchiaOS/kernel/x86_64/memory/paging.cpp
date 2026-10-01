@@ -214,16 +214,52 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool split)
     return &pt[(virtualAddress >> 12) & 0x1FF];
 }
 
+static inline u64 read_cr3()
+{
+    u64 value = 0;
+    asm volatile("mov %%cr3, %0" : "=r"(value));
+    return value & ~0xFFFULL;
+}
+
 static bool setup_identity_2m()
 {
     if (pml4 != nullptr)
         return true;
 
-    u64 allocated_identity_pd[NOVOS_PAGE_TABLE_COUNT] = {};
-    u64 allocated_hhdm_pd[NOVOS_PAGE_TABLE_COUNT] = {};
+    /*
+     * UEFI has already built and activated the transition page tables:
+     * identity + HHDM + higher-half kernel mapping. Adopting that CR3 keeps
+     * the kernel executable while ownership moves from the bootloader to
+     * the kernel paging code.
+     */
+    const u64 bootstrapPml4Physical = read_cr3();
+    if (bootstrapPml4Physical == 0)
+        return false;
+
+    auto* bootstrapPml4 =
+        reinterpret_cast<u64*>(bootstrapPml4Physical);
+
+    const u64 identityPdptEntry = bootstrapPml4[0];
+    const u64 hhdmPdptEntry = bootstrapPml4[256];
+    const u64 kernelPdptEntry = bootstrapPml4[511];
+
+    if ((identityPdptEntry & NOVOS_PAGE_PRESENT) == 0 ||
+        (hhdmPdptEntry & NOVOS_PAGE_PRESENT) == 0 ||
+        (kernelPdptEntry & NOVOS_PAGE_PRESENT) == 0)
+        return false;
+
+    /*
+     * The bootstrap HHDM and identity map intentionally share the same
+     * lower-level hierarchy. This is the direct-map invariant used by the
+     * PMM/page-table code before the hierarchy is later expanded.
+     */
+    if ((identityPdptEntry & ~0xFFFULL) !=
+        (hhdmPdptEntry & ~0xFFFULL))
+        return false;
 
     const CpuInfo* cpu = cpu_get_info();
-    if (cpu && cpu->physical_address_bits >= 32 && cpu->physical_address_bits < 63)
+    if (cpu && cpu->physical_address_bits >= 32 &&
+        cpu->physical_address_bits < 63)
     {
         const u64 maxByCpu = 1ULL << cpu->physical_address_bits;
         if (maxByCpu < mapped_physical_limit)
@@ -232,132 +268,23 @@ static bool setup_identity_2m()
 
     if (mapped_physical_limit > NOVOS_PMM_MAX_PHYSICAL_ADDRESS)
         mapped_physical_limit = NOVOS_PMM_MAX_PHYSICAL_ADDRESS;
+
     if (mapped_physical_limit < NOVOS_2M_PAGE_SIZE)
         return false;
 
-    const bool use1GiBPages =
-        cpu != nullptr &&
-        cpu->features.one_gib_pages &&
-        (mapped_physical_limit % NOVOS_PDPT_COVERAGE) == 0;
+    const u64 identityPdptPhysical =
+        identityPdptEntry & ~0xFFFULL;
 
-    const u64 pdCount =
-        (mapped_physical_limit + NOVOS_PDPT_COVERAGE - 1) /
-        NOVOS_PDPT_COVERAGE;
+    pml4_physical = bootstrapPml4Physical;
+    pml4 = bootstrapPml4;
+    pdpt = reinterpret_cast<u64*>(identityPdptPhysical);
 
-    u64 pml4Physical = pmm_alloc_page();
-    u64 identityPdptPhysical = pmm_alloc_page();
-    u64 hhdmPdptPhysical = pmm_alloc_page();
-
-    if (pml4Physical == 0 ||
-        identityPdptPhysical == 0 ||
-        hhdmPdptPhysical == 0)
-    {
-        if (pml4Physical != 0)
-            pmm_free_page(pml4Physical);
-        if (identityPdptPhysical != 0)
-            pmm_free_page(identityPdptPhysical);
-        if (hhdmPdptPhysical != 0)
-            pmm_free_page(hhdmPdptPhysical);
-        return false;
-    }
-
-    auto* localPml4 = reinterpret_cast<u64*>(pml4Physical);
-    auto* identityPdpt = reinterpret_cast<u64*>(identityPdptPhysical);
-    auto* hhdmPdpt = reinterpret_cast<u64*>(hhdmPdptPhysical);
-
-    zero_page(pml4Physical);
-    zero_page(identityPdptPhysical);
-    zero_page(hhdmPdptPhysical);
-
-    localPml4[0] = table_entry(identityPdptPhysical);
-    localPml4[256] = table_entry(hhdmPdptPhysical);
-
-    for (u64 pdptIndex = 0; pdptIndex < pdCount; ++pdptIndex)
-    {
-        const u64 physicalBase =
-            pdptIndex * NOVOS_PDPT_COVERAGE;
-
-        if (use1GiBPages)
-        {
-            identityPdpt[pdptIndex] =
-                physicalBase |
-                NOVOS_PAGE_PRESENT |
-                NOVOS_PAGE_WRITE |
-                NOVOS_PAGE_HUGE;
-
-            hhdmPdpt[pdptIndex] =
-                physicalBase |
-                NOVOS_PAGE_PRESENT |
-                NOVOS_PAGE_WRITE |
-                NOVOS_PAGE_HUGE;
-
-            continue;
-        }
-
-        const u64 identityPdPhysical = pmm_alloc_page();
-        const u64 hhdmPdPhysical = pmm_alloc_page();
-
-        if (identityPdPhysical == 0 || hhdmPdPhysical == 0)
-        {
-            if (identityPdPhysical != 0)
-                pmm_free_page(identityPdPhysical);
-            if (hhdmPdPhysical != 0)
-                pmm_free_page(hhdmPdPhysical);
-
-            for (u64 i = 0; i < pdCount; ++i)
-            {
-                if (allocated_identity_pd[i] != 0)
-                    pmm_free_page(allocated_identity_pd[i]);
-                if (allocated_hhdm_pd[i] != 0)
-                    pmm_free_page(allocated_hhdm_pd[i]);
-            }
-
-            pmm_free_page(hhdmPdptPhysical);
-            pmm_free_page(identityPdptPhysical);
-            pmm_free_page(pml4Physical);
-            return false;
-        }
-
-        allocated_identity_pd[pdptIndex] = identityPdPhysical;
-        allocated_hhdm_pd[pdptIndex] = hhdmPdPhysical;
-
-        auto* localIdentityPd =
-            reinterpret_cast<u64*>(identityPdPhysical);
-        auto* localHhdmPd =
-            reinterpret_cast<u64*>(hhdmPdPhysical);
-
-        zero_page(identityPdPhysical);
-        zero_page(hhdmPdPhysical);
-
-        identityPdpt[pdptIndex] = table_entry(identityPdPhysical);
-        hhdmPdpt[pdptIndex] = table_entry(hhdmPdPhysical);
-
-        for (u64 i = 0; i < 512; ++i)
-        {
-            const u64 physicalAddress =
-                physicalBase + i * NOVOS_2M_PAGE_SIZE;
-
-            localIdentityPd[i] =
-                physicalAddress |
-                NOVOS_PAGE_PRESENT |
-                NOVOS_PAGE_WRITE |
-                NOVOS_PAGE_HUGE;
-
-            localHhdmPd[i] =
-                physicalAddress |
-                NOVOS_PAGE_PRESENT |
-                NOVOS_PAGE_WRITE |
-                NOVOS_PAGE_HUGE;
-        }
-    }
-
-    pml4_physical = pml4Physical;
-    pml4 = localPml4;
-    pdpt = identityPdpt;
-
-    for (u64 i = 0; i < NOVOS_PAGE_TABLE_COUNT; ++i)
-        pd[i] = reinterpret_cast<u64*>(allocated_identity_pd[i]);
-
+    /*
+     * The boot hierarchy uses 2 MiB leaves on CPUs without 1 GiB pages and
+     * may use 1 GiB leaves when available. Leave those leaves intact; the
+     * existing split_1g_pdpte/split_2m_pde paths will convert them when a
+     * fine-grained mapping is requested.
+     */
     return true;
 }
 
