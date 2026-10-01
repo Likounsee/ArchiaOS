@@ -20,7 +20,7 @@ extern "C" unsigned long long cpu_read_xcr0()
         return 0;
 
     CpuidResult r = cpu_cpuid(1, 0);
-    if (!bit(r.ecx, 26) || !bit(r.ecx, 27))
+    if ((r.ecx & (1U << 26)) == 0 || (r.ecx & (1U << 27)) == 0)
         return 0;
 
     unsigned int eax;
