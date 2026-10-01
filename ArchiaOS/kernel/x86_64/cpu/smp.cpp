@@ -67,6 +67,8 @@ extern "C" void smp_ap_entry(
     idt_load_current();
 
     __atomic_fetch_add(&online_count, 1U, __ATOMIC_SEQ_CST);
+    auto* mailbox = reinterpret_cast<SmpTrampolineMailbox*>(mailboxPhysical);
+    __atomic_store_n(&mailbox->started, 1U, __ATOMIC_RELEASE);
     smp_debug("SMP: AP REPORTED ONLINE\n");
 
     (void)processorIndex;
