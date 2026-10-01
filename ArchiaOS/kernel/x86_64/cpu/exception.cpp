@@ -20,16 +20,42 @@ static void debug_hex64(unsigned long long value)
         debug_char(digits[(value >> ((15 - i) * 4)) & 0xF]);
 }
 
-static unsigned long long page_fault_test_recovery_rip = 0;
-
-extern "C" void exception_expect_page_fault(unsigned long long recovery_rip)
+struct PageFaultTestState
 {
-    page_fault_test_recovery_rip = recovery_rip;
+    unsigned long long recovery_rip;
+    unsigned long long expected_cr2;
+    unsigned long long error_mask;
+    unsigned long long error_value;
+};
+
+static PageFaultTestState page_fault_test = {};
+static unsigned long long invalid_opcode_test_rip = 0;
+
+extern "C" void exception_expect_page_fault(
+    unsigned long long recovery_rip,
+    unsigned long long expected_cr2,
+    unsigned long long error_mask,
+    unsigned long long error_value)
+{
+    page_fault_test.recovery_rip = recovery_rip;
+    page_fault_test.expected_cr2 = expected_cr2;
+    page_fault_test.error_mask = error_mask;
+    page_fault_test.error_value = error_value;
 }
 
 extern "C" bool exception_page_fault_test_active()
 {
-    return page_fault_test_recovery_rip != 0;
+    return page_fault_test.recovery_rip != 0;
+}
+
+extern "C" void exception_expect_invalid_opcode(unsigned long long rip)
+{
+    invalid_opcode_test_rip = rip;
+}
+
+extern "C" bool exception_invalid_opcode_test_active()
+{
+    return invalid_opcode_test_rip != 0;
 }
 
 extern "C" unsigned char tss_ist1_stack[];
