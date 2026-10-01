@@ -249,6 +249,12 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         halt();
     }
     debug_str("IRQ: TIMER TEST OK\n");
+    if (irq_dispatch_count_get() < 3)
+    {
+        debug_str("[KERNEL] IRQ DISPATCH CHAIN VALIDATION FAILED\n");
+        halt();
+    }
+    debug_str("IRQ: DISPATCH CHAIN OK\n");
 
     debug_str("ACPI: parsing RSDP/MADT\n");
     if (!acpi_initialize(bootInfo->acpi_rsdp_address))
@@ -295,6 +301,7 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         halt();
     }
     debug_str("IOAPIC: KEYBOARD IRQ ROUTE OK\n");
+    debug_str("IRQ: KEYBOARD HANDLER READY\n");
 
     debug_str("SMP: starting application processors\n");
     if (!smp_initialize(acpi))
