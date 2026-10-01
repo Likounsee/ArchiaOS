@@ -176,7 +176,8 @@ static bool setup_identity_2m()
     if (pml4 != nullptr)
         return true;
 
-    u64 allocated_pd[NOVOS_PAGE_TABLE_COUNT] = {};
+    u64 allocated_identity_pd[NOVOS_PAGE_TABLE_COUNT] = {};
+    u64 allocated_hhdm_pd[NOVOS_PAGE_TABLE_COUNT] = {};
 
     const CpuInfo* cpu = cpu_get_info();
     if (cpu && cpu->physical_address_bits >= 32 && cpu->physical_address_bits < 63)
@@ -185,50 +186,83 @@ static bool setup_identity_2m()
         if (maxByCpu < mapped_physical_limit)
             mapped_physical_limit = maxByCpu;
     }
+
     if (mapped_physical_limit > NOVOS_PMM_MAX_PHYSICAL_ADDRESS)
         mapped_physical_limit = NOVOS_PMM_MAX_PHYSICAL_ADDRESS;
     if (mapped_physical_limit < NOVOS_2M_PAGE_SIZE)
         return false;
 
-    const u64 pdCount = (mapped_physical_limit + NOVOS_PDPT_COVERAGE - 1) / NOVOS_PDPT_COVERAGE;
+    const u64 pdCount =
+        (mapped_physical_limit + NOVOS_PDPT_COVERAGE - 1) /
+        NOVOS_PDPT_COVERAGE;
 
     u64 pml4Physical = pmm_alloc_page();
-    u64 pdptPhysical = pmm_alloc_page();
+    u64 identityPdptPhysical = pmm_alloc_page();
+    u64 hhdmPdptPhysical = pmm_alloc_page();
 
-    if (pml4Physical == 0 || pdptPhysical == 0)
+    if (pml4Physical == 0 ||
+        identityPdptPhysical == 0 ||
+        hhdmPdptPhysical == 0)
     {
         if (pml4Physical != 0)
             pmm_free_page(pml4Physical);
-        if (pdptPhysical != 0)
-            pmm_free_page(pdptPhysical);
+        if (identityPdptPhysical != 0)
+            pmm_free_page(identityPdptPhysical);
+        if (hhdmPdptPhysical != 0)
+            pmm_free_page(hhdmPdptPhysical);
         return false;
     }
 
     auto* localPml4 = reinterpret_cast<u64*>(pml4Physical);
-    auto* localPdpt = reinterpret_cast<u64*>(pdptPhysical);
-    zero_page(pml4Physical);
-    zero_page(pdptPhysical);
+    auto* identityPdpt = reinterpret_cast<u64*>(identityPdptPhysical);
+    auto* hhdmPdpt = reinterpret_cast<u64*>(hhdmPdptPhysical);
 
-    localPml4[0] = table_entry(pdptPhysical);
-    localPml4[256] = table_entry(pdptPhysical);
+    zero_page(pml4Physical);
+    zero_page(identityPdptPhysical);
+    zero_page(hhdmPdptPhysical);
+
+    localPml4[0] = table_entry(identityPdptPhysical);
+    localPml4[256] = table_entry(hhdmPdptPhysical);
 
     for (u64 pdptIndex = 0; pdptIndex < pdCount; ++pdptIndex)
     {
-        const u64 pdPhysical = pmm_alloc_page();
-        if (pdPhysical == 0)
+        const u64 identityPdPhysical = pmm_alloc_page();
+        const u64 hhdmPdPhysical = pmm_alloc_page();
+
+        if (identityPdPhysical == 0 || hhdmPdPhysical == 0)
         {
+            if (identityPdPhysical != 0)
+                pmm_free_page(identityPdPhysical);
+            if (hhdmPdPhysical != 0)
+                pmm_free_page(hhdmPdPhysical);
+
             for (u64 i = 0; i < pdCount; ++i)
-                if (allocated_pd[i] != 0)
-                    pmm_free_page(allocated_pd[i]);
-            pmm_free_page(pdptPhysical);
+            {
+                if (allocated_identity_pd[i] != 0)
+                    pmm_free_page(allocated_identity_pd[i]);
+                if (allocated_hhdm_pd[i] != 0)
+                    pmm_free_page(allocated_hhdm_pd[i]);
+            }
+
+            pmm_free_page(hhdmPdptPhysical);
+            pmm_free_page(identityPdptPhysical);
             pmm_free_page(pml4Physical);
             return false;
         }
 
-        allocated_pd[pdptIndex] = pdPhysical;
-        auto* localPd = reinterpret_cast<u64*>(pdPhysical);
-        zero_page(pdPhysical);
-        localPdpt[pdptIndex] = table_entry(pdPhysical);
+        allocated_identity_pd[pdptIndex] = identityPdPhysical;
+        allocated_hhdm_pd[pdptIndex] = hhdmPdPhysical;
+
+        auto* localIdentityPd =
+            reinterpret_cast<u64*>(identityPdPhysical);
+        auto* localHhdmPd =
+            reinterpret_cast<u64*>(hhdmPdPhysical);
+
+        zero_page(identityPdPhysical);
+        zero_page(hhdmPdPhysical);
+
+        identityPdpt[pdptIndex] = table_entry(identityPdPhysical);
+        hhdmPdpt[pdptIndex] = table_entry(hhdmPdPhysical);
 
         for (u64 i = 0; i < 512; ++i)
         {
@@ -236,18 +270,26 @@ static bool setup_identity_2m()
                 pdptIndex * NOVOS_PDPT_COVERAGE +
                 i * NOVOS_2M_PAGE_SIZE;
 
-            localPd[i] = physicalAddress |
-                         NOVOS_PAGE_PRESENT |
-                         NOVOS_PAGE_WRITE |
-                         NOVOS_PAGE_HUGE;
+            localIdentityPd[i] =
+                physicalAddress |
+                NOVOS_PAGE_PRESENT |
+                NOVOS_PAGE_WRITE |
+                NOVOS_PAGE_HUGE;
+
+            localHhdmPd[i] =
+                physicalAddress |
+                NOVOS_PAGE_PRESENT |
+                NOVOS_PAGE_WRITE |
+                NOVOS_PAGE_HUGE;
         }
     }
 
     pml4_physical = pml4Physical;
     pml4 = localPml4;
-    pdpt = localPdpt;
+    pdpt = identityPdpt;
+
     for (u64 i = 0; i < NOVOS_PAGE_TABLE_COUNT; ++i)
-        pd[i] = reinterpret_cast<u64*>(allocated_pd[i]);
+        pd[i] = reinterpret_cast<u64*>(allocated_identity_pd[i]);
 
     return true;
 }
