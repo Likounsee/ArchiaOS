@@ -144,7 +144,7 @@ extern "C" bool pmm_initialize(BootInfo* bootInfo)
         bootInfo->pmm_bitmap_base == 0 ||
         bootInfo->pmm_bitmap_size < 8192ULL ||
         (bootInfo->pmm_bitmap_size & (NOVOS_PAGE_SIZE - 1ULL)) != 0)
-        return;
+        return false;
 
     pmm_bitmap = reinterpret_cast<u64*>(bootInfo->pmm_bitmap_base);
     pmm_bitmap_words = (bootInfo->pmm_bitmap_size / 2ULL) / sizeof(u64);
