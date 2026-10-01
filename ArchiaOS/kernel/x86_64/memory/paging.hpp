@@ -35,6 +35,7 @@ struct PagingFlags
 
 extern "C" bool paging_initialize();
 extern "C" u64 paging_pml4_physical();
+extern "C" u64 paging_max_physical_address();
 extern "C" u64 paging_translate(u64 virtualAddress);
 extern "C" bool paging_map_identity(u64 physicalAddress);
 extern "C" bool paging_map_4k(
