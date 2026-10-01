@@ -73,6 +73,7 @@ smp_trampoline_pmode:
 
     movl SMP_MAILBOX_EFER(%ebx), %ecx
     movl %ecx, %eax
+    xorl %edx, %edx
     movl $0xC0000080, %ecx
     wrmsr
 
@@ -93,8 +94,8 @@ smp_trampoline_pmode:
     outb %al, %dx
 
     .byte 0xFF
-    .byte 0x2E
-    .word (smp_trampoline_lmode_ptr - smp_trampoline_start)
+    .byte 0x6B
+    .byte (smp_trampoline_lmode_ptr - smp_trampoline_start)
 
 .code64
 smp_trampoline_lmode:
