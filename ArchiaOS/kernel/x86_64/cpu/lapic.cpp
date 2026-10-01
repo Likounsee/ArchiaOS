@@ -359,8 +359,11 @@ static bool lapic_send_ipi(
      * interval on virtual LAPICs. Startup IPIs are serialized here by the
      * caller, so avoid spinning indefinitely on that advisory status bit.
      */
-    *lapic_register(0x310) = apic_id << 24;
-    *lapic_register(0x300) = static_cast<unsigned int>(command);
+    /* Temporary bring-up path: broadcast to all processors except the BSP. */
+    (void)apic_id;
+    *lapic_register(0x310) = 0;
+    *lapic_register(0x300) =
+        static_cast<unsigned int>(command) | (3U << 18);
     return true;
 }
 
