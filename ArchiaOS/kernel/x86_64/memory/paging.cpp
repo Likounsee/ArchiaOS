@@ -123,7 +123,7 @@ static bool split_2m_pde(u64* pde)
     return true;
 }
 
-static u64* find_4k_entry(u64 virtualAddress)
+static u64* find_4k_entry(u64 virtualAddress, bool user)
 {
     if (pml4 == nullptr)
         return nullptr;
@@ -132,26 +132,35 @@ static u64* find_4k_entry(u64 virtualAddress)
         (virtualAddress >> 48) != 0xFFFFULL)
         return 0;
 
-    const u64 pml4e =
+    u64& pml4e =
         pml4[(virtualAddress >> 39) & 0x1FF];
 
     if ((pml4e & NOVOS_PAGE_PRESENT) == 0)
         return nullptr;
 
+    if (user)
+        pml4e |= NOVOS_PAGE_USER;
+
     auto* table3 =
         table_pointer(pml4e & ~0xFFFULL);
 
-    const u64 pdpte =
+    u64& pdpte =
         table3[(virtualAddress >> 30) & 0x1FF];
 
     if ((pdpte & NOVOS_PAGE_PRESENT) == 0)
         return nullptr;
+
+    if (user)
+        pdpte |= NOVOS_PAGE_USER;
 
     auto* table2 =
         table_pointer(pdpte & ~0xFFFULL);
 
     u64* pde =
         &table2[(virtualAddress >> 21) & 0x1FF];
+
+    if (user && (*pde & NOVOS_PAGE_PRESENT))
+        *pde |= NOVOS_PAGE_USER;
 
     if (!split_2m_pde(pde))
         return nullptr;
@@ -331,7 +340,7 @@ extern "C" bool paging_map_4k(
         physicalAddress >= mapped_physical_limit)
         return false;
 
-    u64* entry = find_4k_entry(virtualAddress);
+    u64* entry = find_4k_entry(virtualAddress, flags.user);
     if (entry == nullptr)
         return false;
 
@@ -351,7 +360,7 @@ extern "C" bool paging_unmap_4k(u64 virtualAddress)
         ((virtualAddress >> 48) != 0 && (virtualAddress >> 48) != 0xFFFFULL))
         return false;
 
-    u64* entry = find_4k_entry(virtualAddress);
+    u64* entry = find_4k_entry(virtualAddress, false);
     if (entry == nullptr)
         return false;
 
@@ -362,13 +371,13 @@ extern "C" bool paging_unmap_4k(u64 virtualAddress)
 
 extern "C" u64 paging_get_4k_entry(u64 virtualAddress)
 {
-    u64* entry = find_4k_entry(virtualAddress);
+    u64* entry = find_4k_entry(virtualAddress, false);
     return entry ? *entry : 0;
 }
 
 extern "C" u64 paging_physical_to_virtual(u64 physicalAddress)
 {
-    if (physicalAddress >= NOVOS_PMM_MAX_PHYSICAL_ADDRESS)
+    if (physicalAddress >= mapped_physical_limit)
         return 0;
 
     const u64 hhdmEnd = NOVOS_HHDM_BASE + mapped_physical_limit;
