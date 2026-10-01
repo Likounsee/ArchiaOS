@@ -99,6 +99,8 @@ jobs:
               "CPU: INVALID OPCODE HANDLER OK" \
               "IRQ: LAPIC OK" \
               "IRQ: TIMER TEST OK" \
+              "IRQ: DISPATCH CHAIN OK" \
+              "IRQ: KEYBOARD HANDLER READY" \
               "ACPI: RSDP/MADT OK" \
               "SMP: APPLICATION PROCESSORS ONLINE"; do
               grep -q "$marker" "qemu-${cpu}.log" || {
