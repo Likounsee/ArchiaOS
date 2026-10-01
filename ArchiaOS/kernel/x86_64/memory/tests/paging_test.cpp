@@ -151,6 +151,10 @@ extern "C" void paging_run_tests()
         pmm_free_page(splitPhysical);
         test_str("PAGING 1G SPLIT PASS\n");
     }
+    else
+    {
+        test_str("PAGING 1G SPLIT SKIPPED\n");
+    }
 
     if (!paging_map_identity(0x0000000000200000ULL))
         fail("PAGING TEST FAIL: MAP API\n");
