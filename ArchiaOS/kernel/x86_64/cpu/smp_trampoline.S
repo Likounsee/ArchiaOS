@@ -45,6 +45,10 @@ smp_trampoline_start:
 
 .code32
 smp_trampoline_pmode:
+    movb $0x43, %al
+    movw $0xE9, %dx
+    outb %al, %dx
+
     movw $0x10, %ax
     movw %ax, %ds
     movw %ax, %es
@@ -65,6 +69,10 @@ smp_trampoline_pmode:
     movl %cr0, %eax
     orl $(1 << 31), %eax
     movl %eax, %cr0
+
+    movb $0x44, %al
+    movw $0xE9, %dx
+    outb %al, %dx
 
     .byte 0xEA
     .long (smp_trampoline_lmode - smp_trampoline_start)
