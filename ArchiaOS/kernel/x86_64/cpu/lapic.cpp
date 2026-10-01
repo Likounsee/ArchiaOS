@@ -394,7 +394,7 @@ extern "C" bool lapic_startup_cpu(
     for (unsigned int delay = 0; delay < 20000U; ++delay)
         asm volatile("pause");
 
-    if (!lapic_send_ipi(apic_id, 6U, startup_vector))
+    if (!lapic_send_ipi(apic_id, (6ULL << 8) | startup_vector))
         return false;
 
     return true;
