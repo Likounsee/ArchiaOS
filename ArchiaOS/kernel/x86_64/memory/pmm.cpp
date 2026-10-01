@@ -14,8 +14,10 @@ static_assert(
     sizeof(EfiMemoryDescriptor) == 40,
     "EFI memory descriptor layout must be 40 bytes");
 
-static u64 pmm_bitmap[NOVOS_PMM_BITMAP_WORDS];
-static u64 pmm_reserved_bitmap[NOVOS_PMM_BITMAP_WORDS];
+static u64* pmm_bitmap = nullptr;
+static u64* pmm_reserved_bitmap = nullptr;
+static u64 pmm_bitmap_words = 0;
+static u64 pmm_max_frames = 0;
 static u64 pmm_free_pages = 0;
 
 static inline void bitmap_set(u64 frame)
@@ -47,7 +49,7 @@ static inline bool bitmap_test(u64 frame)
 
 static void reserve_range(u64 start, u64 page_count)
 {
-    if (start >= NOVOS_PMM_MAX_PHYSICAL_ADDRESS)
+    if (start >= (pmm_max_frames * NOVOS_PAGE_SIZE))
         return;
 
     const u64 max_pages =
@@ -141,7 +143,8 @@ extern "C" void pmm_initialize(BootInfo* bootInfo)
 
     pmm_free_pages = 0;
 
-    if (bootInfo == nullptr ||
+    if (pmm_bitmap == nullptr ||
+        bootInfo == nullptr ||
         bootInfo->memory_map_address == 0 ||
         bootInfo->memory_map_size == 0 ||
         bootInfo->memory_descriptor_size <
@@ -213,7 +216,7 @@ extern "C" u64 pmm_alloc_page()
         {
             const u64 frame = word_index * 64ULL + bit;
 
-            if (frame >= NOVOS_PMM_MAX_FRAMES)
+            if (frame >= pmm_max_frames)
                 return 0;
 
             if ((word & (1ULL << bit)) == 0)
