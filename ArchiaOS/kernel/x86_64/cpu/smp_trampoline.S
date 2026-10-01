@@ -126,10 +126,20 @@ smp_trampoline_pmode:
     movw $0xE9, %dx
     outb %al, %dx
 
-    .byte 0x66
+    /* Build the far pointer on a known identity-mapped trampoline stack.
+       This avoids any ambiguity in ModRM/address-size encoding. */
+    movl %ebx, %esp
+    addl $0x800, %esp
+
+    movl %ebx, %eax
+    addl $(smp_trampoline_lmode - smp_trampoline_start), %eax
+    pushl $0x0018
+    pushl %eax
+
+    /* m16:32 pointer at [ESP]: offset first, selector second. */
     .byte 0xFF
-    .byte 0x2E
-    .word (smp_trampoline_lmode_ptr - smp_trampoline_start)
+    .byte 0x2C
+    .byte 0x24
 
 .code64
 smp_trampoline_lmode:
