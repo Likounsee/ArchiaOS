@@ -1,4 +1,5 @@
 #include "lapic.hpp"
+#include "../memory/paging.hpp"
 
 static constexpr unsigned int IA32_APIC_BASE_MSR = 0x1B;
 static constexpr unsigned long long APIC_BASE_MASK = 0xFFFFFFFFFFFFF000ULL;
@@ -132,6 +133,16 @@ extern "C" bool lapic_initialize()
     if (!x2apic_mode && lapic_base == nullptr)
         return false;
 
+    if (!x2apic_mode)
+    {
+        const u64 physical = apic_base & APIC_BASE_MASK;
+        if (physical >= NOVOS_PMM_MAX_PHYSICAL_ADDRESS ||
+            !paging_map_4k(physical, physical, PagingFlags{
+                true, false, true, true, false}))
+            return false;
+        lapic_base = reinterpret_cast<volatile unsigned char*>(physical);
+    }
+
     const unsigned long long svr =
         lapic_read(LAPIC_SVR, IA32_X2APIC_SVR);
     lapic_write(
@@ -139,6 +150,11 @@ extern "C" bool lapic_initialize()
         IA32_X2APIC_SVR,
         (svr & ~0xFFULL) | LAPIC_SVR_ENABLE | 0xFFULL);
 
+    /* Mask LINT0/LINT1 and the APIC error vector until handlers exist. */
+    lapic_write(0x350, 0x835, 0x10000U | 0xFFU);
+    lapic_write(0x360, 0x836, 0x10000U | 0xFFU);
+    lapic_write(0x370, 0x837, 0x10000U | 0xFEU);
+    lapic_write(0x080, 0x828, 0);
     lapic_write(LAPIC_LVT_TIMER, IA32_X2APIC_LVT_TIMER, 0x10000U | 0x20U);
     lapic_write(LAPIC_TIMER_DIVIDE, IA32_X2APIC_DIVIDE, 0x3U);
 
