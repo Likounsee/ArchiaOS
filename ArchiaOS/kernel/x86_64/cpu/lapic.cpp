@@ -314,6 +314,96 @@ extern "C" void lapic_stop_timer()
     lapic_write(LAPIC_TIMER_INITIAL, IA32_X2APIC_INITIAL_COUNT, 0);
 }
 
+
+extern "C" unsigned int lapic_current_id()
+{
+    if (x2apic_mode)
+        return static_cast<unsigned int>(rdmsr(0x802));
+
+    return *lapic_register(0x020);
+}
+
+static bool lapic_wait_icr_idle()
+{
+    if (x2apic_mode)
+        return true;
+
+    for (unsigned int timeout = 0; timeout < 1000000U; ++timeout)
+    {
+        if ((*lapic_register(0x300) & (1U << 12)) == 0)
+            return true;
+        asm volatile("pause");
+    }
+
+    return false;
+}
+
+static bool lapic_send_ipi(
+    unsigned int apic_id,
+    unsigned int deliveryMode,
+    unsigned int vector)
+{
+    const unsigned long long command =
+        (static_cast<unsigned long long>(deliveryMode) << 8) |
+        static_cast<unsigned long long>(vector);
+
+    if (x2apic_mode)
+    {
+        if (!lapic_wait_icr_idle())
+            return false;
+        wrmsr(
+            0x830,
+            (static_cast<unsigned long long>(apic_id) << 32) | command);
+        return true;
+    }
+
+    if (!lapic_wait_icr_idle())
+        return false;
+
+    *lapic_register(0x310) = apic_id << 24;
+    *lapic_register(0x300) = static_cast<unsigned int>(command);
+    return lapic_wait_icr_idle();
+}
+
+extern "C" bool lapic_startup_cpu(
+    unsigned int apic_id,
+    unsigned int startup_vector)
+{
+    if (startup_vector == 0 || startup_vector > 0xFFU)
+        return false;
+
+    if (apic_id == lapic_current_id())
+        return true;
+
+    /*
+     * INIT assertion/deassertion followed by two SIPIs. The second SIPI is
+     * intentional: firmware and QEMU tolerate it and it covers platforms
+     * where the first startup IPI is lost during AP reset release.
+     */
+    if (!lapic_send_ipi(apic_id, 5U | (1U << 14), 0))
+        return false;
+
+    for (volatile unsigned int delay = 0; delay < 100000U; ++delay)
+        asm volatile("pause");
+
+    if (!lapic_send_ipi(apic_id, 5U, 0))
+        return false;
+
+    for (volatile unsigned int delay = 0; delay < 10000U; ++delay)
+        asm volatile("pause");
+
+    if (!lapic_send_ipi(apic_id, 6U, startup_vector))
+        return false;
+
+    for (volatile unsigned int delay = 0; delay < 20000U; ++delay)
+        asm volatile("pause");
+
+    if (!lapic_send_ipi(apic_id, 6U, startup_vector))
+        return false;
+
+    return true;
+}
+
 extern "C" void lapic_eoi()
 {
     lapic_write(LAPIC_EOI, IA32_X2APIC_EOI, 0);
