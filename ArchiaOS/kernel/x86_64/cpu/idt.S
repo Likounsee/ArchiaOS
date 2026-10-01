@@ -2077,8 +2077,12 @@ isr_common:
 
     mov %rsp, %rdi
     mov %rsp, %r12
+    /*
+     * SysV AMD64 requires RSP to be 16-byte aligned at the CALL site.
+     * Interrupt entry has no ABI-guaranteed stack alignment, so align
+     * explicitly and let CALL itself create the callee's 8-byte offset.
+     */
     andq $-16, %rsp
-    subq $8, %rsp
     call exception_dispatch
     mov %r12, %rsp
 
