@@ -134,6 +134,15 @@ static unsigned long long detect_tsc_frequency_hz()
     return 0;
 }
 
+static unsigned long long lapic_read(
+    unsigned int xapicOffset,
+    unsigned int x2apicMsr);
+
+static void lapic_write(
+    unsigned int xapicOffset,
+    unsigned int x2apicMsr,
+    unsigned long long value);
+
 static bool calibrate_lapic_timer()
 {
     const unsigned long long tscHz = detect_tsc_frequency_hz();
