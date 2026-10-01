@@ -16,7 +16,27 @@ extern "C" unsigned char smp_trampoline_end[];
 
 static volatile uint32_t online_count = 0;
 
-static inline uint64_t smp_read_cr0()\n{\n    uint64_t value;\n    asm volatile("mov %%cr0,%0" : "=r"(value));\n    return value;\n}\n\nstatic inline uint64_t smp_read_cr4()\n{\n    uint64_t value;\n    asm volatile("mov %%cr4,%0" : "=r"(value));\n    return value;\n}\n\nstatic inline uint64_t smp_read_efer()\n{\n    uint32_t low;\n    uint32_t high;\n    asm volatile("rdmsr" : "=a"(low), "=d"(high) : "c"(0xC0000080U));\n    return (static_cast<uint64_t>(high) << 32) | low;\n}
+static inline uint64_t smp_read_cr0()
+{
+    uint64_t value;
+    asm volatile("mov %%cr0,%0" : "=r"(value));
+    return value;
+}
+
+static inline uint64_t smp_read_cr4()
+{
+    uint64_t value;
+    asm volatile("mov %%cr4,%0" : "=r"(value));
+    return value;
+}
+
+static inline uint64_t smp_read_efer()
+{
+    uint32_t low;
+    uint32_t high;
+    asm volatile("rdmsr" : "=a"(low), "=d"(high) : "c"(0xC0000080U));
+    return (static_cast<uint64_t>(high) << 32) | low;
+}
 
 static inline void smp_debug(const char* s)
 {
