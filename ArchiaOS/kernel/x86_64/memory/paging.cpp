@@ -4,12 +4,10 @@
 static constexpr u64 NOVOS_PAGE_TABLE_COUNT = 512;
 static constexpr u64 NOVOS_IDENTITY_MAP_SIZE = NOVOS_PMM_MAX_PHYSICAL_ADDRESS;
 static constexpr u64 NOVOS_2M_PAGE_SIZE = 0x200000ULL;
-static constexpr u64 NOVOS_PDPT_COVERAGE = 0x40000000ULL; /* 1 GiB */
 
 static u64* pml4 = nullptr;
 static u64 pml4_physical = 0;
 static u64* pdpt = nullptr;
-static u64* pd[NOVOS_PAGE_TABLE_COUNT] = {};
 static bool paging_active = false;
 static u64 mapped_physical_limit = NOVOS_PMM_MAX_PHYSICAL_ADDRESS;
 
@@ -49,11 +47,6 @@ static inline void zero_page(u64 address)
 
     for (u64 i = 0; i < 512; ++i)
         page[i] = 0;
-}
-
-static inline u64 table_entry(u64 address)
-{
-    return address | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE;
 }
 
 static inline u64 page_entry_flags(PagingFlags flags)
