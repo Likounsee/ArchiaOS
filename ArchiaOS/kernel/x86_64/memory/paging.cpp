@@ -68,7 +68,13 @@ static bool split_2m_pde(u64* pde)
     if ((*pde & NOVOS_PAGE_HUGE) == 0)
         return true;
 
-    const u64 oldBase = *pde & ~0x1FFFFFULL;
+    const u64 oldEntry = *pde;
+    const u64 oldBase = oldEntry & ~0x1FFFFFULL;
+    const u64 permissionFlags =
+        oldEntry & (NOVOS_PAGE_PRESENT |
+                    NOVOS_PAGE_WRITE |
+                    NOVOS_PAGE_USER |
+                    NOVOS_PAGE_NO_EXECUTE);
     const u64 ptPhysical = pmm_alloc_page();
 
     if (ptPhysical == 0)
@@ -85,11 +91,10 @@ static bool split_2m_pde(u64* pde)
     for (u64 i = 0; i < 512; ++i)
     {
         pt[i] = (oldBase + i * NOVOS_PAGE_SIZE) |
-                NOVOS_PAGE_PRESENT |
-                NOVOS_PAGE_WRITE;
+                permissionFlags;
     }
 
-    *pde = ptPhysical | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE;
+    *pde = ptPhysical | permissionFlags;
     return true;
 }
 
