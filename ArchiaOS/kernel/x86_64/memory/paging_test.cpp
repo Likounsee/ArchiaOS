@@ -163,6 +163,38 @@ extern "C" void paging_run_tests()
     if (paging_translate(testPage) != testPage)
         fail("PAGING TEST FAIL: 4K TRANSLATION\n");
 
+    const u64 userPage = pmm_alloc_page();
+    if (userPage == 0)
+        fail("PAGING TEST FAIL: USER PAGE ALLOCATION\n");
+
+    const PagingFlags userReadOnly{
+        false,
+        true,
+        false,
+        false,
+        false
+    };
+
+    if (!paging_map_4k(NOVOS_USER_VIRTUAL_BASE,
+                       userPage,
+                       userReadOnly))
+        fail("PAGING TEST FAIL: USER MAP\n");
+
+    const u64 pml4Virtual = paging_physical_to_virtual(
+        paging_pml4_physical());
+    auto* pml4Table =
+        reinterpret_cast<volatile u64*>(pml4Virtual);
+
+    if ((pml4Table[0] & NOVOS_PAGE_USER) == 0 ||
+        (pml4Table[256] & NOVOS_PAGE_USER) != 0)
+        fail("PAGING TEST FAIL: USER/HHDM ISOLATION\n");
+
+    if (!paging_unmap_4k(NOVOS_USER_VIRTUAL_BASE))
+        fail("PAGING TEST FAIL: USER UNMAP\n");
+
+    pmm_free_page(userPage);
+    test_str("PAGING USER/HHDM ISOLATION PASS\n");
+
     test_str("PAGING 4K RO/NX BITS PASS\n");
 
     /*
