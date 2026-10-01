@@ -15,6 +15,7 @@ static_assert(
     "EFI memory descriptor layout must be 40 bytes");
 
 static u64 pmm_bitmap[NOVOS_PMM_BITMAP_WORDS];
+static u64 pmm_reserved_bitmap[NOVOS_PMM_BITMAP_WORDS];
 static u64 pmm_free_pages = 0;
 
 static inline void bitmap_set(u64 frame)
@@ -25,6 +26,17 @@ static inline void bitmap_set(u64 frame)
 static inline void bitmap_clear(u64 frame)
 {
     pmm_bitmap[frame >> 6] &= ~(1ULL << (frame & 63ULL));
+}
+
+static inline void reserved_set(u64 frame)
+{
+    pmm_reserved_bitmap[frame >> 6] |= 1ULL << (frame & 63ULL);
+}
+
+static inline bool reserved_test(u64 frame)
+{
+    return (pmm_reserved_bitmap[frame >> 6] &
+            (1ULL << (frame & 63ULL))) != 0;
 }
 
 static inline bool bitmap_test(u64 frame)
@@ -56,6 +68,7 @@ static void reserve_range(u64 start, u64 page_count)
             if (pmm_free_pages > 0)
                 --pmm_free_pages;
         }
+        reserved_set(frame);
     }
 }
 
@@ -96,8 +109,11 @@ static void release_range(u64 start, u64 page_count)
     for (u64 i = 0; i < page_count; ++i)
     {
         const u64 frame = firstFrame + i;
-        bitmap_clear(frame);
-        ++pmm_free_pages;
+        if (bitmap_test(frame))
+        {
+            bitmap_clear(frame);
+            ++pmm_free_pages;
+        }
     }
 }
 
@@ -118,7 +134,10 @@ static bool reclaimable_efi_type(u32 type)
 extern "C" void pmm_initialize(BootInfo* bootInfo)
 {
     for (u64 i = 0; i < NOVOS_PMM_BITMAP_WORDS; ++i)
+    {
         pmm_bitmap[i] = ~0ULL;
+        pmm_reserved_bitmap[i] = 0;
+    }
 
     pmm_free_pages = 0;
 
@@ -267,6 +286,9 @@ extern "C" void pmm_free_page(u64 physicalAddress)
 
     const u64 frame =
         physicalAddress / NOVOS_PAGE_SIZE;
+
+    if (reserved_test(frame))
+        return;
 
     if (bitmap_test(frame))
     {
