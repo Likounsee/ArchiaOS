@@ -338,8 +338,8 @@ static void lapic_startup_delay()
      * issued back-to-back with INIT deassertion. A bounded pause loop keeps
      * this path independent of the timer interrupt subsystem.
      */
-    for (volatile unsigned int i = 0; i < 10000000U; ++i)
-        asm volatile("pause");
+    for (unsigned int i = 0; i < 10000000U; ++i)
+        asm volatile("pause" ::: "memory");
 }
 
 static bool lapic_send_ipi(
