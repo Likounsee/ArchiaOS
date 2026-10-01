@@ -5,6 +5,13 @@ static constexpr unsigned long long APIC_BASE_MASK = 0xFFFFFFFFFFFFF000ULL;
 static constexpr unsigned long long APIC_X2APIC_ENABLE = 1ULL << 10;
 static constexpr unsigned long long APIC_ENABLE = 1ULL << 11;
 
+static constexpr unsigned int IA32_X2APIC_SVR = 0x80F;
+static constexpr unsigned int IA32_X2APIC_LVT_TIMER = 0x832;
+static constexpr unsigned int IA32_X2APIC_INITIAL_COUNT = 0x838;
+static constexpr unsigned int IA32_X2APIC_DIVIDE = 0x83E;
+static constexpr unsigned int IA32_X2APIC_EOI = 0x80B;
+
+static bool x2apic_mode = false;
 static volatile unsigned char* lapic_base = nullptr;
 
 static constexpr unsigned long long LAPIC_ID = 0x020;
@@ -45,6 +52,21 @@ static inline void wrmsr(unsigned int msr, unsigned long long value)
     );
 }
 
+static inline unsigned int cpuid_ecx(unsigned int leaf)
+{
+    unsigned int eax;
+    unsigned int ebx;
+    unsigned int ecx;
+    unsigned int edx;
+
+    asm volatile (
+        "cpuid"
+        : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
+        : "a"(leaf));
+
+    return ecx;
+}
+
 static inline unsigned int cpuid_edx(unsigned int leaf)
 {
     unsigned int eax;
@@ -66,6 +88,21 @@ static inline volatile unsigned int* lapic_register(unsigned long long offset)
     return reinterpret_cast<volatile unsigned int*>(lapic_base + offset);
 }
 
+static inline unsigned long long lapic_read(unsigned int xapicOffset, unsigned int x2apicMsr)
+{
+    return x2apic_mode
+        ? rdmsr(x2apicMsr)
+        : *lapic_register(xapicOffset);
+}
+
+static inline void lapic_write(unsigned int xapicOffset, unsigned int x2apicMsr, unsigned long long value)
+{
+    if (x2apic_mode)
+        wrmsr(x2apicMsr, value);
+    else
+        *lapic_register(xapicOffset) = static_cast<unsigned int>(value);
+}
+
 extern "C" bool lapic_initialize()
 {
     if ((cpuid_edx(1) & (1U << 9)) == 0)
@@ -73,10 +110,8 @@ extern "C" bool lapic_initialize()
 
     unsigned long long apic_base = rdmsr(IA32_APIC_BASE_MSR);
 
-    /* x2APIC uses MSR-based APIC registers; this implementation is
-       intentionally xAPIC-only until the MSR access path is implemented. */
-    if ((apic_base & APIC_X2APIC_ENABLE) != 0)
-        return false;
+    const bool x2apic_supported =
+        (cpuid_ecx(1) & (1U << 21)) != 0;
 
     if ((apic_base & APIC_ENABLE) == 0)
     {
@@ -84,19 +119,25 @@ extern "C" bool lapic_initialize()
         wrmsr(IA32_APIC_BASE_MSR, apic_base);
     }
 
+    x2apic_mode = (apic_base & APIC_X2APIC_ENABLE) != 0;
+
+    if (x2apic_mode && !x2apic_supported)
+        return false;
+
     lapic_base = reinterpret_cast<volatile unsigned char*>(apic_base & APIC_BASE_MASK);
 
     if (lapic_base == nullptr)
         return false;
 
-    *lapic_register(LAPIC_SVR) =
-        (*lapic_register(LAPIC_SVR) & 0xFFFFFF00U) |
-        LAPIC_SVR_ENABLE |
-        0xFFU;
+    const unsigned long long svr =
+        lapic_read(LAPIC_SVR, IA32_X2APIC_SVR);
+    lapic_write(
+        LAPIC_SVR,
+        IA32_X2APIC_SVR,
+        (svr & ~0xFFULL) | LAPIC_SVR_ENABLE | 0xFFULL);
 
-    *lapic_register(LAPIC_LVT_TIMER) = 0x10000U | 0x20U;
-
-    *lapic_register(LAPIC_TIMER_DIVIDE) = 0x3U;
+    lapic_write(LAPIC_LVT_TIMER, IA32_X2APIC_LVT_TIMER, 0x10000U | 0x20U);
+    lapic_write(LAPIC_TIMER_DIVIDE, IA32_X2APIC_DIVIDE, 0x3U);
 
     lapic_ticks = 0;
 
@@ -105,21 +146,26 @@ extern "C" bool lapic_initialize()
 
 extern "C" void lapic_timer_start()
 {
-    *lapic_register(LAPIC_LVT_TIMER) =
-        LAPIC_TIMER_PERIODIC | 0x20U;
+    lapic_write(
+        LAPIC_LVT_TIMER,
+        IA32_X2APIC_LVT_TIMER,
+        LAPIC_TIMER_PERIODIC | 0x20U);
 
-    *lapic_register(LAPIC_TIMER_INITIAL) = 1000000U;
+    lapic_write(LAPIC_TIMER_INITIAL, IA32_X2APIC_INITIAL_COUNT, 1000000U);
 }
 
 extern "C" void lapic_stop_timer()
 {
-    *lapic_register(LAPIC_LVT_TIMER) = 0x10000U | 0x20U;
-    *lapic_register(LAPIC_TIMER_INITIAL) = 0;
+    lapic_write(
+        LAPIC_LVT_TIMER,
+        IA32_X2APIC_LVT_TIMER,
+        0x10000U | 0x20U);
+    lapic_write(LAPIC_TIMER_INITIAL, IA32_X2APIC_INITIAL_COUNT, 0);
 }
 
 extern "C" void lapic_eoi()
 {
-    *lapic_register(LAPIC_EOI) = 0;
+    lapic_write(LAPIC_EOI, IA32_X2APIC_EOI, 0);
 }
 
 extern "C" unsigned long long lapic_get_ticks()
