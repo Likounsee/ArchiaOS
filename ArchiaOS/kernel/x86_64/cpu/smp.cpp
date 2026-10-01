@@ -15,6 +15,13 @@ extern "C" unsigned char smp_trampoline_end[];
 
 static volatile uint32_t online_count = 0;
 
+static inline void smp_debug(const char* s)
+{
+    for (int i = 0; s[i] != '\0'; ++i)
+        asm volatile("outb %0,%1" : : "a"(s[i]), "Nd"(static_cast<unsigned short>(0xE9)));
+}
+
+
 extern "C" void smp_ap_entry(
     unsigned int processorIndex,
     unsigned int apicId)
@@ -65,6 +72,8 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
 
     if (trampolineSize == 0 || trampolineSize > NOVOS_PAGE_SIZE)
         return false;
+
+    smp_debug("SMP: TRAMPOLINE READY\\n");
 
     const uint64_t trampolinePhysical =
         pmm_alloc_page_below(TRAMPOLINE_LIMIT);
@@ -141,11 +150,21 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
         __atomic_store_n(&mailbox->started, 0U, __ATOMIC_RELEASE);
         mailbox->reserved = 0;
 
+        smp_debug("SMP: SENDING AP STARTUP\\n");
         if (!lapic_startup_cpu(apicId, startupVector))
+        {
+            smp_debug("SMP: AP STARTUP IPI FAILED\\n");
             return false;
+        }
 
+        smp_debug("SMP: AP STARTUP IPI SENT\\n");
         if (!wait_for_ap(&mailbox->started))
+        {
+            smp_debug("SMP: AP START TIMEOUT\\n");
             return false;
+        }
+
+        smp_debug("SMP: AP REPORTED ONLINE\\n");
 
         ++expectedOnline;
 
