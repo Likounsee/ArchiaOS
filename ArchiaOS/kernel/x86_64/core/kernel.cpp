@@ -163,6 +163,8 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     idt_initialize();
     debug_str("CPU: IDT 256 VECTORS OK\n");
 
+    debug_str("PMM: initializing\n");
+    pmm_initialize(bootInfo);
     debug_str("PMM: running tests\n");
     pmm_run_tests(bootInfo);
     debug_str("PMM: TESTS OK\n");
@@ -181,11 +183,23 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     cpu_security_print_report();
 
     debug_str("MM: initializing paging\n");
+    if (!paging_initialize())
+    {
+        debug_str("[KERNEL] PAGING INIT FAILED\n");
+        halt();
+    }
     paging_run_tests();
     debug_str("MM: paging ACTIVE\n");
 
     debug_str("CPU: testing invalid opcode handler\n");
+    exception_expect_invalid_opcode(
+        reinterpret_cast<unsigned long long>(&idt_test_invalid_opcode));
     idt_test_invalid_opcode();
+    if (exception_invalid_opcode_test_active())
+    {
+        debug_str("[KERNEL] INVALID OPCODE TEST DID NOT TRAP\n");
+        halt();
+    }
     debug_str("CPU: INVALID OPCODE HANDLER OK\n");
 
     debug_str("IRQ: initializing LAPIC\n");
