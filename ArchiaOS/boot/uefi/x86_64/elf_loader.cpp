@@ -305,8 +305,10 @@ EFI_STATUS load_kernel_elf(
         /* EFI does not guarantee newly allocated pages are zeroed. Clear the
            entire allocation first so padding and the final partial BSS page
            cannot expose stale firmware/loader contents. */
-        for (UINT64 j = 0; j < pages * PAGE; ++j)
-            destination[j] = 0;
+        auto* zero = reinterpret_cast<volatile UINT64*>(destination);
+        const UINT64 zeroWords = (pages * PAGE) / sizeof(UINT64);
+        for (UINT64 j = 0; j < zeroWords; ++j)
+            zero[j] = 0;
         for (UINT64 j = 0; j < ph[i].p_filesz; ++j)
             destination[j] = image[ph[i].p_offset + j];
     }
