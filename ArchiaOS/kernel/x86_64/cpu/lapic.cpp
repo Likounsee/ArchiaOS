@@ -53,21 +53,6 @@ static inline void wrmsr(unsigned int msr, unsigned long long value)
     );
 }
 
-static inline unsigned int cpuid_ecx(unsigned int leaf)
-{
-    unsigned int eax;
-    unsigned int ebx;
-    unsigned int ecx;
-    unsigned int edx;
-
-    asm volatile (
-        "cpuid"
-        : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
-        : "a"(leaf));
-
-    return ecx;
-}
-
 static inline unsigned int cpuid_edx(unsigned int leaf)
 {
     unsigned int eax;
