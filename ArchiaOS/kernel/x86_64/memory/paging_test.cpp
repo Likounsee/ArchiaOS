@@ -40,8 +40,7 @@ extern "C" void paging_run_tests()
         0x40000000ULL,
         0x100000000ULL,
         0x7FFFFFFFFULL,
-        0x0000FFFFFFFFFFFFULL
-        /* keep the final sample within the runtime-mapped physical limit */
+        0x7FFFFFFFFFULL
     };
 
     for (u64 address : testAddresses)
