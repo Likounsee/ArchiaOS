@@ -42,10 +42,12 @@ extern "C" void smp_ap_entry(
     unsigned int apicId)
 {
     irq_disable();
+    smp_debug("SMP: AP C++ ENTRY\n");
     gdt_load_current();
     idt_load_current();
 
     __atomic_fetch_add(&online_count, 1U, __ATOMIC_SEQ_CST);
+    smp_debug("SMP: AP REPORTED ONLINE\n");
 
     (void)processorIndex;
     (void)apicId;
