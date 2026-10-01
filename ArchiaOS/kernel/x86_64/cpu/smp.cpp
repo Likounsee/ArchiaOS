@@ -78,7 +78,7 @@ extern "C" void smp_ap_entry(
 static bool wait_for_ap(
     volatile uint32_t* started)
 {
-    for (uint64_t timeout = 0; timeout < 20000000ULL; ++timeout)
+    for (uint64_t timeout = 0; timeout < 200000000ULL; ++timeout)
     {
         if (__atomic_load_n(started, __ATOMIC_ACQUIRE) != 0)
             return true;
