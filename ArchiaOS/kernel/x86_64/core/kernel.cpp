@@ -9,6 +9,7 @@
 #include "../cpu/features.hpp"
 #include "../cpu/security.hpp"
 #include "../cpu/smp.hpp"
+#include "../cpu/ioapic.hpp"
 
 using UINT32 = unsigned int;
 using UINT64 = unsigned long long;
@@ -269,6 +270,30 @@ extern "C" void kernel_main(BootInfo* bootInfo)
 
     debug_str("ACPI: RSDP/MADT OK\n");
     debug_str("ACPI: CPU/IOAPIC tables parsed\n");
+
+    debug_str("IOAPIC: initializing redirection table\n");
+    if (!ioapic_initialize(acpi))
+    {
+        debug_str("[KERNEL] IOAPIC INIT FAILED\n");
+        halt();
+    }
+
+    const unsigned int bspApicId = lapic_current_id();
+    if (!ioapic_route_isa_irq(acpi, 1, 0x21, bspApicId))
+    {
+        debug_str("[KERNEL] IOAPIC KEYBOARD ROUTE FAILED\n");
+        halt();
+    }
+
+    unsigned long long keyboardRoute = 0;
+    if (!ioapic_read_redirection(1, &keyboardRoute) ||
+        (keyboardRoute & 0xFFULL) != 0x21ULL ||
+        (keyboardRoute & (1ULL << 16)) != 0)
+    {
+        debug_str("[KERNEL] IOAPIC KEYBOARD ROUTE TEST FAILED\n");
+        halt();
+    }
+    debug_str("IOAPIC: KEYBOARD IRQ ROUTE OK\n");
 
     debug_str("SMP: starting application processors\n");
     if (!smp_initialize(acpi))
