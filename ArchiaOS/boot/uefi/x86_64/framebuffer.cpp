@@ -17,6 +17,13 @@ EFI_STATUS discover_framebuffer(
             st->BootServices->LocateProtocol);
 
     EFI_GRAPHICS_OUTPUT_PROTOCOL* gop = nullptr;
+    if (!locateProtocol)
+    {
+        info->framebuffer_base = 0;
+        info->framebuffer_size = 0;
+        return EFI_SUCCESS;
+    }
+
     EFI_STATUS status = locateProtocol(
         const_cast<EFI_GUID*>(&gGraphicsOutputProtocolGuid),
         nullptr,
