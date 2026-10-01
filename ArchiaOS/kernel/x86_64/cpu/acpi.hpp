@@ -2,6 +2,7 @@
 
 struct AcpiInfo
 {
+    static constexpr unsigned int MAX_PROCESSORS = 256;
     unsigned long long rsdp_address;
     unsigned long long root_table_address;
     unsigned long long madt_address;
@@ -9,6 +10,7 @@ struct AcpiInfo
     unsigned long long ioapic_address;
     unsigned int ioapic_gsi_base;
     unsigned int processor_count;
+    unsigned int processor_apic_ids[MAX_PROCESSORS];
     unsigned int ioapic_count;
     unsigned int interrupt_override_count;
 };
