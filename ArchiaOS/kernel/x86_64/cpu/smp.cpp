@@ -43,19 +43,6 @@ static inline void smp_debug(const char* s)
         asm volatile("outb %0,%1" : : "a"(s[i]), "Nd"(static_cast<unsigned short>(0xE9)));
 }
 
-static void smp_debug_hex(const char* label, uint64_t value)
-{
-    static const char digits[] = "0123456789ABCDEF";
-    smp_debug(label);
-    for (int shift = 60; shift >= 0; shift -= 4)
-    {
-        const char ch = digits[(value >> shift) & 0xFULL];
-        asm volatile("outb %0,%1" : : "a"(ch), "Nd"(static_cast<unsigned short>(0xE9)));
-    }
-    smp_debug("\n");
-}
-
-
 extern "C" void smp_ap_entry(
     unsigned int processorIndex,
     unsigned int apicId,
@@ -148,9 +135,6 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
 
     for (uint64_t i = 0; i < trampolineSize; ++i)
         trampoline[i] = trampolineSource[i];
-
-    smp_debug_hex("SMP: TRAMPOLINE BYTE0 HHDM=", trampoline[0]);
-    smp_debug_hex("SMP: TRAMPOLINE BYTE0 IDENTITY=", reinterpret_cast<volatile unsigned char*>(trampolinePhysical)[0]);
 
     /*
      * The startup vector is the physical page number divided by 4 KiB.
