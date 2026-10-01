@@ -175,7 +175,7 @@ extern "C" void paging_run_tests()
         false
     };
 
-    if (!paging_map_4k(NOVOS_USER_VIRTUAL_BASE,
+    if (!paging_map_4k(NOVOS_USER_VIRTUAL_BASE + 0x100000000ULL,
                        userPage,
                        userReadOnly))
         fail("PAGING TEST FAIL: USER MAP\n");
@@ -189,7 +189,7 @@ extern "C" void paging_run_tests()
         (pml4Table[256] & NOVOS_PAGE_USER) != 0)
         fail("PAGING TEST FAIL: USER/HHDM ISOLATION\n");
 
-    if (!paging_unmap_4k(NOVOS_USER_VIRTUAL_BASE))
+    if (!paging_unmap_4k(NOVOS_USER_VIRTUAL_BASE + 0x100000000ULL))
         fail("PAGING TEST FAIL: USER UNMAP\n");
 
     pmm_free_page(userPage);
