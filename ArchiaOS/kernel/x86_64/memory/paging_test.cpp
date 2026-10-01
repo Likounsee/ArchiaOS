@@ -173,7 +173,7 @@ extern "C" void paging_run_tests()
     exception_expect_page_fault(nxRecovery);
 
     asm volatile(
-        "call *%%rax"
+        "jmp *%%rax"
         :
         : "a"(testPage)
         : "memory");
