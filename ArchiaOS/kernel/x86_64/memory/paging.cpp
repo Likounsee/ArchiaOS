@@ -83,6 +83,43 @@ static inline u64 page_entry_flags(PagingFlags flags)
     return value;
 }
 
+static bool split_1g_pdpte(u64* pdpte)
+{
+    if ((*pdpte & NOVOS_PAGE_PRESENT) == 0)
+        return false;
+
+    if ((*pdpte & NOVOS_PAGE_HUGE) == 0)
+        return true;
+
+    const u64 oldEntry = *pdpte;
+    const u64 oldBase = oldEntry & 0x000FFFFFC0000000ULL;
+    const u64 permissionFlags =
+        oldEntry & (NOVOS_PAGE_PRESENT |
+                    NOVOS_PAGE_WRITE |
+                    NOVOS_PAGE_USER |
+                    (1ULL << 3) |
+                    (1ULL << 4) |
+                    NOVOS_PAGE_NO_EXECUTE);
+
+    const u64 pdPhysical = pmm_alloc_page();
+    if (pdPhysical == 0)
+        return false;
+
+    auto* pdTable = table_pointer(pdPhysical);
+    zero_page(pdPhysical);
+
+    for (u64 i = 0; i < 512; ++i)
+    {
+        pdTable[i] =
+            (oldBase + i * NOVOS_2M_PAGE_SIZE) |
+            permissionFlags |
+            NOVOS_PAGE_HUGE;
+    }
+
+    *pdpte = pdPhysical | permissionFlags;
+    return true;
+}
+
 static bool split_2m_pde(u64* pde)
 {
     if ((*pde & NOVOS_PAGE_PRESENT) == 0)
@@ -153,6 +190,12 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool split)
     if (user)
         pdpte |= NOVOS_PAGE_USER;
 
+    if (split && (pdpte & NOVOS_PAGE_HUGE) != 0)
+    {
+        if (!split_1g_pdpte(&pdpte))
+            return nullptr;
+    }
+
     auto* table2 =
         table_pointer(pdpte & ~0xFFFULL);
 
@@ -192,6 +235,11 @@ static bool setup_identity_2m()
     if (mapped_physical_limit < NOVOS_2M_PAGE_SIZE)
         return false;
 
+    const bool use1GiBPages =
+        cpu != nullptr &&
+        cpu->features.one_gib_pages &&
+        (mapped_physical_limit % NOVOS_PDPT_COVERAGE) == 0;
+
     const u64 pdCount =
         (mapped_physical_limit + NOVOS_PDPT_COVERAGE - 1) /
         NOVOS_PDPT_COVERAGE;
@@ -226,6 +274,26 @@ static bool setup_identity_2m()
 
     for (u64 pdptIndex = 0; pdptIndex < pdCount; ++pdptIndex)
     {
+        const u64 physicalBase =
+            pdptIndex * NOVOS_PDPT_COVERAGE;
+
+        if (use1GiBPages)
+        {
+            identityPdpt[pdptIndex] =
+                physicalBase |
+                NOVOS_PAGE_PRESENT |
+                NOVOS_PAGE_WRITE |
+                NOVOS_PAGE_HUGE;
+
+            hhdmPdpt[pdptIndex] =
+                physicalBase |
+                NOVOS_PAGE_PRESENT |
+                NOVOS_PAGE_WRITE |
+                NOVOS_PAGE_HUGE;
+
+            continue;
+        }
+
         const u64 identityPdPhysical = pmm_alloc_page();
         const u64 hhdmPdPhysical = pmm_alloc_page();
 
@@ -267,8 +335,7 @@ static bool setup_identity_2m()
         for (u64 i = 0; i < 512; ++i)
         {
             const u64 physicalAddress =
-                pdptIndex * NOVOS_PDPT_COVERAGE +
-                i * NOVOS_2M_PAGE_SIZE;
+                physicalBase + i * NOVOS_2M_PAGE_SIZE;
 
             localIdentityPd[i] =
                 physicalAddress |
