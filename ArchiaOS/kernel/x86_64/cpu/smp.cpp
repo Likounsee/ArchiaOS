@@ -3,6 +3,7 @@
 #include "lapic.hpp"
 #include "irq.hpp"
 #include "gdt.hpp"
+#include "tss.hpp"
 #include "idt.hpp"
 #include "../memory/pmm.hpp"
 #include "../memory/paging.hpp"
@@ -62,7 +63,17 @@ extern "C" void smp_ap_entry(
 {
     irq_disable();
     smp_debug("SMP: AP C++ ENTRY\n");
-    gdt_load_current();
+    tss_initialize_cpu(processorIndex);
+    gdt_initialize_cpu(processorIndex);
+    gdt_load_cpu(processorIndex);
+    tss_load_cpu(processorIndex);
+    if (tss_current_selector() != 0x18U)
+    {
+        smp_debug("SMP: AP TSS LOAD FAILED\n");
+        for (;;)
+            asm volatile("hlt");
+    }
+    smp_debug("SMP: AP TSS OK\n");
     idt_load_current();
 
     __atomic_fetch_add(&online_count, 1U, __ATOMIC_SEQ_CST);
