@@ -249,6 +249,13 @@ static bool parse_madt(unsigned long long madt)
         }
         else if (type == 2 && entry_length >= 10)
         {
+            if (acpi_info.interrupt_override_count < AcpiInfo::MAX_INTERRUPT_OVERRIDES)
+            {
+                const unsigned int i = acpi_info.interrupt_override_count;
+                acpi_info.interrupt_override_source[i] = read8(current + 3);
+                acpi_info.interrupt_override_gsi[i] = read32(current + 4);
+                acpi_info.interrupt_override_flags[i] = read16(current + 8);
+            }
             ++acpi_info.interrupt_override_count;
         }
         else if (type == 5 && entry_length >= 12)
