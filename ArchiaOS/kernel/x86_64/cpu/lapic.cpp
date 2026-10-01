@@ -345,8 +345,9 @@ static inline void io_out8(unsigned short port, unsigned char value)
 static void lapic_startup_delay()
 {
     /*
-     * Use PIT channel 2 as a hardware one-shot. Its 1.193182 MHz clock
-     * gives a deterministic 10 ms delay independent of TSC frequency.
+     * Keep AP startup independent of firmware timers after ExitBootServices.
+     * The pause loop is deliberately conservative; SIPI delivery is
+     * asynchronous and the second SIPI is sent only after this delay.
      */
     constexpr unsigned int pitCount = 11932U;
     const unsigned char oldPort61 = io_in8(0x61);
