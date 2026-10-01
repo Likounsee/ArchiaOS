@@ -67,7 +67,7 @@ extern "C" void paging_run_tests()
         0x0000000000200000ULL,
         0x0000000040000000ULL,
         0x0000000100000000ULL,
-        NOVOS_PMM_MAX_PHYSICAL_ADDRESS - NOVOS_PAGE_SIZE
+        paging_max_physical_address() - NOVOS_PAGE_SIZE
     };
 
     for (u64 physical : hhdmSamples)
@@ -83,9 +83,9 @@ extern "C" void paging_run_tests()
         }
     }
 
-    if (paging_physical_to_virtual(NOVOS_PMM_MAX_PHYSICAL_ADDRESS) != 0 ||
+    if (paging_physical_to_virtual(paging_max_physical_address()) != 0 ||
         paging_virtual_to_physical(NOVOS_HHDM_BASE +
-                                   NOVOS_PMM_MAX_PHYSICAL_ADDRESS) != 0)
+                                   paging_max_physical_address()) != 0)
     {
         fail("PAGING TEST FAIL: HHDM RANGE\n");
     }
