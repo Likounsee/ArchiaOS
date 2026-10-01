@@ -7,6 +7,7 @@ set(ARCHIAOS_BUILD ${CMAKE_BINARY_DIR})
 set(ARCHIAOS_CLANG "" CACHE FILEPATH "Clang++ compiler")
 set(ARCHIAOS_LLD "" CACHE FILEPATH "LLD ELF linker")
 set(ARCHIAOS_LLD_LINK "" CACHE FILEPATH "LLD PE/COFF linker")
+option(ARCHIAOS_BOOT_DEBUG "Enable UEFI debug-port output" ON)
 
 if(NOT ARCHIAOS_CLANG)
     find_program(ARCHIAOS_CLANG
@@ -189,7 +190,7 @@ function(archiaos_boot_compile output source)
             -fno-exceptions -fno-rtti -fno-stack-protector -fno-pie -fno-asynchronous-unwind-tables
             -fno-threadsafe-statics -mgeneral-regs-only -Wall -Wextra -Werror
             -mno-red-zone -mno-sse -mno-sse2
-            -DNOVOS_BOOT_DEBUG=1
+            $<$<BOOL:${ARCHIAOS_BOOT_DEBUG}>:-DNOVOS_BOOT_DEBUG=1>
             -I"${ARCHIAOS_BOOT_INC}" -I"${ARCHIAOS_COMMON}"
             -c "${source}" -o "${output}"
         DEPENDS ${source} ${ARCHIAOS_BOOT_HEADERS}
