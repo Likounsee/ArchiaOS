@@ -340,12 +340,8 @@ static bool lapic_wait_icr_idle()
 
 static bool lapic_send_ipi(
     unsigned int apic_id,
-    unsigned int deliveryMode,
-    unsigned int vector)
+    unsigned long long command)
 {
-    const unsigned long long command =
-        (static_cast<unsigned long long>(deliveryMode) << 8) |
-        static_cast<unsigned long long>(vector);
 
     if (x2apic_mode)
     {
@@ -380,19 +376,19 @@ extern "C" bool lapic_startup_cpu(
      * intentional: firmware and QEMU tolerate it and it covers platforms
      * where the first startup IPI is lost during AP reset release.
      */
-    if (!lapic_send_ipi(apic_id, 5U | (1U << 14), 0))
+    if (!lapic_send_ipi(apic_id, (5ULL << 8) | (1ULL << 14)))
         return false;
 
     for (unsigned int delay = 0; delay < 100000U; ++delay)
         asm volatile("pause");
 
-    if (!lapic_send_ipi(apic_id, 5U, 0))
+    if (!lapic_send_ipi(apic_id, (5ULL << 8)))
         return false;
 
     for (unsigned int delay = 0; delay < 10000U; ++delay)
         asm volatile("pause");
 
-    if (!lapic_send_ipi(apic_id, 6U, startup_vector))
+    if (!lapic_send_ipi(apic_id, (6ULL << 8) | startup_vector))
         return false;
 
     for (unsigned int delay = 0; delay < 20000U; ++delay)
