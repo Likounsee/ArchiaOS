@@ -2,6 +2,8 @@
 
 #include <stdint.h>
 
+struct AcpiInfo;
+
 struct SmpTrampolineMailbox
 {
     uint64_t cr3_physical;
