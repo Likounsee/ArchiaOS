@@ -326,7 +326,7 @@ extern "C" bool paging_map_4k(
     PagingFlags flags)
 {
     if ((virtualAddress & (NOVOS_PAGE_SIZE - 1ULL)) != 0 ||
-        (virtualAddress >> 48) != 0 && (virtualAddress >> 48) != 0xFFFFULL ||
+        ((virtualAddress >> 48) != 0 && (virtualAddress >> 48) != 0xFFFFULL) ||
         (physicalAddress & (NOVOS_PAGE_SIZE - 1ULL)) != 0 ||
         physicalAddress >= mapped_physical_limit)
         return false;
