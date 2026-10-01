@@ -1,5 +1,12 @@
 ENTRY(kernel_entry)
 
+PHDRS
+{
+    text PT_LOAD FLAGS(5);
+    rodata PT_LOAD FLAGS(4);
+    data PT_LOAD FLAGS(6);
+}
+
 SECTIONS
 {
     . = 0x100000;
@@ -9,21 +16,22 @@ SECTIONS
         __text_start = .;
         *(.text*)
         __text_end = .;
-    }
+    } :text
 
     .rodata : ALIGN(4096)
     {
         __rodata_start = .;
         *(.rodata*)
         __rodata_end = .;
-    }
+    } :rodata
 
     .data : ALIGN(4096)
     {
         __data_start = .;
         *(.data*)
+        KEEP(*(.init_array*))
         __data_end = .;
-    }
+    } :data
 
     .bss : ALIGN(4096)
     {
@@ -37,5 +45,12 @@ SECTIONS
         kernel_stack_bottom = .;
         . += 0x4000;
         kernel_stack_top = .;
+    } :data
+
+    /DISCARD/ :
+    {
+        *(.eh_frame*)
+        *(.comment*)
+        *(.note*)
     }
 }
