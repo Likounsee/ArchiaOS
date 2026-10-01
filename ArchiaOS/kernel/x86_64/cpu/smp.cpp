@@ -85,11 +85,6 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
     if (trampolineSize == 0 || trampolineSize > NOVOS_PAGE_SIZE)
         return false;
 
-    smp_debug_hex("SMP: TRAMPOLINE PHYS=", trampolinePhysical);
-    smp_debug_hex("SMP: STARTUP VECTOR=", startupVector);
-    smp_debug_hex("SMP: BSP APIC ID=", currentApicId);
-    smp_debug("SMP: TRAMPOLINE READY\\n");
-
     const uint64_t trampolinePhysical =
         pmm_alloc_page_below(TRAMPOLINE_LIMIT);
 
@@ -124,6 +119,11 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
 
     if (startupVector == 0 || startupVector > 0xFFU)
         return false;
+
+    smp_debug_hex("SMP: TRAMPOLINE PHYS=", trampolinePhysical);
+    smp_debug_hex("SMP: STARTUP VECTOR=", startupVector);
+    smp_debug_hex("SMP: BSP APIC ID=", currentApicId);
+    smp_debug("SMP: TRAMPOLINE READY\\n");
 
     auto* mailbox =
         reinterpret_cast<SmpTrampolineMailbox*>(
