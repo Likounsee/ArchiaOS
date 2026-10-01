@@ -105,6 +105,11 @@ jobs:
                 echo "Missing expected marker for $cpu: $marker"
                 exit 1
               }
+            tss_count=$(grep -c "SMP: AP TSS OK" "qemu-${cpu}.log" || true)
+            if [ "$tss_count" -ne 1 ]; then
+              echo "Expected exactly one AP TSS validation for ${cpu}, got ${tss_count}"
+              exit 1
+            fi
             done
             if ! grep -q "PAGING 1G SPLIT PASS" "qemu-${cpu}.log" && \
                ! grep -q "PAGING 1G SPLIT SKIPPED" "qemu-${cpu}.log"; then
@@ -132,4 +137,10 @@ jobs:
               -no-reboot -no-shutdown > "qemu-scale-${smp}.log" 2>&1 || test $? -eq 124
             cat "qemu-scale-${smp}.log"
             grep -q "SMP: APPLICATION PROCESSORS ONLINE" "qemu-scale-${smp}.log"
+            expected_tss=$((smp - 1))
+            actual_tss=$(grep -c "SMP: AP TSS OK" "qemu-scale-${smp}.log" || true)
+            if [ "$actual_tss" -ne "$expected_tss" ]; then
+              echo "Expected ${expected_tss} AP TSS validations for ${smp} CPUs, got ${actual_tss}"
+              exit 1
+            fi
           done
