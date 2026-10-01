@@ -342,16 +342,37 @@ extern "C" unsigned int lapic_current_id()
     return *lapic_register(0x020);
 }
 
+static inline unsigned char io_in8(unsigned short port)
+{
+    unsigned char value;
+    asm volatile("inb %1,%0" : "=a"(value) : "Nd"(port));
+    return value;
+}
+
+static inline void io_out8(unsigned short port, unsigned char value)
+{
+    asm volatile("outb %0,%1" : : "a"(value), "Nd"(port));
+}
+
 static void lapic_startup_delay()
 {
     /*
-     * AP startup timing is architecturally significant: INIT must remain
-     * asserted long enough for the target to reset, and SIPIs must not be
-     * issued back-to-back with INIT deassertion. A bounded pause loop keeps
-     * this path independent of the timer interrupt subsystem.
+     * Use PIT channel 2 as a hardware one-shot. Its 1.193182 MHz clock
+     * gives a deterministic 10 ms delay independent of TSC frequency.
      */
-    for (unsigned int i = 0; i < 10000000U; ++i)
+    constexpr unsigned int pitCount = 11932U;
+    const unsigned char oldPort61 = io_in8(0x61);
+
+    io_out8(0x61, static_cast<unsigned char>(oldPort61 & ~0x03U));
+    io_out8(0x43, 0xB0U);
+    io_out8(0x42, static_cast<unsigned char>(pitCount & 0xFFU));
+    io_out8(0x42, static_cast<unsigned char>(pitCount >> 8));
+    io_out8(0x61, static_cast<unsigned char>((oldPort61 & ~0x03U) | 0x01U));
+
+    while ((io_in8(0x61) & 0x20U) == 0)
         asm volatile("pause" ::: "memory");
+
+    io_out8(0x61, oldPort61);
 }
 
 static bool lapic_send_ipi(
@@ -401,7 +422,7 @@ extern "C" bool lapic_startup_cpu(
     lapic_startup_delay();
 
     lapic_debug("LAPIC: INIT DEASSERT\\n");
-    if (!lapic_send_ipi(apic_id, (5ULL << 8) | (1ULL << 15)))
+    if (!lapic_send_ipi(apic_id, (5ULL << 8)))
         return false;
     lapic_debug_hex("LAPIC: ICR AFTER DEASSERT=", *lapic_register(0x300));
     lapic_debug_hex("LAPIC: ESR AFTER DEASSERT=", *lapic_register(0x280));
