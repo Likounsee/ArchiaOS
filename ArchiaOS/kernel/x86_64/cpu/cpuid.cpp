@@ -16,6 +16,13 @@ extern "C" CpuidResult cpu_cpuid(unsigned int leaf, unsigned int subleaf)
 
 extern "C" unsigned long long cpu_read_xcr0()
 {
+    if (cpu_info.max_basic_leaf < 1)
+        return 0;
+
+    CpuidResult r = cpu_cpuid(1, 0);
+    if (!bit(r.ecx, 26) || !bit(r.ecx, 27))
+        return 0;
+
     unsigned int eax;
     unsigned int edx;
     asm volatile(
@@ -312,7 +319,17 @@ extern "C" void cpu_initialize()
     CpuidResult ext0 = cpu_cpuid(0x80000000U, 0);
     cpu_info.max_extended_leaf = ext0.eax;
 
-    decode_family_model(cpu_cpuid(1, 0));
+    CpuidResult leaf1{};
+    if (cpu_info.max_basic_leaf >= 1)
+    {
+        leaf1 = cpu_cpuid(1, 0);
+        decode_family_model(leaf1);
+    }
+
+    cpu_info.physical_address_bits = 32;
+    if (cpu_info.max_extended_leaf >= 0x80000008U)
+        cpu_info.physical_address_bits = cpu_cpuid(0x80000008U, 0).eax & 0xFFU;
+
     copy_brand();
     enumerate_features();
     enumerate_security_capabilities();
