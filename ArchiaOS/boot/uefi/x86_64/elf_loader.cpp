@@ -126,6 +126,8 @@ EFI_STATUS load_kernel_elf(
     if (status != EFI_SUCCESS)
         return status;
 
+    boot_debug("elf: image read\\r\\n");
+
     auto freePool =
         reinterpret_cast<EFI_FREE_POOL>(st->BootServices->FreePool);
 
@@ -162,6 +164,8 @@ EFI_STATUS load_kernel_elf(
     UINT64 highest = 0;
     UINT16 loadCount = 0;
     bool entryExecutable = false;
+
+    boot_debug("elf: headers validated\\r\\n");
 
     for (UINT16 i = 0; i < eh->e_phnum; ++i)
     {
@@ -286,6 +290,8 @@ EFI_STATUS load_kernel_elf(
         const EFI_MEMORY_TYPE memoryType =
             (ph[i].p_flags & PF_X) ? EfiLoaderCode : EfiLoaderData;
 
+        boot_debug("elf: allocating segment\\r\\n");
+
         status = allocatePages(
             EFI_ALLOCATE_ADDRESS,
             memoryType,
@@ -314,6 +320,7 @@ EFI_STATUS load_kernel_elf(
             return EFI_UNSUPPORTED;
         }
         setMem(destination, static_cast<UINTN>(pages * PAGE), 0);
+        boot_debug("elf: segment zeroed\\r\\n");
         for (UINT64 j = 0; j < ph[i].p_filesz; ++j)
             destination[j] = image[ph[i].p_offset + j];
     }
