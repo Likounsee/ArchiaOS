@@ -110,7 +110,9 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         bootInfo->memory_map_size <
             bootInfo->memory_descriptor_size ||
         bootInfo->memory_map_size %
-            bootInfo->memory_descriptor_size != 0)
+            bootInfo->memory_descriptor_size != 0 ||
+        bootInfo->memory_descriptor_count !=
+            bootInfo->memory_map_size / bootInfo->memory_descriptor_size)
     {
         debug_str("[KERNEL] Memory map BAD\n");
         halt();
