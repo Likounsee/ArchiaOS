@@ -191,8 +191,7 @@ EFI_STATUS prepare_boot_paging(
         (kernel->virtual_base >> 48) != 0xFFFFULL)
         return EFI_INVALID_PARAMETER;
 
-    UINT64 kernelEndCheck = 0;
-    if (add_overflow(kernel->virtual_base, kernel->size, &kernelEndCheck))
+    if (kernel->size > ~kernel->virtual_base)
         return EFI_INVALID_PARAMETER;
 
     UINT64 physicalEnd;
