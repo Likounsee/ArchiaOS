@@ -1,5 +1,6 @@
 #include "paging.hpp"
-#include "../cpu/idt.hpp"
+#include "../../cpu/idt.hpp"
+#include "../../cpu/features.hpp"
 
 static inline void test_char(char c)
 {
@@ -121,6 +122,36 @@ extern "C" void paging_run_tests()
     pmm_free_page(hhdmTestPage);
     test_str("PAGING HHDM MEMORY ACCESS PASS\n");
 
+    /*
+     * On CPUs with 1 GiB-page support, bootstrap mappings start as 1 GiB
+     * PDPTE leaves. Mapping a single 4 KiB page inside one of those leaves
+     * must split it safely before installing the fine-grained PTE.
+     */
+    const CpuInfo* cpu = cpu_get_info();
+    if (cpu != nullptr && cpu->features.one_gib_pages)
+    {
+        const u64 splitVirtual = 0x0000000041234000ULL;
+        const u64 splitPhysical = pmm_alloc_page();
+
+        if (splitPhysical == 0)
+            fail("PAGING TEST FAIL: 1G SPLIT ALLOCATION\n");
+
+        if (!paging_map_4k(
+                splitVirtual,
+                splitPhysical,
+                PagingFlags{false, false, false, false, false}) ||
+            paging_translate(splitVirtual) != splitPhysical)
+        {
+            fail("PAGING TEST FAIL: 1G SPLIT\n");
+        }
+
+        if (!paging_unmap_4k(splitVirtual))
+            fail("PAGING TEST FAIL: 1G SPLIT UNMAP\n");
+
+        pmm_free_page(splitPhysical);
+        test_str("PAGING 1G SPLIT PASS\n");
+    }
+
     if (!paging_map_identity(0x0000000000200000ULL))
         fail("PAGING TEST FAIL: MAP API\n");
 
@@ -196,6 +227,34 @@ extern "C" void paging_run_tests()
     test_str("PAGING USER/HHDM ISOLATION PASS\n");
 
     test_str("PAGING 4K RO/NX BITS PASS\n");
+
+    const cachePage = pmm_alloc_page();
+    if (cachePage == 0)
+        fail("PAGING TEST FAIL: CACHE ALLOCATION\n");
+
+    const uncachedFlags{
+        false,
+        false,
+        false,
+        true,
+        true
+    };
+
+    if (!paging_map_4k(cachePage, cachePage, uncachedFlags))
+        fail("PAGING TEST FAIL: CACHE MAP\n");
+
+    const u64 cacheEntry = paging_get_4k_entry(cachePage);
+    if ((cacheEntry & (1ULL << 3)) == 0 ||
+        (cacheEntry & (1ULL << 4)) == 0)
+    {
+        fail("PAGING TEST FAIL: CACHE FLAGS\n");
+    }
+
+    if (!paging_unmap_4k(cachePage))
+        fail("PAGING TEST FAIL: CACHE UNMAP\n");
+
+    pmm_free_page(cachePage);
+    test_str("PAGING CACHE FLAGS PASS\n");
 
     /*
      * Prove NX is enforced by the CPU, not merely encoded in the PTE.
