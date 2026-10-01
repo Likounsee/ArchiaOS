@@ -357,7 +357,7 @@ static void lapic_startup_delay()
     io_out8(0x42, static_cast<unsigned char>(pitCount >> 8));
     io_out8(0x61, static_cast<unsigned char>((oldPort61 & ~0x03U) | 0x01U));
 
-    while ((io_in8(0x61) & 0x20U) == 0)
+    for (volatile unsigned int i = 0; i < 200000U; ++i)
         asm volatile("pause" ::: "memory");
 
     io_out8(0x61, oldPort61);
