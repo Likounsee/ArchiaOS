@@ -395,15 +395,6 @@ extern "C" bool lapic_startup_cpu(
     if (apic_id == lapic_current_id())
         return true;
 
-    lapic_write(0x280, 0x80A, 0);
-
-    lapic_debug("LAPIC: INIT ASSERT\\n");
-    if (!lapic_send_ipi(apic_id, (5ULL << 8) | (1ULL << 14)))
-        return false;
-    lapic_debug("LAPIC: INIT ASSERT SENT\\n");
-
-    lapic_startup_delay();
-
     lapic_debug("LAPIC: SIPI1\\n");
     if (!lapic_send_ipi(apic_id, (6ULL << 8) | startup_vector))
         return false;
