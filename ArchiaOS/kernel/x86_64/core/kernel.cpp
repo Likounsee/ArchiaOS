@@ -9,6 +9,7 @@
 #include "../cpu/features.hpp"
 #include "../cpu/security.hpp"
 #include "../cpu/smp.hpp"
+#include "../cpu/scheduler.hpp"
 #include "../cpu/ioapic.hpp"
 #include "../cpu/lapic.hpp"
 
