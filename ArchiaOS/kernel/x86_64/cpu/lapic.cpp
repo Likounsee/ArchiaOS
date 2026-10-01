@@ -16,6 +16,13 @@ static constexpr unsigned int IA32_X2APIC_DIVIDE = 0x83E;
 static constexpr unsigned int IA32_X2APIC_EOI = 0x80B;
 
 static bool x2apic_mode = false;
+
+static inline void lapic_debug(const char* s)
+{
+    for (int i = 0; s[i] != '\0'; ++i)
+        asm volatile("outb %0,%1" : : "a"(s[i]), "Nd"(static_cast<unsigned short>(0xE9)));
+}
+
 static volatile unsigned char* lapic_base = nullptr;
 
 static constexpr unsigned long long LAPIC_EOI = 0x0B0;
@@ -360,26 +367,34 @@ extern "C" bool lapic_startup_cpu(
      * intentional: firmware and QEMU tolerate it and it covers platforms
      * where the first startup IPI is lost during AP reset release.
      */
+    lapic_debug("LAPIC: INIT ASSERT\\n");
     if (!lapic_send_ipi(apic_id, (5ULL << 8) | (1ULL << 14)))
         return false;
+    lapic_debug("LAPIC: INIT ASSERT SENT\\n");
 
     for (unsigned int delay = 0; delay < 100000U; ++delay)
         asm volatile("pause");
 
+    lapic_debug("LAPIC: INIT DEASSERT\\n");
     if (!lapic_send_ipi(apic_id, (5ULL << 8)))
         return false;
+    lapic_debug("LAPIC: INIT DEASSERT SENT\\n");
 
     for (unsigned int delay = 0; delay < 10000U; ++delay)
         asm volatile("pause");
 
+    lapic_debug("LAPIC: SIPI1\\n");
     if (!lapic_send_ipi(apic_id, (6ULL << 8) | startup_vector))
         return false;
+    lapic_debug("LAPIC: SIPI1 SENT\\n");
 
     for (unsigned int delay = 0; delay < 20000U; ++delay)
         asm volatile("pause");
 
+    lapic_debug("LAPIC: SIPI2\\n");
     if (!lapic_send_ipi(apic_id, (6ULL << 8) | startup_vector))
         return false;
+    lapic_debug("LAPIC: SIPI2 SENT\\n");
 
     return true;
 }
