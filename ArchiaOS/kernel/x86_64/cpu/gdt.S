@@ -53,7 +53,9 @@ gdt_load_cpu:
 .type gdt_initialize, @function
 gdt_initialize:
     xor %edi, %edi
-    jmp gdt_initialize_cpu
+    call gdt_initialize_cpu
+    xor %edi, %edi
+    jmp gdt_load_cpu
 
 .type gdt_initialize_cpu, @function
 gdt_initialize_cpu:
