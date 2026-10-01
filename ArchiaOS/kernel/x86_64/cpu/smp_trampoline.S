@@ -149,6 +149,8 @@ smp_trampoline_lmode:
 
     movl SMP_MAILBOX_INDEX(%rbx), %edi
     movl SMP_MAILBOX_APIC_ID(%rbx), %esi
+    leal SMP_MAILBOX_CR3(%rbx), %edx
+    addl $0x0, %edx
     movq SMP_MAILBOX_ENTRY(%rbx), %rax
     testq %rax, %rax
     jz smp_trampoline_halt
