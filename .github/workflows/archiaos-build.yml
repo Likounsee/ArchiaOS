@@ -78,7 +78,7 @@ jobs:
               "Memory Map: OK" \
               "Framebuffer: OK" \
               "CPU: FEATURES DETECTED OK" \
-              "CPU: SECURITY FEATURES DETECTED OK" \
+              "CPU: SECURITY ACTIVATION OK" \
               "CPU: SECURITY ACTIVATION OK" \
               "CPU: TOPOLOGY DETECTED OK" \
               "CPU: GDT OK" \
