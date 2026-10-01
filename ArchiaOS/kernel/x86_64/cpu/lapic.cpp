@@ -23,6 +23,18 @@ static inline void lapic_debug(const char* s)
         asm volatile("outb %0,%1" : : "a"(s[i]), "Nd"(static_cast<unsigned short>(0xE9)));
 }
 
+static void lapic_debug_hex(const char* label, unsigned int value)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    lapic_debug(label);
+    for (int shift = 28; shift >= 0; shift -= 4)
+    {
+        const char ch = digits[(value >> shift) & 0xFU];
+        asm volatile("outb %0,%1" : : "a"(ch), "Nd"(static_cast<unsigned short>(0xE9)));
+    }
+    lapic_debug("\n");
+}
+
 static volatile unsigned char* lapic_base = nullptr;
 
 static constexpr unsigned long long LAPIC_EOI = 0x0B0;
@@ -359,11 +371,8 @@ static bool lapic_send_ipi(
      * interval on virtual LAPICs. Startup IPIs are serialized here by the
      * caller, so avoid spinning indefinitely on that advisory status bit.
      */
-    /* Temporary bring-up path: broadcast to all processors except the BSP. */
-    (void)apic_id;
-    *lapic_register(0x310) = 0;
-    *lapic_register(0x300) =
-        static_cast<unsigned int>(command) | (3U << 18);
+    *lapic_register(0x310) = apic_id << 24;
+    *lapic_register(0x300) = static_cast<unsigned int>(command);
     return true;
 }
 
@@ -382,27 +391,36 @@ extern "C" bool lapic_startup_cpu(
      * intentional: firmware and QEMU tolerate it and it covers platforms
      * where the first startup IPI is lost during AP reset release.
      */
+    lapic_write(0x280, 0x80A, 0);
     lapic_debug("LAPIC: INIT ASSERT\\n");
     if (!lapic_send_ipi(apic_id, (5ULL << 8) | (1ULL << 14)))
         return false;
+    lapic_debug_hex("LAPIC: ICR AFTER INIT=", *lapic_register(0x300));
+    lapic_debug_hex("LAPIC: ESR AFTER INIT=", *lapic_register(0x280));
     lapic_debug("LAPIC: INIT ASSERT SENT\\n");
     lapic_startup_delay();
 
     lapic_debug("LAPIC: INIT DEASSERT\\n");
     if (!lapic_send_ipi(apic_id, (5ULL << 8)))
         return false;
+    lapic_debug_hex("LAPIC: ICR AFTER DEASSERT=", *lapic_register(0x300));
+    lapic_debug_hex("LAPIC: ESR AFTER DEASSERT=", *lapic_register(0x280));
     lapic_debug("LAPIC: INIT DEASSERT SENT\\n");
     lapic_startup_delay();
 
     lapic_debug("LAPIC: SIPI1\\n");
     if (!lapic_send_ipi(apic_id, (6ULL << 8) | startup_vector))
         return false;
+    lapic_debug_hex("LAPIC: ICR AFTER SIPI1=", *lapic_register(0x300));
+    lapic_debug_hex("LAPIC: ESR AFTER SIPI1=", *lapic_register(0x280));
     lapic_debug("LAPIC: SIPI1 SENT\\n");
     lapic_startup_delay();
 
     lapic_debug("LAPIC: SIPI2\\n");
     if (!lapic_send_ipi(apic_id, (6ULL << 8) | startup_vector))
         return false;
+    lapic_debug_hex("LAPIC: ICR AFTER SIPI2=", *lapic_register(0x300));
+    lapic_debug_hex("LAPIC: ESR AFTER SIPI2=", *lapic_register(0x280));
     lapic_debug("LAPIC: SIPI2 SENT\\n");
 
     return true;
