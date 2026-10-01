@@ -1,7 +1,6 @@
 #include "paging.hpp"
 #include "../cpu/features.hpp"
 
-static constexpr u64 NOVOS_PAGE_TABLE_COUNT = 512;
 static constexpr u64 NOVOS_IDENTITY_MAP_SIZE = NOVOS_PMM_MAX_PHYSICAL_ADDRESS;
 static constexpr u64 NOVOS_2M_PAGE_SIZE = 0x200000ULL;
 
