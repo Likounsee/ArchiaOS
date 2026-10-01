@@ -40,8 +40,10 @@ extern "C" void irq_dispatch(ExceptionFrame* frame)
         __atomic_fetch_add(&irq_dispatch_count, 1ULL, __ATOMIC_RELAXED);
 
     if (vector == 0x20)
+    {
         lapic_timer_interrupt();
         scheduler_timer_tick(0);
+    }
     else if (vector == 0x21)
     {
         keyboard_last_scancode = io_in8(0x60);
