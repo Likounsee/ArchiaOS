@@ -37,10 +37,13 @@ smp_trampoline_start:
     orl $1, %eax
     movl %eax, %cr0
 
-    /* Operand-size override: 32-bit offset while still in 16-bit real mode. */
-    .byte 0x66
+    /*
+     * The protected-mode entry is inside this 4 KiB trampoline page, so a
+     * 16-bit far offset is sufficient and avoids relying on 32-bit far-jump
+     * encoding while the CPU is still in real mode.
+     */
     .byte 0xEA
-    .long (smp_trampoline_pmode - smp_trampoline_start)
+    .word (smp_trampoline_pmode - smp_trampoline_start)
     .word 0x0008
 
 .code32
