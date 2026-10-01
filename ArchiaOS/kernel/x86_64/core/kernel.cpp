@@ -273,7 +273,9 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     {
         /* Framebuffer is MMIO/video memory: use UC page mappings. */
         const UINT64 first = bootInfo->framebuffer_base & ~(NOVOS_PAGE_SIZE - 1ULL);
-        const UINT64 end = bootInfo->framebuffer_base + bootInfo->framebuffer_size;
+        const UINT64 end = bootInfo->framebuffer_base +
+            static_cast<UINT64>(bootInfo->framebuffer_pitch) *
+            static_cast<UINT64>(bootInfo->framebuffer_height);
         for (UINT64 page = first; page < end; page += NOVOS_PAGE_SIZE)
         {
             if (!paging_map_4k(page, page, PagingFlags{true, false, true, true, false}))
