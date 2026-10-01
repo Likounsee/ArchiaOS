@@ -1,7 +1,7 @@
 #include "paging.hpp"
 #include "../cpu/features.hpp"
 
-static constexpr u64 NOVOS_PAGE_TABLE_COUNT = 256;
+static constexpr u64 NOVOS_PAGE_TABLE_COUNT = 512;
 static constexpr u64 NOVOS_IDENTITY_MAP_SIZE = NOVOS_PMM_MAX_PHYSICAL_ADDRESS;
 static constexpr u64 NOVOS_2M_PAGE_SIZE = 0x200000ULL;
 static constexpr u64 NOVOS_PDPT_COVERAGE = 0x40000000ULL; /* 1 GiB */
@@ -123,7 +123,7 @@ static bool split_2m_pde(u64* pde)
     return true;
 }
 
-static u64* find_4k_entry(u64 virtualAddress)
+static u64* find_4k_entry(u64 virtualAddress, bool user, bool split)
 {
     if (pml4 == nullptr)
         return nullptr;
@@ -132,20 +132,26 @@ static u64* find_4k_entry(u64 virtualAddress)
         (virtualAddress >> 48) != 0xFFFFULL)
         return 0;
 
-    const u64 pml4e =
+    u64& pml4e =
         pml4[(virtualAddress >> 39) & 0x1FF];
 
     if ((pml4e & NOVOS_PAGE_PRESENT) == 0)
         return nullptr;
 
+    if (user)
+        pml4e |= NOVOS_PAGE_USER;
+
     auto* table3 =
         table_pointer(pml4e & ~0xFFFULL);
 
-    const u64 pdpte =
+    u64& pdpte =
         table3[(virtualAddress >> 30) & 0x1FF];
 
     if ((pdpte & NOVOS_PAGE_PRESENT) == 0)
         return nullptr;
+
+    if (user)
+        pdpte |= NOVOS_PAGE_USER;
 
     auto* table2 =
         table_pointer(pdpte & ~0xFFFULL);
@@ -153,8 +159,11 @@ static u64* find_4k_entry(u64 virtualAddress)
     u64* pde =
         &table2[(virtualAddress >> 21) & 0x1FF];
 
-    if (!split_2m_pde(pde))
+    if (split && !split_2m_pde(pde))
         return nullptr;
+
+    if (user && (*pde & NOVOS_PAGE_PRESENT))
+        *pde |= NOVOS_PAGE_USER;
 
     auto* pt =
         table_pointer((*pde) & ~0xFFFULL);
@@ -167,7 +176,8 @@ static bool setup_identity_2m()
     if (pml4 != nullptr)
         return true;
 
-    u64 allocated_pd[NOVOS_PAGE_TABLE_COUNT] = {};
+    u64 allocated_identity_pd[NOVOS_PAGE_TABLE_COUNT] = {};
+    u64 allocated_hhdm_pd[NOVOS_PAGE_TABLE_COUNT] = {};
 
     const CpuInfo* cpu = cpu_get_info();
     if (cpu && cpu->physical_address_bits >= 32 && cpu->physical_address_bits < 63)
@@ -176,50 +186,83 @@ static bool setup_identity_2m()
         if (maxByCpu < mapped_physical_limit)
             mapped_physical_limit = maxByCpu;
     }
+
     if (mapped_physical_limit > NOVOS_PMM_MAX_PHYSICAL_ADDRESS)
         mapped_physical_limit = NOVOS_PMM_MAX_PHYSICAL_ADDRESS;
     if (mapped_physical_limit < NOVOS_2M_PAGE_SIZE)
         return false;
 
-    const u64 pdCount = (mapped_physical_limit + NOVOS_PDPT_COVERAGE - 1) / NOVOS_PDPT_COVERAGE;
+    const u64 pdCount =
+        (mapped_physical_limit + NOVOS_PDPT_COVERAGE - 1) /
+        NOVOS_PDPT_COVERAGE;
 
     u64 pml4Physical = pmm_alloc_page();
-    u64 pdptPhysical = pmm_alloc_page();
+    u64 identityPdptPhysical = pmm_alloc_page();
+    u64 hhdmPdptPhysical = pmm_alloc_page();
 
-    if (pml4Physical == 0 || pdptPhysical == 0)
+    if (pml4Physical == 0 ||
+        identityPdptPhysical == 0 ||
+        hhdmPdptPhysical == 0)
     {
         if (pml4Physical != 0)
             pmm_free_page(pml4Physical);
-        if (pdptPhysical != 0)
-            pmm_free_page(pdptPhysical);
+        if (identityPdptPhysical != 0)
+            pmm_free_page(identityPdptPhysical);
+        if (hhdmPdptPhysical != 0)
+            pmm_free_page(hhdmPdptPhysical);
         return false;
     }
 
     auto* localPml4 = reinterpret_cast<u64*>(pml4Physical);
-    auto* localPdpt = reinterpret_cast<u64*>(pdptPhysical);
-    zero_page(pml4Physical);
-    zero_page(pdptPhysical);
+    auto* identityPdpt = reinterpret_cast<u64*>(identityPdptPhysical);
+    auto* hhdmPdpt = reinterpret_cast<u64*>(hhdmPdptPhysical);
 
-    localPml4[0] = table_entry(pdptPhysical);
-    localPml4[256] = table_entry(pdptPhysical);
+    zero_page(pml4Physical);
+    zero_page(identityPdptPhysical);
+    zero_page(hhdmPdptPhysical);
+
+    localPml4[0] = table_entry(identityPdptPhysical);
+    localPml4[256] = table_entry(hhdmPdptPhysical);
 
     for (u64 pdptIndex = 0; pdptIndex < pdCount; ++pdptIndex)
     {
-        const u64 pdPhysical = pmm_alloc_page();
-        if (pdPhysical == 0)
+        const u64 identityPdPhysical = pmm_alloc_page();
+        const u64 hhdmPdPhysical = pmm_alloc_page();
+
+        if (identityPdPhysical == 0 || hhdmPdPhysical == 0)
         {
+            if (identityPdPhysical != 0)
+                pmm_free_page(identityPdPhysical);
+            if (hhdmPdPhysical != 0)
+                pmm_free_page(hhdmPdPhysical);
+
             for (u64 i = 0; i < pdCount; ++i)
-                if (allocated_pd[i] != 0)
-                    pmm_free_page(allocated_pd[i]);
-            pmm_free_page(pdptPhysical);
+            {
+                if (allocated_identity_pd[i] != 0)
+                    pmm_free_page(allocated_identity_pd[i]);
+                if (allocated_hhdm_pd[i] != 0)
+                    pmm_free_page(allocated_hhdm_pd[i]);
+            }
+
+            pmm_free_page(hhdmPdptPhysical);
+            pmm_free_page(identityPdptPhysical);
             pmm_free_page(pml4Physical);
             return false;
         }
 
-        allocated_pd[pdptIndex] = pdPhysical;
-        auto* localPd = reinterpret_cast<u64*>(pdPhysical);
-        zero_page(pdPhysical);
-        localPdpt[pdptIndex] = table_entry(pdPhysical);
+        allocated_identity_pd[pdptIndex] = identityPdPhysical;
+        allocated_hhdm_pd[pdptIndex] = hhdmPdPhysical;
+
+        auto* localIdentityPd =
+            reinterpret_cast<u64*>(identityPdPhysical);
+        auto* localHhdmPd =
+            reinterpret_cast<u64*>(hhdmPdPhysical);
+
+        zero_page(identityPdPhysical);
+        zero_page(hhdmPdPhysical);
+
+        identityPdpt[pdptIndex] = table_entry(identityPdPhysical);
+        hhdmPdpt[pdptIndex] = table_entry(hhdmPdPhysical);
 
         for (u64 i = 0; i < 512; ++i)
         {
@@ -227,18 +270,26 @@ static bool setup_identity_2m()
                 pdptIndex * NOVOS_PDPT_COVERAGE +
                 i * NOVOS_2M_PAGE_SIZE;
 
-            localPd[i] = physicalAddress |
-                         NOVOS_PAGE_PRESENT |
-                         NOVOS_PAGE_WRITE |
-                         NOVOS_PAGE_HUGE;
+            localIdentityPd[i] =
+                physicalAddress |
+                NOVOS_PAGE_PRESENT |
+                NOVOS_PAGE_WRITE |
+                NOVOS_PAGE_HUGE;
+
+            localHhdmPd[i] =
+                physicalAddress |
+                NOVOS_PAGE_PRESENT |
+                NOVOS_PAGE_WRITE |
+                NOVOS_PAGE_HUGE;
         }
     }
 
     pml4_physical = pml4Physical;
     pml4 = localPml4;
-    pdpt = localPdpt;
+    pdpt = identityPdpt;
+
     for (u64 i = 0; i < NOVOS_PAGE_TABLE_COUNT; ++i)
-        pd[i] = reinterpret_cast<u64*>(allocated_pd[i]);
+        pd[i] = reinterpret_cast<u64*>(allocated_identity_pd[i]);
 
     return true;
 }
@@ -331,7 +382,7 @@ extern "C" bool paging_map_4k(
         physicalAddress >= mapped_physical_limit)
         return false;
 
-    u64* entry = find_4k_entry(virtualAddress);
+    u64* entry = find_4k_entry(virtualAddress, flags.user, true);
     if (entry == nullptr)
         return false;
 
@@ -351,7 +402,7 @@ extern "C" bool paging_unmap_4k(u64 virtualAddress)
         ((virtualAddress >> 48) != 0 && (virtualAddress >> 48) != 0xFFFFULL))
         return false;
 
-    u64* entry = find_4k_entry(virtualAddress);
+    u64* entry = find_4k_entry(virtualAddress, false, true);
     if (entry == nullptr)
         return false;
 
@@ -362,13 +413,13 @@ extern "C" bool paging_unmap_4k(u64 virtualAddress)
 
 extern "C" u64 paging_get_4k_entry(u64 virtualAddress)
 {
-    u64* entry = find_4k_entry(virtualAddress);
+    u64* entry = find_4k_entry(virtualAddress, false, false);
     return entry ? *entry : 0;
 }
 
 extern "C" u64 paging_physical_to_virtual(u64 physicalAddress)
 {
-    if (physicalAddress >= NOVOS_PMM_MAX_PHYSICAL_ADDRESS)
+    if (physicalAddress >= mapped_physical_limit)
         return 0;
 
     const u64 hhdmEnd = NOVOS_HHDM_BASE + mapped_physical_limit;

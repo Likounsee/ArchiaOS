@@ -1,5 +1,6 @@
 #include "lapic.hpp"
 #include "../memory/paging.hpp"
+#include "features.hpp"
 
 static constexpr unsigned int IA32_APIC_BASE_MSR = 0x1B;
 static constexpr unsigned long long APIC_BASE_MASK = 0xFFFFFFFFFFFFF000ULL;
@@ -52,21 +53,6 @@ static inline void wrmsr(unsigned int msr, unsigned long long value)
     );
 }
 
-static inline unsigned int cpuid_ecx(unsigned int leaf)
-{
-    unsigned int eax;
-    unsigned int ebx;
-    unsigned int ecx;
-    unsigned int edx;
-
-    asm volatile (
-        "cpuid"
-        : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
-        : "a"(leaf));
-
-    return ecx;
-}
-
 static inline unsigned int cpuid_edx(unsigned int leaf)
 {
     unsigned int eax;
@@ -105,13 +91,17 @@ static inline void lapic_write(unsigned int xapicOffset, unsigned int x2apicMsr,
 
 extern "C" bool lapic_initialize()
 {
-    if ((cpuid_edx(1) & (1U << 9)) == 0)
+    const CpuInfo* cpu = cpu_get_info();
+    if (cpu == nullptr || cpu->max_basic_leaf < 1)
+        return false;
+
+    if (!cpu->features.x2apic &&
+        (cpuid_edx(1) & (1U << 9)) == 0)
         return false;
 
     unsigned long long apic_base = rdmsr(IA32_APIC_BASE_MSR);
 
-    const bool x2apic_supported =
-        (cpuid_ecx(1) & (1U << 21)) != 0;
+    const bool x2apic_supported = cpu->features.x2apic;
 
     if ((apic_base & APIC_ENABLE) == 0)
     {
@@ -137,7 +127,7 @@ extern "C" bool lapic_initialize()
         const u64 physical = apic_base & APIC_BASE_MASK;
         if (physical >= NOVOS_PMM_MAX_PHYSICAL_ADDRESS ||
             !paging_map_4k(physical, physical, PagingFlags{
-                true, false, true, true, false}))
+                true, false, true, true, true}))
             return false;
         lapic_base = reinterpret_cast<volatile unsigned char*>(physical);
     }

@@ -132,7 +132,7 @@ static bool reclaimable_efi_type(u32 type)
            type == 7;   /* EfiConventionalMemory */
 }
 
-extern "C" void pmm_initialize(BootInfo* bootInfo)
+extern "C" bool pmm_initialize(BootInfo* bootInfo)
 {
     pmm_bitmap = nullptr;
     pmm_reserved_bitmap = nullptr;
@@ -144,7 +144,7 @@ extern "C" void pmm_initialize(BootInfo* bootInfo)
         bootInfo->pmm_bitmap_base == 0 ||
         bootInfo->pmm_bitmap_size < 8192ULL ||
         (bootInfo->pmm_bitmap_size & (NOVOS_PAGE_SIZE - 1ULL)) != 0)
-        return;
+        return false;
 
     pmm_bitmap = reinterpret_cast<u64*>(bootInfo->pmm_bitmap_base);
     pmm_bitmap_words = (bootInfo->pmm_bitmap_size / 2ULL) / sizeof(u64);
@@ -166,7 +166,7 @@ extern "C" void pmm_initialize(BootInfo* bootInfo)
         bootInfo->memory_descriptor_size <
             sizeof(EfiMemoryDescriptor))
     {
-        return;
+        return false;
     }
 
     const u64 entry_count =
@@ -219,6 +219,8 @@ extern "C" void pmm_initialize(BootInfo* bootInfo)
         if (pmm_free_pages > 0)
             --pmm_free_pages;
     }
+
+    return true;
 }
 
 extern "C" u64 pmm_alloc_page()
