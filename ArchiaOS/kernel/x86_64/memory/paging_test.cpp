@@ -190,6 +190,26 @@ nx_page_fault_recovered:
 
     test_str("PAGING NX EXECUTION FAULT PASS\n");
 
+    /*
+     * Prove supervisor write-protection is enforced by CR0.WP + the PTE,
+     * not merely encoded in the page-table entry. The same mapped page is
+     * intentionally written while it is read-only; the page-fault handler
+     * must redirect execution to the recovery label below.
+     */
+    const unsigned long long roRecovery =
+        reinterpret_cast<unsigned long long>(&&ro_write_fault_recovered);
+
+    exception_expect_page_fault(roRecovery);
+
+    *reinterpret_cast<volatile unsigned char*>(testPage) = 0x5A;
+
+ro_write_fault_recovered:
+
+    if (exception_page_fault_test_active())
+        fail("PAGING TEST FAIL: RO WRITE DID NOT FIRE\n");
+
+    test_str("PAGING RO WRITE FAULT PASS\n");
+
     if (!paging_unmap_4k(testPage))
         fail("PAGING TEST FAIL: 4K UNMAP\n");
 
