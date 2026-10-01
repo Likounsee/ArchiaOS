@@ -32,10 +32,16 @@ smp_trampoline_start:
     movl %eax, (smp_trampoline_gdtr + 2 - smp_trampoline_start)
 
     lgdt (smp_trampoline_gdtr - smp_trampoline_start)
+    movb $0x45, %al
+    movw $0xE9, %dx
+    outb %al, %dx
 
     movl %cr0, %eax
     orl $1, %eax
     movl %eax, %cr0
+    movb $0x46, %al
+    movw $0xE9, %dx
+    outb %al, %dx
 
     /*
      * The protected-mode entry is inside this 4 KiB trampoline page, so a
