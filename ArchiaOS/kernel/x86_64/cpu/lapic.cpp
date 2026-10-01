@@ -1,7 +1,8 @@
 #include "lapic.hpp"
 
 static constexpr unsigned int IA32_APIC_BASE_MSR = 0x1B;
-static constexpr unsigned long long APIC_BASE_MASK = 0xFFFFF000ULL;
+static constexpr unsigned long long APIC_BASE_MASK = 0xFFFFFFFFFFFFF000ULL;
+static constexpr unsigned long long APIC_X2APIC_ENABLE = 1ULL << 10;
 static constexpr unsigned long long APIC_ENABLE = 1ULL << 11;
 
 static volatile unsigned char* lapic_base = nullptr;
@@ -71,6 +72,11 @@ extern "C" bool lapic_initialize()
         return false;
 
     unsigned long long apic_base = rdmsr(IA32_APIC_BASE_MSR);
+
+    /* x2APIC uses MSR-based APIC registers; this implementation is
+       intentionally xAPIC-only until the MSR access path is implemented. */
+    if ((apic_base & APIC_X2APIC_ENABLE) != 0)
+        return false;
 
     if ((apic_base & APIC_ENABLE) == 0)
     {
