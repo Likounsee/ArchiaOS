@@ -1,5 +1,6 @@
 #include "idt.hpp"
 #include "scheduler.hpp"
+#include "../process/process.hpp"
 
 static inline void debug_char(char c)
 {
@@ -84,6 +85,16 @@ extern "C" ExceptionFrame* exception_dispatch(ExceptionFrame* frame)
         frame->vector == 0xFF)
     {
         return irq_dispatch(frame);
+    }
+
+    if (frame->vector == 0x80)
+    {
+        if (process_handle_syscall(frame))
+            return frame;
+
+        debug_str("[SYSCALL] invalid user syscall\n");
+        for (;;)
+            asm volatile ("cli; hlt");
     }
 
     if (frame->vector == 6)
