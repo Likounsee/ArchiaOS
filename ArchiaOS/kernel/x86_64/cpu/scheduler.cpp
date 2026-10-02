@@ -50,7 +50,7 @@ extern "C" bool scheduler_set_cpu_apic_ids(
     const unsigned int* apic_ids,
     unsigned int count)
 {
-    if (apic_ids == nullptr || count != scheduler_cpu_count)
+    if (apic_ids == nullptr || count == 0 || count > scheduler_cpu_count)
         return false;
 
     for (unsigned int cpu = 0; cpu < count; ++cpu)
