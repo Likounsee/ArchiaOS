@@ -320,6 +320,40 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     }
     debug_str("SMP: APPLICATION PROCESSORS ONLINE\n");
 
+    debug_str("SCHEDULER: starting preemptive context-switch test\n");
+    if (!scheduler_initialize(1))
+    {
+        debug_str("[KERNEL] SCHEDULER PREEMPTIVE INIT FAILED\n");
+        halt();
+    }
+
+    lapic_timer_start();
+    irq_enable();
+
+    bool preemptive_test_ok = false;
+    for (unsigned long long timeout = 0;
+         timeout < 200000000ULL;
+         ++timeout)
+    {
+        if (scheduler_task1_counter_get() != 0 &&
+            scheduler_switch_count(0) >= 2)
+        {
+            preemptive_test_ok = true;
+            break;
+        }
+        asm volatile("pause");
+    }
+
+    irq_disable();
+    lapic_stop_timer();
+
+    if (!preemptive_test_ok)
+    {
+        debug_str("[KERNEL] SCHEDULER PREEMPTIVE CONTEXT SWITCH FAILED\n");
+        halt();
+    }
+    debug_str("SCHEDULER: PREEMPTIVE CONTEXT SWITCH OK\n");
+
     if (bootInfo->framebuffer_base)
     {
         /* Framebuffer is MMIO/video memory: use UC page mappings. */
