@@ -407,7 +407,8 @@ extern "C" void kernel_main(BootInfo* bootInfo)
 
         if (all_cpus_started &&
             scheduler_kernel_thread_counter(0, 0) != 0 &&
-            scheduler_kernel_thread_counter(0, 1) != 0)
+            scheduler_kernel_thread_counter(0, 1) != 0 &&
+            scheduler_kernel_thread_exited(0))
         {
             preemptive_test_ok = true;
             break;
