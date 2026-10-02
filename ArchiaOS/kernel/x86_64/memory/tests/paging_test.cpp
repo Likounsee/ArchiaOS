@@ -284,6 +284,8 @@ extern "C" void paging_run_tests()
     exception_expect_page_fault(nxRecovery, testPage, 0x1FULL, 0x11ULL);
 
     asm volatile(
+        "mov %%cr3, %%rcx\n"
+        "mov %%rcx, %%cr3\n"
         "jmp *%%rax"
         :
         : "a"(testPage)
