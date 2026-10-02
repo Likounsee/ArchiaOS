@@ -132,6 +132,7 @@ function(archiaos_kernel_compile output source)
             ${ARCHIAOS_MEMORY_DIR}/vmm.hpp
             ${ARCHIAOS_MEMORY_DIR}/heap.hpp
             ${ARCHIAOS_MEMORY_DIR}/address_space.hpp
+            ${ARCHIAOS_PROCESS_DIR}/process.hpp
     )
 endfunction()
 
@@ -200,6 +201,7 @@ add_custom_command(
         "${ARCHIAOS_KERNEL_SMP_TRAMPOLINE_OBJ}"
         "${ARCHIAOS_KERNEL_VMM_OBJ}" "${ARCHIAOS_KERNEL_HEAP_OBJ}"
         "${ARCHIAOS_KERNEL_ADDRESS_SPACE_OBJ}"
+        "${ARCHIAOS_KERNEL_PROCESS_OBJ}" "${ARCHIAOS_KERNEL_RING3_OBJ}"
         -o "${ARCHIAOS_KERNEL_ELF}"
     DEPENDS
         ${ARCHIAOS_KERNEL_OBJ} ${ARCHIAOS_KERNEL_ENTRY_OBJ}
@@ -216,6 +218,7 @@ add_custom_command(
         ${ARCHIAOS_KERNEL_SMP_TRAMPOLINE_OBJ}
         ${ARCHIAOS_KERNEL_VMM_OBJ} ${ARCHIAOS_KERNEL_HEAP_OBJ}
         ${ARCHIAOS_KERNEL_ADDRESS_SPACE_OBJ}
+        ${ARCHIAOS_KERNEL_PROCESS_OBJ} ${ARCHIAOS_KERNEL_RING3_OBJ}
         ${ARCHIAOS_KERNEL_DIR}/kernel.ld
 )
 
