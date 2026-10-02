@@ -17,6 +17,8 @@
 #include "../drivers/gui.hpp"
 #include "../drivers/device.hpp"
 #include "../drivers/net.hpp"
+#include "../drivers/block.hpp"
+#include "../fs/gpt.hpp"
 #include "../cpu/features.hpp"
 #include "../cpu/security.hpp"
 #include "../cpu/smp.hpp"
@@ -221,6 +223,16 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     debug_str("MM: testing independent address space\n");
     address_space_run_tests();
     debug_str("MM: ADDRESS SPACE OK\n");
+    if (!block_memory_test()) {
+        debug_str("[KERNEL] BLOCK DEVICE TEST FAILED\n");
+        halt();
+    }
+    debug_str("STORAGE: BLOCK DEVICE OK\n");
+    if (!gpt_test()) {
+        debug_str("[KERNEL] GPT TEST FAILED\n");
+        halt();
+    }
+    debug_str("STORAGE: GPT OK\n");
     if (!vfs_test())
     {
         debug_str("[KERNEL] VFS TEST FAILED\n");
