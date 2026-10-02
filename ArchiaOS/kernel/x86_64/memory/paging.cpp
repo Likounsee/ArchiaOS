@@ -152,57 +152,65 @@ static bool split_2m_pde(u64* pde)
     return true;
 }
 
+static u64 allocate_table_page()
+{
+    const u64 physical = pmm_alloc_page();
+    if (!physical) return 0;
+    zero_page(physical);
+    return physical;
+}
+
 static u64* find_4k_entry(u64 virtualAddress, bool user, bool split)
 {
-    if (pml4 == nullptr)
+    if (pml4 == nullptr ||
+        ((virtualAddress >> 48) != 0 && (virtualAddress >> 48) != 0xFFFFULL))
         return nullptr;
 
-    if ((virtualAddress >> 48) != 0 &&
-        (virtualAddress >> 48) != 0xFFFFULL)
-        return 0;
-
-    u64& pml4e =
-        pml4[(virtualAddress >> 39) & 0x1FF];
-
+    u64& pml4e = pml4[(virtualAddress >> 39) & 0x1FF];
     if ((pml4e & NOVOS_PAGE_PRESENT) == 0)
-        return nullptr;
-
-    if (user)
+    {
+        if (!split) return nullptr;
+        const u64 table = allocate_table_page();
+        if (!table) return nullptr;
+        pml4e = table | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE |
+                (user ? NOVOS_PAGE_USER : 0);
+    }
+    else if (user)
         pml4e |= NOVOS_PAGE_USER;
 
-    auto* table3 =
-        table_pointer(pml4e & ~0xFFFULL);
-
-    u64& pdpte =
-        table3[(virtualAddress >> 30) & 0x1FF];
-
+    auto* table3 = table_pointer(pml4e & ~0xFFFULL);
+    u64& pdpte = table3[(virtualAddress >> 30) & 0x1FF];
     if ((pdpte & NOVOS_PAGE_PRESENT) == 0)
-        return nullptr;
-
-    if (user)
+    {
+        if (!split) return nullptr;
+        const u64 table = allocate_table_page();
+        if (!table) return nullptr;
+        pdpte = table | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE |
+                (user ? NOVOS_PAGE_USER : 0);
+    }
+    else if (user)
         pdpte |= NOVOS_PAGE_USER;
 
     if (split && (pdpte & NOVOS_PAGE_HUGE) != 0)
+        if (!split_1g_pdpte(&pdpte)) return nullptr;
+
+    auto* table2 = table_pointer(pdpte & ~0xFFFULL);
+    u64& pde = table2[(virtualAddress >> 21) & 0x1FF];
+    if ((pde & NOVOS_PAGE_PRESENT) == 0)
     {
-        if (!split_1g_pdpte(&pdpte))
-            return nullptr;
+        if (!split) return nullptr;
+        const u64 table = allocate_table_page();
+        if (!table) return nullptr;
+        pde = table | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE |
+              (user ? NOVOS_PAGE_USER : 0);
     }
+    else if (user)
+        pde |= NOVOS_PAGE_USER;
 
-    auto* table2 =
-        table_pointer(pdpte & ~0xFFFULL);
-
-    u64* pde =
-        &table2[(virtualAddress >> 21) & 0x1FF];
-
-    if (split && !split_2m_pde(pde))
+    if (split && !split_2m_pde(&pde))
         return nullptr;
 
-    if (user && (*pde & NOVOS_PAGE_PRESENT))
-        *pde |= NOVOS_PAGE_USER;
-
-    auto* pt =
-        table_pointer((*pde) & ~0xFFFULL);
-
+    auto* pt = table_pointer(pde & ~0xFFFULL);
     return &pt[(virtualAddress >> 12) & 0x1FF];
 }
 
