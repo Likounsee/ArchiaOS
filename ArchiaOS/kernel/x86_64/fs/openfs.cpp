@@ -51,7 +51,6 @@ static bool find_child(uint32_t parent,const char* name,uint32_t* inode_no,uint3
  return false;
 }
 static bool resolve_path(const char* path,uint32_t* inode_no){
- if(!valid_name(path)&&(!path||path[0]!='/'))return false;
  if(!path||!path[0]||!inode_no)return false;
  uint32_t current=0;
  uint32_t start=path[0]=='/'?1:0;
@@ -97,7 +96,7 @@ static bool split_parent_path(const char* path,uint32_t* parent,char* leaf){
  return resolve_path(parent_path,parent);
 }
 static bool create_node(const char* path,uint32_t mode){
- if(!valid_name(path)&&(!path||path[0]!='/'))return false;
+ if(!mounted||!path||!path[0])return false;
  uint32_t parent=0;char leaf[OPENFS_NAME_SIZE]={};
  if(!split_parent_path(path,&parent,leaf))return false;
  uint32_t existing=0;
@@ -133,7 +132,7 @@ extern "C" bool openfs_mkdir(const char* path){
 }
 extern "C" bool openfs_unlink(const char* name){
  uint32_t inode_no=0,slot=0;
- if(!valid_name(name)&&(!name||name[0]!='/'))return false;
+ if(!name||!name[0])return false;
  if(!find_file(name,&inode_no)||inode_no==0)return false;
  uint32_t parent=0;char leaf[OPENFS_NAME_SIZE]={};
  if(!split_parent_path(name,&parent,leaf))return false;
