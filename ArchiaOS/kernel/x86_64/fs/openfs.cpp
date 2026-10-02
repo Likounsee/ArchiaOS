@@ -205,9 +205,9 @@ extern "C" bool openfs_test(){
  BlockDevice d{0,BLOCK_DEVICE_MEMORY,512,4096,openfs_test_read,openfs_test_write,const_cast<uint8_t*>(openfs_test_disk)};
  openfs_test_stage=2;if(!openfs_format(&d))return false;
  openfs_test_stage=3;if(!openfs_mount(&d))return false;
- openfs_test_stage=4;if(!openfs_create("hello",1))return false;openfs_test_stage=16;uint32_t diagnostic_inode=0;OpenFsInode diagnostic_inode_data{};if(!find_child(0,"hello",&diagnostic_inode,nullptr)||diagnostic_inode==0)return false;
+ openfs_test_stage=4;if(!openfs_create("hello",1))return false;openfs_test_stage=16;uint8_t diagnostic_dir[OPENFS_BLOCK_SIZE]={};if(!io_read(OPENFS_DIRECTORY_BLOCK,diagnostic_dir))return false;openfs_test_stage=17;OpenFsDirEntry diagnostic_entry{};dir_read_entry(diagnostic_dir,0,&diagnostic_entry);if(diagnostic_entry.inode==0)return false;openfs_test_stage=18;if(diagnostic_entry.parent!=0)return false;openfs_test_stage=19;if(!name_equal(diagnostic_entry.name,"hello"))return false;openfs_test_stage=20;uint32_t diagnostic_inode=0;OpenFsInode diagnostic_inode_data{};if(!find_child(0,"hello",&diagnostic_inode,nullptr)||diagnostic_inode==0)return false;
  static const char msg[]="OpenFS persistent";char out[sizeof(msg)]={};uint64_t n=0;
- openfs_test_stage=17;if(!find_file("hello",&diagnostic_inode)||diagnostic_inode==0)return false;openfs_test_stage=18;if(!inode_read(diagnostic_inode,&diagnostic_inode_data)||diagnostic_inode_data.mode!=1||diagnostic_inode_data.links!=1)return false;openfs_test_stage=19;
+ openfs_test_stage=21;if(!find_file("hello",&diagnostic_inode)||diagnostic_inode==0)return false;openfs_test_stage=22;if(!inode_read(diagnostic_inode,&diagnostic_inode_data)||diagnostic_inode_data.mode!=1||diagnostic_inode_data.links!=1)return false;openfs_test_stage=23;
  openfs_test_stage=5;if(!openfs_write("hello",0,msg,sizeof(msg)))return false;openfs_test_stage=6;if(!openfs_read("hello",0,out,sizeof(out),&n)||n!=sizeof(msg)||!name_equal(out,msg))return false;
  static uint8_t large[OPENFS_BLOCK_SIZE*3+37];static uint8_t check[sizeof(large)];
  for(uint32_t i=0;i<sizeof(large);++i)large[i]=static_cast<uint8_t>((i*37U)+11U);
