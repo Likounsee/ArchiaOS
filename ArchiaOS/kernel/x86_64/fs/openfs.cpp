@@ -19,6 +19,7 @@ static_assert(sizeof(OpenFsSuperblock)==512,"OpenFS superblock size");
 static_assert(sizeof(OpenFsInode)==128,"OpenFS inode size");
 static_assert(sizeof(OpenFsDirEntry)==64,"OpenFS directory entry size");
 static const BlockDevice* mounted=nullptr;
+static uint32_t openfs_test_stage=0;
 
 static bool io_read(uint64_t block,void* buffer){if(!mounted||!buffer||!mounted->sector_size||OPENFS_BLOCK_SIZE%mounted->sector_size)return false;return block_read(mounted,block*(OPENFS_BLOCK_SIZE/mounted->sector_size),OPENFS_BLOCK_SIZE/mounted->sector_size,buffer);}
 static bool io_write(uint64_t block,const void* buffer){if(!mounted||!buffer||!mounted->sector_size||OPENFS_BLOCK_SIZE%mounted->sector_size)return false;return block_write(mounted,block*(OPENFS_BLOCK_SIZE/mounted->sector_size),OPENFS_BLOCK_SIZE/mounted->sector_size,buffer);}
@@ -197,9 +198,25 @@ extern "C" bool openfs_write(const char* name,uint64_t offset,const void* data,u
 extern "C" bool openfs_read(const char* name,uint64_t offset,void* data,uint64_t size,uint64_t* read_size){
  if(read_size)*read_size=0;uint32_t n=0;if(!data||!find_file(name,&n))return false;OpenFsInode inode{};if(!inode_read(n,&inode)||offset>inode.size)return false;uint64_t count=size;if(count>inode.size-offset)count=inode.size-offset;auto* dst=static_cast<uint8_t*>(data);uint64_t pos=0;while(pos<count){uint32_t bi=static_cast<uint32_t>((offset+pos)/OPENFS_BLOCK_SIZE);uint32_t in=static_cast<uint32_t>((offset+pos)%OPENFS_BLOCK_SIZE);if(bi>=OPENFS_DIRECT_COUNT||!inode.direct[bi])return false;uint8_t b[OPENFS_BLOCK_SIZE]={};if(!io_read(inode.direct[bi],b))return false;uint64_t nbytes=count-pos;if(nbytes>OPENFS_BLOCK_SIZE-in)nbytes=OPENFS_BLOCK_SIZE-in;for(uint64_t i=0;i<nbytes;++i)dst[pos+i]=b[in+i];pos+=nbytes;}if(read_size)*read_size=count;return true;
 }
+extern "C" uint32_t openfs_test_stage_get(){return openfs_test_stage;}
 extern "C" bool openfs_test(){
+ openfs_test_stage=1;
  static uint8_t disk[512*4096]={};struct C{uint8_t* p;};static C c{disk};
  const auto rd=[](const BlockDevice*d,uint64_t l,uint32_t n,void*o)->bool{auto*c=static_cast<C*>(d->context);if(l>=4096||!n||l+n>4096)return false;for(uint64_t i=0;i<uint64_t(n)*512;++i)static_cast<uint8_t*>(o)[i]=c->p[l*512+i];return true;};
  const auto wr=[](const BlockDevice*d,uint64_t l,uint32_t n,const void*i)->bool{auto*c=static_cast<C*>(d->context);if(l>=4096||!n||l+n>4096)return false;for(uint64_t x=0;x<uint64_t(n)*512;++x)c->p[l*512+x]=static_cast<const uint8_t*>(i)[x];return true;};
- BlockDevice d{0,BLOCK_DEVICE_MEMORY,512,4096,rd,wr,&c};if(!openfs_format(&d)||!openfs_mount(&d)||!openfs_create("hello",1))return false;static const char msg[]="OpenFS persistent";char out[sizeof(msg)]={};uint64_t n=0;if(!openfs_write("hello",0,msg,sizeof(msg))||!openfs_read("hello",0,out,sizeof(out),&n)||n!=sizeof(msg)||!name_equal(out,msg))return false;static uint8_t large[OPENFS_BLOCK_SIZE*3+37];static uint8_t check[sizeof(large)];for(uint32_t i=0;i<sizeof(large);++i)large[i]=static_cast<uint8_t>((i*37U)+11U);if(!openfs_write("hello",123,large,sizeof(large))||!openfs_read("hello",123,check,sizeof(check),&n)||n!=sizeof(check))return false;for(uint32_t i=0;i<sizeof(check);++i)if(check[i]!=large[i])return false;if(!openfs_unlink("hello")||openfs_read("hello",0,out,sizeof(out),&n)||!openfs_create("hello",1))return false;if(!openfs_unlink("hello")||openfs_read("hello",0,out,sizeof(out),&n)||!openfs_create("hello",1))return false;if(!openfs_mkdir("system")||!openfs_create("system/config",1)||!openfs_write("system/config",0,msg,sizeof(msg)))return false;if(!openfs_read("system/config",0,out,sizeof(out),&n)||n!=sizeof(msg)||!name_equal(out,msg))return false;return !openfs_create("this-name-is-intentionally-too-long-for-openfs-123456",1);
+ BlockDevice d{0,BLOCK_DEVICE_MEMORY,512,4096,rd,wr,&c};
+ openfs_test_stage=2;if(!openfs_format(&d))return false;
+ openfs_test_stage=3;if(!openfs_mount(&d))return false;
+ openfs_test_stage=4;if(!openfs_create("hello",1))return false;
+ static const char msg[]="OpenFS persistent";char out[sizeof(msg)]={};uint64_t n=0;
+ openfs_test_stage=5;if(!openfs_write("hello",0,msg,sizeof(msg))||!openfs_read("hello",0,out,sizeof(out),&n)||n!=sizeof(msg)||!name_equal(out,msg))return false;
+ static uint8_t large[OPENFS_BLOCK_SIZE*3+37];static uint8_t check[sizeof(large)];
+ for(uint32_t i=0;i<sizeof(large);++i)large[i]=static_cast<uint8_t>((i*37U)+11U);
+ openfs_test_stage=6;if(!openfs_write("hello",123,large,sizeof(large))||!openfs_read("hello",123,check,sizeof(check),&n)||n!=sizeof(check))return false;
+ for(uint32_t i=0;i<sizeof(check);++i)if(check[i]!=large[i])return false;
+ openfs_test_stage=7;if(!openfs_unlink("hello")||openfs_read("hello",0,out,sizeof(out),&n)||!openfs_create("hello",1))return false;
+ openfs_test_stage=8;if(!openfs_unlink("hello")||openfs_read("hello",0,out,sizeof(out),&n)||!openfs_create("hello",1))return false;
+ openfs_test_stage=9;if(!openfs_mkdir("system")||!openfs_create("system/config",1)||!openfs_write("system/config",0,msg,sizeof(msg)))return false;
+ openfs_test_stage=10;if(!openfs_read("system/config",0,out,sizeof(out),&n)||n!=sizeof(msg)||!name_equal(out,msg))return false;
+ openfs_test_stage=11;return !openfs_create("this-name-is-intentionally-too-long-for-openfs-123456",1);
 }
