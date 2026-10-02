@@ -345,6 +345,12 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         halt();
     }
 
+    if (!scheduler_set_ready_for_kernel())
+    {
+        debug_str("[KERNEL] SCHEDULER READY FAILED\n");
+        halt();
+    }
+
     /* Release APs into their per-CPU scheduler loops. */
     scheduler_cpu_start(0);
     lapic_timer_start();
@@ -382,7 +388,7 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         debug_str("[KERNEL] SCHEDULER PER-CPU TEST FAILED\n");
         halt();
     }
-    debug_str("SCHEDULER: PER-CPU PREEMPTIVE CONTEXT SWITCH OK\n");
+    debug_str("SCHEDULER: PREEMPTIVE CONTEXT SWITCH OK\n");
 
     if (bootInfo->framebuffer_base)
     {
