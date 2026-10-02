@@ -77,6 +77,15 @@ extern "C" void smp_ap_entry(
     smp_debug("SMP: AP TSS OK\n");
     idt_load_current();
 
+    /* Each AP has its own local APIC LVT/timer state. */
+    if (!lapic_initialize())
+    {
+        smp_debug("SMP: AP LAPIC INIT FAILED\n");
+        for (;;)
+            asm volatile("hlt");
+    }
+    smp_debug("SMP: AP LAPIC OK\n");
+
     __atomic_fetch_add(&online_count, 1U, __ATOMIC_SEQ_CST);
     auto* mailbox = reinterpret_cast<SmpTrampolineMailbox*>(mailboxPhysical);
     __atomic_store_n(&mailbox->started, 1U, __ATOMIC_RELEASE);
