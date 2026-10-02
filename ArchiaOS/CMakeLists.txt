@@ -81,6 +81,9 @@ set(ARCHIAOS_KERNEL_SECURITY_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_security.obj)
 set(ARCHIAOS_KERNEL_SMP_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_smp.obj)
 set(ARCHIAOS_KERNEL_SCHEDULER_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_scheduler.obj)
 set(ARCHIAOS_KERNEL_SMP_TRAMPOLINE_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_smp_trampoline.obj)
+set(ARCHIAOS_KERNEL_VMM_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_vmm.obj)
+set(ARCHIAOS_KERNEL_HEAP_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_heap.obj)
+set(ARCHIAOS_KERNEL_ADDRESS_SPACE_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_address_space.obj)
 
 set(ARCHIAOS_KERNEL_ELF ${ARCHIAOS_BUILD}/ARCHIAOS_kernel.elf)
 
@@ -123,6 +126,9 @@ function(archiaos_kernel_compile output source)
             ${ARCHIAOS_CPU_DIR}/scheduler.hpp
             ${ARCHIAOS_MEMORY_DIR}/paging.hpp
             ${ARCHIAOS_MEMORY_DIR}/pmm.hpp
+            ${ARCHIAOS_MEMORY_DIR}/vmm.hpp
+            ${ARCHIAOS_MEMORY_DIR}/heap.hpp
+            ${ARCHIAOS_MEMORY_DIR}/address_space.hpp
     )
 endfunction()
 
@@ -158,6 +164,9 @@ archiaos_kernel_compile(${ARCHIAOS_KERNEL_SECURITY_OBJ} ${ARCHIAOS_CPU_DIR}/secu
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_SMP_OBJ} ${ARCHIAOS_CPU_DIR}/smp.cpp)
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_SCHEDULER_OBJ} ${ARCHIAOS_CPU_DIR}/scheduler.cpp)
 archiaos_kernel_asm_compile(${ARCHIAOS_KERNEL_SMP_TRAMPOLINE_OBJ} ${ARCHIAOS_CPU_DIR}/smp_trampoline.S)
+archiaos_kernel_compile(${ARCHIAOS_KERNEL_VMM_OBJ} ${ARCHIAOS_MEMORY_DIR}/vmm.cpp)
+archiaos_kernel_compile(${ARCHIAOS_KERNEL_HEAP_OBJ} ${ARCHIAOS_MEMORY_DIR}/heap.cpp)
+archiaos_kernel_compile(${ARCHIAOS_KERNEL_ADDRESS_SPACE_OBJ} ${ARCHIAOS_MEMORY_DIR}/address_space.cpp)
 
 add_custom_command(
     OUTPUT ${ARCHIAOS_KERNEL_ELF}
@@ -198,6 +207,8 @@ add_custom_command(
         ${ARCHIAOS_KERNEL_SECURITY_OBJ} ${ARCHIAOS_KERNEL_SMP_OBJ}
         ${ARCHIAOS_KERNEL_SCHEDULER_OBJ}
         ${ARCHIAOS_KERNEL_SMP_TRAMPOLINE_OBJ}
+        ${ARCHIAOS_KERNEL_VMM_OBJ} ${ARCHIAOS_KERNEL_HEAP_OBJ}
+        ${ARCHIAOS_KERNEL_ADDRESS_SPACE_OBJ}
         ${ARCHIAOS_KERNEL_DIR}/kernel.ld
 )
 
