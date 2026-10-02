@@ -32,6 +32,7 @@ struct PageFaultTestState
 
 static PageFaultTestState page_fault_test = {};
 static unsigned long long invalid_opcode_test_rip = 0;
+static bool ipc_marker_emitted = false;
 
 extern "C" void exception_expect_page_fault(
     unsigned long long recovery_rip,
@@ -93,8 +94,11 @@ extern "C" ExceptionFrame* exception_dispatch(ExceptionFrame* frame)
         {
             if (process_syscall_count() == 1)
                 debug_str("SYSCALL: RING3 OK\n");
-            if (process_ipc_user_ok())
+            if (process_ipc_user_ok() && !ipc_marker_emitted)
+            {
+                ipc_marker_emitted = true;
                 debug_str("IPC: USER OK\n");
+            }
             return frame;
         }
 
