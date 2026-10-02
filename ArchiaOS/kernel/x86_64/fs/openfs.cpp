@@ -202,12 +202,11 @@ extern "C" bool openfs_read(const char* name,uint64_t offset,void* data,uint64_t
 extern "C" uint32_t openfs_test_stage_get(){return openfs_test_stage;}
 extern "C" bool openfs_test(){
  openfs_test_stage=1;
- static uint8_t disk[512*4096]={};struct C{uint8_t* p;};static C c{disk};
- const auto rd=[](const BlockDevice*d,uint64_t l,uint32_t n,void*o)->bool{auto*c=static_cast<C*>(d->context);if(l>=4096||!n||l+n>4096)return false;for(uint64_t i=0;i<uint64_t(n)*512;++i)static_cast<uint8_t*>(o)[i]=c->p[l*512+i];return true;};
- const auto wr=[](const BlockDevice*d,uint64_t l,uint32_t n,const void*i)->bool{auto*c=static_cast<C*>(d->context);if(l>=4096||!n||l+n>4096)return false;for(uint64_t x=0;x<uint64_t(n)*512;++x)c->p[l*512+x]=static_cast<const uint8_t*>(i)[x];return true;};
- BlockDevice d{0,BLOCK_DEVICE_MEMORY,512,4096,rd,wr,&c};
- openfs_test_stage=2;if(!openfs_format(&d))return false;
- openfs_test_stage=3;if(!openfs_mount(&d))return false;
+ if(!block_memory_test())return false;
+ const BlockDevice* d=block_get(1);
+ if(!d)return false;
+ openfs_test_stage=2;if(!openfs_format(d))return false;
+ openfs_test_stage=3;if(!openfs_mount(d))return false;
  openfs_test_stage=4;if(!openfs_create("hello",1))return false;
  static const char msg[]="OpenFS persistent";char out[sizeof(msg)]={};uint64_t n=0;uint32_t diagnostic_inode=0;
  openfs_test_stage=18;uint8_t diagnostic_dir[OPENFS_BLOCK_SIZE]={};if(!io_read(OPENFS_DIRECTORY_BLOCK,diagnostic_dir))return false;auto* diagnostic_entries=reinterpret_cast<const OpenFsDirEntry*>(diagnostic_dir);bool found_raw=false;for(uint32_t i=0;i<OPENFS_DIRECTORY_ENTRIES;++i)if(diagnostic_entries[i].inode&&name_equal(diagnostic_entries[i].name,"hello")&&diagnostic_entries[i].parent==0){found_raw=true;break;}if(!found_raw)return false;if(!find_child(0,"hello",&diagnostic_inode,nullptr))return false;openfs_test_stage=19;if(!find_file("hello",&diagnostic_inode))return false;
