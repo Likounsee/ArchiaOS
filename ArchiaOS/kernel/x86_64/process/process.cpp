@@ -8,6 +8,8 @@ extern "C" [[noreturn]] void ring3_enter(uint64_t rip, uint64_t rsp);
 
 static Process* current_process = nullptr;
 static uint32_t next_pid = 1;
+static constexpr unsigned int PROCESS_MAX = 64;
+static Process* process_table[PROCESS_MAX] = {};
 /* Initial process state is kept kernel-owned until the first user transition. */
 static volatile unsigned long long syscall_count = 0;
 static volatile bool ipc_user_ok = false;
@@ -178,6 +180,48 @@ extern "C" bool process_create_elf(
     return true;
 }
 
+extern "C" bool process_register(Process* process)
+{
+    if (!process || !process->pid)
+        return false;
+    for (unsigned int i = 0; i < PROCESS_MAX; ++i)
+    {
+        if (process_table[i] == process)
+            return true;
+        if (!process_table[i])
+        {
+            process_table[i] = process;
+            return true;
+        }
+    }
+    return false;
+}
+
+extern "C" Process* process_find(uint32_t pid)
+{
+    if (!pid)
+        return nullptr;
+    for (unsigned int i = 0; i < PROCESS_MAX; ++i)
+        if (process_table[i] && process_table[i]->pid == pid)
+            return process_table[i];
+    return nullptr;
+}
+
+extern "C" bool process_unregister(Process* process)
+{
+    if (!process)
+        return false;
+    for (unsigned int i = 0; i < PROCESS_MAX; ++i)
+    {
+        if (process_table[i] == process)
+        {
+            process_table[i] = nullptr;
+            return true;
+        }
+    }
+    return false;
+}
+
 extern "C" bool process_destroy(Process* process)
 {
     if (!process || process == current_process)
@@ -188,6 +232,7 @@ extern "C" bool process_destroy(Process* process)
     process->pid = 0;
     process->entry = 0;
     process->user_stack_top = 0;
+    process_unregister(process);
     return true;
 }
 
@@ -323,7 +368,7 @@ extern "C" bool process_run_ring3_test()
     static Process process{};
     if (!process_create_elf(&process, image, sizeof(image)))
         return false;
-    if (!process_activate(&process))
+    if (!process_register(&process) || !process_activate(&process))
         return false;
 
     asm volatile("sti" : : : "memory");
