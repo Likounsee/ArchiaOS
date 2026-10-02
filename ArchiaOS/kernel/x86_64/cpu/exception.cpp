@@ -61,7 +61,7 @@ extern "C" bool exception_invalid_opcode_test_active()
 extern "C" unsigned char tss_ist1_stack[];
 extern "C" unsigned char tss_ist1_stack_top[];
 
-extern "C" void exception_dispatch(ExceptionFrame* frame)
+extern "C" ExceptionFrame* exception_dispatch(ExceptionFrame* frame)
 {
     debug_str("[EXC] Vector: ");
     debug_hex64(frame->vector);
@@ -76,8 +76,7 @@ extern "C" void exception_dispatch(ExceptionFrame* frame)
     if ((frame->vector >= 0x20 && frame->vector <= 0x2F) ||
         frame->vector == 0xFF)
     {
-        irq_dispatch(frame);
-        return;
+        return irq_dispatch(frame);
     }
 
     if (frame->vector == 6)
@@ -88,7 +87,7 @@ extern "C" void exception_dispatch(ExceptionFrame* frame)
             invalid_opcode_test_rip = 0;
             frame->rip += 2;
             debug_str("[EXC] Controlled invalid-opcode recovery\n");
-            return;
+            return frame;
         }
 
         debug_str("[EXC] Fatal invalid-opcode exception\n");
@@ -140,7 +139,7 @@ extern "C" void exception_dispatch(ExceptionFrame* frame)
             page_fault_test = {};
             frame->rip = recovery;
             debug_str("[PF] controlled test recovery\n");
-            return;
+            return frame;
         }
 
         if (page_fault_test.recovery_rip != 0)
