@@ -2193,7 +2193,7 @@ idt_set_gate0:
 .Lidt_user_gate:
     movb $0x00, 4(%rdi)
     movb $0xEE, 5(%rdi)
-    ret
+    jmp .Lidt_no_ist
 
 .global idt_test_invalid_opcode
 .type idt_test_invalid_opcode, @function
