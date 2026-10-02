@@ -64,16 +64,16 @@ extern "C" void smp_ap_entry(
 {
     irq_disable();
     smp_debug("SMP: AP C++ ENTRY\n");
+    tss_initialize_cpu(processorIndex);
+    gdt_initialize_cpu(processorIndex);
+    gdt_load_cpu(processorIndex);
+    tss_load_cpu(processorIndex);
     if (!scheduler_set_local_cpu_index(processorIndex))
     {
         smp_debug("SMP: AP CPU INDEX SET FAILED\n");
         for (;;)
             asm volatile("hlt");
     }
-    tss_initialize_cpu(processorIndex);
-    gdt_initialize_cpu(processorIndex);
-    gdt_load_cpu(processorIndex);
-    tss_load_cpu(processorIndex);
     if (tss_current_selector() != 0x18U)
     {
         smp_debug("SMP: AP TSS LOAD FAILED\n");
