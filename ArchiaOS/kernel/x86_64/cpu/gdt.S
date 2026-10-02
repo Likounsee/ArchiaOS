@@ -2,7 +2,7 @@
 .align 16
 .global gdt_tables
 gdt_tables:
-    .zero 256 * 48
+    .zero 256 * 56
 
 .align 16
 .global gdt_pointers
@@ -23,7 +23,7 @@ gdt_load_current:
 gdt_load_cpu:
     /* One GDT is 5 entries = 40 bytes; one pointer is 10 bytes. */
     mov %edi, %eax
-    imul $48, %eax, %eax
+    imul $56, %eax, %eax
     lea gdt_tables(%rip), %rdx
     add %rax, %rdx
 
@@ -32,7 +32,7 @@ gdt_load_cpu:
     lea gdt_pointers(%rip), %rcx
     add %rax, %rcx
 
-    movw $39, (%rcx)
+    movw $55, (%rcx)
     mov %rdx, 2(%rcx)
     lgdt (%rcx)
 
@@ -81,6 +81,7 @@ gdt_initialize_cpu:
     movq $0, 24(%rcx)
     movq $0, 32(%rcx)
     movq $0, 40(%rcx)
+    movq $0, 48(%rcx)
 
     movabsq $0x00AF9A000000FFFF, %rax
     movq %rax, 8(%rcx)
