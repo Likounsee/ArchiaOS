@@ -93,6 +93,8 @@ extern "C" ExceptionFrame* exception_dispatch(ExceptionFrame* frame)
         {
             if (process_syscall_count() == 1)
                 debug_str("SYSCALL: RING3 OK\n");
+            if (process_ipc_user_ok())
+                debug_str("IPC: USER OK\n");
             return frame;
         }
 
