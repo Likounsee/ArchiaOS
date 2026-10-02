@@ -82,6 +82,7 @@ gdt_initialize_cpu:
     movq $0, 32(%rcx)
     movq $0, 40(%rcx)
     movq $0, 48(%rcx)
+    movq $0, 48(%rcx)
 
     movabsq $0x00AF9A000000FFFF, %rax
     movq %rax, 8(%rcx)
