@@ -41,7 +41,7 @@ static bool valid_name(const char* name){
  }
  return length>0;
 }
-static bool name_equal(const char* a,const char* b){for(uint32_t i=0;i<OPENFS_NAME_SIZE;++i){if(a[i]!=b[i])return false;if(a[i]==0)return true;}return true;}
+static bool name_equal(const char* a,const char* b){if(!a||!b)return false;for(uint32_t i=0;i<OPENFS_NAME_SIZE;++i){if(a[i]!=b[i])return false;if(a[i]==0)return true;}return false;}
 extern "C" bool openfs_format(const BlockDevice* device){
  if(!device||!device->sector_size||OPENFS_BLOCK_SIZE%device->sector_size)return false;
  uint64_t blocks=(device->sector_count*device->sector_size)/OPENFS_BLOCK_SIZE;
