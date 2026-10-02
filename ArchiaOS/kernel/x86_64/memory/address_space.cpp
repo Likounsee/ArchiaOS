@@ -86,6 +86,73 @@ extern "C" bool address_space_map(
     return true;
 }
 
+static void destroy_table_level(u64 physical, unsigned int level)
+{
+    auto* entries = table(physical);
+    if (!entries)
+        return;
+
+    for (unsigned int i = 0; i < 512; ++i)
+    {
+        const u64 entry = entries[i];
+        if (!(entry & NOVOS_PAGE_PRESENT))
+            continue;
+
+        if (level == 1)
+        {
+            pmm_free_page(entry & ~0xFFFULL);
+            entries[i] = 0;
+            continue;
+        }
+
+        if (entry & NOVOS_PAGE_HUGE)
+        {
+            entries[i] = 0;
+            continue;
+        }
+
+        const u64 child = entry & ~0xFFFULL;
+        destroy_table_level(child, level - 1);
+        pmm_free_page(child);
+        entries[i] = 0;
+    }
+}
+
+extern "C" bool address_space_destroy(AddressSpace* space)
+{
+    if (!space || !space->pml4_physical)
+        return false;
+
+    u64 current_cr3 = 0;
+    asm volatile("mov %%cr3, %0" : "=r"(current_cr3));
+    if (current_cr3 == space->pml4_physical)
+        return false;
+
+    auto* pml4 = table(space->pml4_physical);
+    if (!pml4)
+        return false;
+
+    for (unsigned int i = 0; i < 256; ++i)
+    {
+        const u64 entry = pml4[i];
+        if (!(entry & NOVOS_PAGE_PRESENT))
+            continue;
+        if (entry & NOVOS_PAGE_HUGE)
+            continue;
+
+        const u64 child = entry & ~0xFFFULL;
+        destroy_table_level(child, 3);
+        pmm_free_page(child);
+        pml4[i] = 0;
+    }
+
+    const u64 old = space->pml4_physical;
+    space->pml4_physical = 0;
+    space->active = false;
+    pmm_free_page(old);
+    return true;
+}
+
 extern "C" bool address_space_activate(AddressSpace* space)
 {
     if (!space || !space->pml4_physical) return false;
