@@ -84,15 +84,17 @@ extern "C" bool scheduler_ready()
 
 extern "C" unsigned int scheduler_current_cpu_index()
 {
-    const unsigned int apic_id = lapic_current_id();
+    unsigned int local_index;
+    unsigned int reserved;
+    asm volatile("rdmsr"
+        : "=a"(local_index), "=d"(reserved)
+        : "c"(0xC0000101U));
 
-    for (unsigned int cpu = 0; cpu < scheduler_cpu_count; ++cpu)
-    {
-        if (scheduler_apic_ids[cpu] == apic_id)
-            return cpu;
-    }
+    if (local_index == 0)
+        return 0;
 
-    return 0;
+    --local_index;
+    return local_index < scheduler_cpu_count ? local_index : 0;
 }
 
 extern "C" ExceptionFrame* scheduler_timer_tick(
