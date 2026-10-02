@@ -20,8 +20,8 @@ static_assert(sizeof(OpenFsInode)==128,"OpenFS inode size");
 static_assert(sizeof(OpenFsDirEntry)==64,"OpenFS directory entry size");
 static const BlockDevice* mounted=nullptr;
 static uint32_t openfs_test_stage=0;
-static uint8_t openfs_test_disk[512*4096]={};
-static bool openfs_test_read(const BlockDevice* d,uint64_t lba,uint32_t count,void* out){if(!d||d->context!=openfs_test_disk||!out||lba>=4096||!count||static_cast<uint64_t>(count)>4096-lba)return false;for(uint64_t i=0;i<uint64_t(count)*512;++i)static_cast<uint8_t*>(out)[i]=openfs_test_disk[lba*512+i];return true;}
+static volatile uint8_t openfs_test_disk[512*4096]={};
+static bool openfs_test_read(const BlockDevice* d,uint64_t lba,uint32_t count,void* out){if(!d||d->context!=const_cast<uint8_t*>(openfs_test_disk)||!out||lba>=4096||!count||static_cast<uint64_t>(count)>4096-lba)return false;for(uint64_t i=0;i<uint64_t(count)*512;++i)static_cast<uint8_t*>(out)[i]=openfs_test_disk[lba*512+i];return true;}
 static bool openfs_test_write(const BlockDevice* d,uint64_t lba,uint32_t count,const void* in){if(!d||d->context!=openfs_test_disk||!in||lba>=4096||!count||static_cast<uint64_t>(count)>4096-lba)return false;for(uint64_t i=0;i<uint64_t(count)*512;++i)openfs_test_disk[lba*512+i]=static_cast<const uint8_t*>(in)[i];return true;}
 
 static bool io_read(uint64_t block,void* buffer){if(!mounted||!buffer||!mounted->sector_size||OPENFS_BLOCK_SIZE%mounted->sector_size)return false;return block_read(mounted,block*(OPENFS_BLOCK_SIZE/mounted->sector_size),OPENFS_BLOCK_SIZE/mounted->sector_size,buffer);}
