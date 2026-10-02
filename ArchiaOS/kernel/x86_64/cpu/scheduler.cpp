@@ -179,3 +179,11 @@ extern "C" unsigned long long scheduler_take_bootstrap_stack()
 {
     return __atomic_exchange_n(&bootstrap_stack_top, 0ULL, __ATOMIC_ACQ_REL);
 }
+
+extern "C" bool scheduler_set_ready_for_kernel()
+{
+    if (scheduler_cpu_count == 0)
+        return false;
+    __atomic_store_n(&scheduler_ready_flag, true, __ATOMIC_RELEASE);
+    return true;
+}
