@@ -258,7 +258,9 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     debug_str("IRQ: DISPATCH CHAIN OK\n");
 
     debug_str("SCHEDULER: initializing\n");
-    if (!scheduler_initialize(1) || !scheduler_run_test())
+    if (!scheduler_initialize(1) ||
+        !scheduler_set_local_cpu_index(0) ||
+        !scheduler_run_test())
     {
         debug_str("[KERNEL] SCHEDULER TEST FAILED\n");
         halt();
