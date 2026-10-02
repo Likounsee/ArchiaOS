@@ -29,7 +29,7 @@ extern "C" bool irq_initialize()
     return lapic_initialize();
 }
 
-extern "C" void irq_dispatch(ExceptionFrame* frame)
+extern "C" ExceptionFrame* irq_dispatch(ExceptionFrame* frame)
 {
     if (frame == nullptr)
         return;
@@ -42,7 +42,7 @@ extern "C" void irq_dispatch(ExceptionFrame* frame)
     if (vector == 0x20)
     {
         lapic_timer_interrupt();
-        scheduler_timer_tick(0);
+        frame = scheduler_timer_tick(0, frame);
     }
     else if (vector == 0x21)
     {
@@ -53,6 +53,8 @@ extern "C" void irq_dispatch(ExceptionFrame* frame)
     /* Vector 0xFF is the LAPIC spurious vector and must not receive EOI. */
     if (vector >= 0x20 && vector <= 0xFE)
         lapic_eoi();
+
+    return frame;
 }
 
 extern "C" void irq_enable()
