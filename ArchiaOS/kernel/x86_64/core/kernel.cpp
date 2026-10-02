@@ -364,7 +364,8 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         bool all_cpus_started = true;
         for (unsigned int cpu = 0; cpu < scheduler_cpu_count; ++cpu)
         {
-            if (scheduler_task1_counter_get(cpu) == 0)
+            if (scheduler_task1_counter_get(cpu) == 0 ||
+                scheduler_switch_count(cpu) < 2)
             {
                 all_cpus_started = false;
                 break;
