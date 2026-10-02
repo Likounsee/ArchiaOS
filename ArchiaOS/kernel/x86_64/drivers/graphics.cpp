@@ -1,10 +1,5 @@
 #include "graphics.hpp"
 
-static inline bool inside(const GraphicsSurface* s, uint32_t x, uint32_t y)
-{
-    return s && s->pixels && x < s->width && y < s->height;
-}
-
 extern "C" bool graphics_initialize(GraphicsSurface* surface)
 {
     return surface && surface->pixels && surface->width &&
