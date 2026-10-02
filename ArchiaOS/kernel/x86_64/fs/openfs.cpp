@@ -109,20 +109,20 @@ static bool find_file(const char* name,uint32_t* inode_no){
 }
 static bool split_parent_path(const char* path,uint32_t* parent,char* leaf){
  if(!path||!parent||!leaf||!path[0])return false;
- uint32_t length=0,last_slash=0;
+ uint32_t length=0,last_slash=0;bool has_slash=false;
  while(path[length]){
   if(length>=255)return false;
-  if(path[length]=='/')last_slash=length;
+  if(path[length]=='/'){last_slash=length;has_slash=true;}
   ++length;
  }
- uint32_t leaf_start=last_slash+1;
+ uint32_t leaf_start=has_slash?last_slash+1:0;
  if(leaf_start>=length)return false;
  uint32_t leaf_length=length-leaf_start;
  if(leaf_length>=OPENFS_NAME_SIZE)return false;
  for(uint32_t i=0;i<leaf_length;++i)leaf[i]=path[leaf_start+i];
  leaf[leaf_length]=0;
  if(!valid_name(leaf))return false;
- if(last_slash==0){*parent=0;return true;}
+ if(!has_slash||last_slash==0){*parent=0;return true;}
  char parent_path[256]={};
  for(uint32_t i=0;i<last_slash;++i)parent_path[i]=path[i];
  parent_path[last_slash]=0;
