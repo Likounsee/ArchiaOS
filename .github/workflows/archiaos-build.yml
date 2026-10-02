@@ -105,7 +105,7 @@ jobs:
               "SCHEDULER: PREEMPTIVE CONTEXT SWITCH OK" \
               "ACPI: RSDP/MADT OK" \
               "SMP: APPLICATION PROCESSORS ONLINE"; do
-              grep -q "$marker" "qemu-${cpu}.log" || {
+              grep -a -F -q -- "$marker" "qemu-${cpu}.log" || {
                 echo "Missing expected marker for $cpu: $marker"
                 exit 1
               }
@@ -115,8 +115,8 @@ jobs:
               exit 1
             fi
             done
-            if ! grep -q "PAGING 1G SPLIT PASS" "qemu-${cpu}.log" && \
-               ! grep -q "PAGING 1G SPLIT SKIPPED" "qemu-${cpu}.log"; then
+            if ! grep -a -F -q "PAGING 1G SPLIT PASS" "qemu-${cpu}.log" && \
+               ! grep -a -F -q "PAGING 1G SPLIT SKIPPED" "qemu-${cpu}.log"; then
               echo "Missing 1GiB paging capability marker for ${cpu}"
               exit 1
             fi
