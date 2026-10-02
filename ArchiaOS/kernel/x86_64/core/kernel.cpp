@@ -327,16 +327,52 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         halt();
     }
 
+    unsigned int scheduler_apic_ids[SCHEDULER_MAX_CPUS] = {};
+    const unsigned int scheduler_cpu_count =
+        acpi->processor_count < SCHEDULER_MAX_CPUS
+            ? acpi->processor_count
+            : SCHEDULER_MAX_CPUS;
+    for (unsigned int cpu = 0; cpu < scheduler_cpu_count; ++cpu)
+        scheduler_apic_ids[cpu] = acpi->processor_apic_ids[cpu];
+
+    if (!scheduler_set_cpu_apic_ids(scheduler_apic_ids, scheduler_cpu_count))
+    {
+        debug_str("[KERNEL] SCHEDULER APIC MAP FAILED\\n");
+        halt();
+    }
+
+    /* Release APs into their per-CPU scheduler loops. */
+    scheduler_cpu_start(0);
+    /* scheduler_ready is published by the scheduler before timers are enabled. */
+    extern volatile bool scheduler_ready_flag_unused;
+    (void)scheduler_ready_flag_unused;
     lapic_timer_start();
     irq_enable();
 
     bool preemptive_test_ok = false;
+    /* scheduler_ready is intentionally published only after APIC mapping. */
+    extern bool scheduler_set_ready_for_kernel();
+    if (!scheduler_set_ready_for_kernel())
+    {
+        debug_str("[KERNEL] SCHEDULER READY FAILED\\n");
+        halt();
+    }
+
     for (unsigned long long timeout = 0;
          timeout < 200000000ULL;
          ++timeout)
     {
-        if (scheduler_task1_counter_get() != 0 &&
-            scheduler_switch_count(0) >= 2)
+        bool all_cpus_running = true;
+        for (unsigned int cpu = 0; cpu < scheduler_cpu_count; ++cpu)
+        {
+            if (scheduler_switch_count(cpu) < 2 ||
+                scheduler_task1_counter_get(cpu) == 0)
+            {
+                all_cpus_running = false;
+                break;
+            }
+        }
+        if (all_cpus_running)
         {
             preemptive_test_ok = true;
             break;
