@@ -1,17 +1,4 @@
 #include "scheduler.hpp"
-#include "lapic.hpp"
-
-static unsigned int scheduler_cpu_apic_id()
-{
-    unsigned int eax;
-    unsigned int ebx;
-    unsigned int ecx;
-    unsigned int edx;
-    asm volatile("cpuid"
-        : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
-        : "a"(1U), "c"(0U));
-    return (ebx >> 24) & 0xFFU;
-}
 
 static SchedulerCpu cpus[SCHEDULER_MAX_CPUS];
 static SchedulerTask tasks[SCHEDULER_MAX_CPUS][SCHEDULER_MAX_TASKS];
@@ -96,15 +83,17 @@ extern "C" bool scheduler_ready()
 
 extern "C" unsigned int scheduler_current_cpu_index()
 {
-    const unsigned int apic_id = scheduler_cpu_apic_id();
+    unsigned int local_index;
+    unsigned int reserved;
+    asm volatile("rdmsr"
+        : "=a"(local_index), "=d"(reserved)
+        : "c"(0xC0000101U));
 
-    for (unsigned int cpu = 0; cpu < scheduler_cpu_count; ++cpu)
-    {
-        if (scheduler_apic_ids[cpu] == apic_id)
-            return cpu;
-    }
+    if (local_index == 0)
+        return 0;
 
-    return 0;
+    --local_index;
+    return local_index < scheduler_cpu_count ? local_index : 0;
 }
 
 extern "C" ExceptionFrame* scheduler_timer_tick(
@@ -211,5 +200,18 @@ extern "C" bool scheduler_set_ready_for_kernel()
     if (scheduler_cpu_count == 0)
         return false;
     __atomic_store_n(&scheduler_ready_flag, true, __ATOMIC_RELEASE);
+    return true;
+}
+
+extern "C" bool scheduler_set_local_cpu_index(unsigned int cpu_index)
+{
+    if (cpu_index >= scheduler_cpu_count)
+        return false;
+
+    const unsigned long long value =
+        static_cast<unsigned long long>(cpu_index) + 1ULL;
+    const unsigned int low = static_cast<unsigned int>(value);
+    const unsigned int high = static_cast<unsigned int>(value >> 32);
+    asm volatile("wrmsr" : : "c"(0xC0000101U), "a"(low), "d"(high) : "memory");
     return true;
 }
