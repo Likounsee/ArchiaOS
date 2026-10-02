@@ -11,18 +11,18 @@ static inline void test_char(char c)
           "Nd"(static_cast<unsigned short>(0xE9)));
 }
 
+static void test_str(const char* s)
+{
+    for (int i = 0; s[i] != '\0'; ++i)
+        test_char(s[i]);
+}
+
 static void test_hex64(u64 value)
 {
     const char* digits = "0123456789ABCDEF";
     test_str(" 0x");
     for (int i = 15; i >= 0; --i)
         test_char(digits[(value >> (i * 4)) & 0xF]);
-}
-
-static void test_str(const char* s)
-{
-    for (int i = 0; s[i] != '\0'; ++i)
-        test_char(s[i]);
 }
 
 static void fail(const char* message)
