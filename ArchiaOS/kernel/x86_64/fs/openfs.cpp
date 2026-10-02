@@ -80,13 +80,7 @@ static bool find_child(uint32_t parent,const char* name,uint32_t* inode_no,uint3
  if(!mounted||!name||!inode_no)return false;
  uint8_t b[OPENFS_BLOCK_SIZE]={};
  if(!io_read(OPENFS_DIRECTORY_BLOCK,b))return false;
- auto* e=reinterpret_cast<const OpenFsDirEntry*>(b);
- for(uint32_t i=0;i<OPENFS_DIRECTORY_ENTRIES;++i)
-  if(e[i].inode&&e[i].parent==parent&&name_equal(e[i].name,name)){
-   *inode_no=e[i].inode;
-   if(slot)*slot=i;
-   return true;
-  }
+ for(uint32_t i=0;i<OPENFS_DIRECTORY_ENTRIES;++i){OpenFsDirEntry e{};dir_read_entry(b,i,&e);if(e.inode&&e.parent==parent&&name_equal(e.name,name)){*inode_no=e.inode;if(slot)*slot=i;return true;}}
  return false;
 }
 static bool resolve_path(const char* path,uint32_t* inode_no){
@@ -147,10 +141,8 @@ static bool create_node(const char* path,uint32_t mode){
  inode={};inode.mode=mode;inode.links=1;
  uint8_t db[OPENFS_BLOCK_SIZE]={};
  if(!io_read(OPENFS_DIRECTORY_BLOCK,db))return false;
- auto* entries=reinterpret_cast<OpenFsDirEntry*>(db);
  uint32_t slot=OPENFS_DIRECTORY_ENTRIES;
- for(uint32_t i=0;i<OPENFS_DIRECTORY_ENTRIES;++i)
-  if(!entries[i].inode){slot=i;break;}
+ for(uint32_t i=0;i<OPENFS_DIRECTORY_ENTRIES;++i){OpenFsDirEntry e{};dir_read_entry(db,i,&e);if(!e.inode){slot=i;break;}}
  if(slot==OPENFS_DIRECTORY_ENTRIES)return false;
  OpenFsDirEntry entry{};
  entry.inode=inode_no;entry.type=mode;entry.parent=parent;
@@ -179,7 +171,6 @@ extern "C" bool openfs_unlink(const char* name){
  if(!find_child(parent,leaf,&inode_no,&slot))return false;
  uint8_t db[OPENFS_BLOCK_SIZE]={};
  if(!io_read(OPENFS_DIRECTORY_BLOCK,db))return false;
- auto* entries=reinterpret_cast<OpenFsDirEntry*>(db);
  OpenFsInode inode{};
  if(!inode_read(inode_no,&inode)||inode.mode==0||inode.mode==2)return false;
  for(uint32_t i=0;i<OPENFS_DIRECT_COUNT;++i)
