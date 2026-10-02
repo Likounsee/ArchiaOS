@@ -21,7 +21,7 @@ gdt_load_current:
 
 .type gdt_load_cpu, @function
 gdt_load_cpu:
-    /* One GDT is 5 entries = 40 bytes; one pointer is 10 bytes. */
+    /* One GDT is 7 entries = 56 bytes; one pointer is 10 bytes. */
     mov %edi, %eax
     imul $56, %eax, %eax
     lea gdt_tables(%rip), %rdx
@@ -70,7 +70,7 @@ gdt_initialize_cpu:
      *   0x30 high 64-bit TSS descriptor
      */
     mov %edi, %eax
-    imul $40, %eax, %eax
+    imul $56, %eax, %eax
     lea gdt_tables(%rip), %rcx
     add %rax, %rcx
 
@@ -81,7 +81,6 @@ gdt_initialize_cpu:
     movq $0, 24(%rcx)
     movq $0, 32(%rcx)
     movq $0, 40(%rcx)
-    movq $0, 48(%rcx)
     movq $0, 48(%rcx)
 
     movabsq $0x00AF9A000000FFFF, %rax
