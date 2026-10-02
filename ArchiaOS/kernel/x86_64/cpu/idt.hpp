@@ -22,6 +22,8 @@ struct ExceptionFrame
     unsigned long long rip;
     unsigned long long cs;
     unsigned long long rflags;
+    unsigned long long user_rsp;
+    unsigned long long user_ss;
 };
 
 extern "C" void idt_initialize();
