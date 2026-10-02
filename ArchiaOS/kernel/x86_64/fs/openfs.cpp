@@ -26,6 +26,16 @@ static bool bitmap_get(uint64_t b){uint8_t m[OPENFS_BLOCK_SIZE]={};if(b>=OPENFS_
 static bool bitmap_set(uint64_t b,bool used){uint8_t m[OPENFS_BLOCK_SIZE]={};if(b>=OPENFS_BLOCK_SIZE*8||!io_read(OPENFS_BITMAP_BLOCK,m))return false;if(used)m[b>>3]|=1U<<(b&7);else m[b>>3]&=static_cast<uint8_t>(~(1U<<(b&7)));return io_write(OPENFS_BITMAP_BLOCK,m);}
 static bool inode_read(uint32_t n,OpenFsInode* out){if(!out||n>=OPENFS_INODE_COUNT)return false;uint8_t b[OPENFS_BLOCK_SIZE]={};uint32_t per=OPENFS_BLOCK_SIZE/OPENFS_INODE_SIZE;if(!io_read(OPENFS_INODE_BLOCK+n/per,b))return false;*out=*reinterpret_cast<const OpenFsInode*>(b+(n%per)*OPENFS_INODE_SIZE);return true;}
 static bool inode_write(uint32_t n,const OpenFsInode* in){if(!in||n>=OPENFS_INODE_COUNT)return false;uint8_t b[OPENFS_BLOCK_SIZE]={};uint32_t per=OPENFS_BLOCK_SIZE/OPENFS_INODE_SIZE;if(!io_read(OPENFS_INODE_BLOCK+n/per,b))return false;*reinterpret_cast<OpenFsInode*>(b+(n%per)*OPENFS_INODE_SIZE)=*in;return io_write(OPENFS_INODE_BLOCK+n/per,b);}
+static bool valid_name(const char* name){
+ if(!name||!name[0])return false;
+ uint32_t length=0;
+ while(name[length]){
+  if(length>=OPENFS_NAME_SIZE-1)return false;
+  if(name[length]=='/'||name[length]=='\\\\')return false;
+  ++length;
+ }
+ return length>0;
+}
 static bool name_equal(const char* a,const char* b){for(uint32_t i=0;i<OPENFS_NAME_SIZE;++i){if(a[i]!=b[i])return false;if(a[i]==0)return true;}return true;}
 static bool find_file(const char* name,uint32_t* inode_no){if(!mounted||!name||!inode_no||!name[0])return false;uint8_t b[OPENFS_BLOCK_SIZE]={};if(!io_read(OPENFS_DIRECTORY_BLOCK,b))return false;auto* e=reinterpret_cast<const OpenFsDirEntry*>(b);for(uint32_t i=0;i<OPENFS_DIRECTORY_ENTRIES;++i)if(e[i].inode&&name_equal(e[i].name,name)){*inode_no=e[i].inode;return true;}return false;}
 static bool allocate_block(uint64_t* result){if(!result||!mounted)return false;uint64_t blocks=(mounted->sector_count*mounted->sector_size)/OPENFS_BLOCK_SIZE;for(uint64_t b=OPENFS_DATA_BLOCK;b<blocks;++b)if(!bitmap_get(b)){if(bitmap_set(b,true)){*result=b;return true;}return false;}return false;}
@@ -45,7 +55,7 @@ extern "C" bool openfs_mount(const BlockDevice* device){
  return sb->magic==OPENFS_MAGIC&&sb->version==OPENFS_VERSION&&sb->block_size==OPENFS_BLOCK_SIZE&&sb->inode_size==OPENFS_INODE_SIZE&&sb->inode_count==OPENFS_INODE_COUNT&&sb->directory_block==OPENFS_DIRECTORY_BLOCK&&sb->data_block==OPENFS_DATA_BLOCK&&sb->total_blocks==(device->sector_count*device->sector_size)/OPENFS_BLOCK_SIZE;
 }
 extern "C" bool openfs_create(const char* name,uint32_t mode){
- if(!name||!name[0]||!mounted)return false;
+ if(!valid_name(name)||!mounted)return false;
  uint32_t existing=0;if(find_file(name,&existing))return false;
  uint32_t inode_no=0;OpenFsInode inode{};for(uint32_t i=1;i<OPENFS_INODE_COUNT;++i)if(inode_read(i,&inode)&&inode.mode==0){inode_no=i;break;}if(!inode_no)return false;
  uint64_t data=0;if(!allocate_block(&data))return false;uint8_t db[OPENFS_BLOCK_SIZE]={};if(!io_read(OPENFS_DIRECTORY_BLOCK,db)){bitmap_set(data,false);return false;}auto* entries=reinterpret_cast<OpenFsDirEntry*>(db);uint32_t slot=OPENFS_DIRECTORY_ENTRIES;for(uint32_t i=0;i<OPENFS_DIRECTORY_ENTRIES;++i)if(!entries[i].inode){slot=i;break;}if(slot==OPENFS_DIRECTORY_ENTRIES){bitmap_set(data,false);return false;}
@@ -63,5 +73,5 @@ extern "C" bool openfs_test(){
  static uint8_t disk[512*4096]={};struct C{uint8_t* p;};static C c{disk};
  const auto rd=[](const BlockDevice*d,uint64_t l,uint32_t n,void*o)->bool{auto*c=static_cast<C*>(d->context);if(l>=4096||!n||l+n>4096)return false;for(uint64_t i=0;i<uint64_t(n)*512;++i)static_cast<uint8_t*>(o)[i]=c->p[l*512+i];return true;};
  const auto wr=[](const BlockDevice*d,uint64_t l,uint32_t n,const void*i)->bool{auto*c=static_cast<C*>(d->context);if(l>=4096||!n||l+n>4096)return false;for(uint64_t x=0;x<uint64_t(n)*512;++x)c->p[l*512+x]=static_cast<const uint8_t*>(i)[x];return true;};
- BlockDevice d{0,BLOCK_DEVICE_MEMORY,512,4096,rd,wr,&c};if(!openfs_format(&d)||!openfs_mount(&d)||!openfs_create("hello",1))return false;static const char msg[]="OpenFS persistent";char out[sizeof(msg)]={};uint64_t n=0;return openfs_write("hello",0,msg,sizeof(msg))&&openfs_read("hello",0,out,sizeof(out),&n)&&n==sizeof(msg)&&name_equal(out,msg);
+ BlockDevice d{0,BLOCK_DEVICE_MEMORY,512,4096,rd,wr,&c};if(!openfs_format(&d)||!openfs_mount(&d)||!openfs_create("hello",1))return false;static const char msg[]="OpenFS persistent";char out[sizeof(msg)]={};uint64_t n=0;if(!openfs_write("hello",0,msg,sizeof(msg))||!openfs_read("hello",0,out,sizeof(out),&n)||n!=sizeof(msg)||!name_equal(out,msg))return false;static uint8_t large[OPENFS_BLOCK_SIZE*3+37];static uint8_t check[sizeof(large)];for(uint32_t i=0;i<sizeof(large);++i)large[i]=static_cast<uint8_t>((i*37U)+11U);if(!openfs_write("hello",123,large,sizeof(large))||!openfs_read("hello",123,check,sizeof(check),&n)||n!=sizeof(check))return false;for(uint32_t i=0;i<sizeof(check);++i)if(check[i]!=large[i])return false;return !openfs_create("this-name-is-intentionally-too-long-for-openfs");
 }
