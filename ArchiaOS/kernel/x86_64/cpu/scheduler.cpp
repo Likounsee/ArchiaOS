@@ -1,6 +1,18 @@
 #include "scheduler.hpp"
 #include "lapic.hpp"
 
+static unsigned int scheduler_cpu_apic_id()
+{
+    unsigned int eax;
+    unsigned int ebx;
+    unsigned int ecx;
+    unsigned int edx;
+    asm volatile("cpuid"
+        : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
+        : "a"(1U), "c"(0U));
+    return (ebx >> 24) & 0xFFU;
+}
+
 static SchedulerCpu cpus[SCHEDULER_MAX_CPUS];
 static SchedulerTask tasks[SCHEDULER_MAX_CPUS][SCHEDULER_MAX_TASKS];
 alignas(4096) __attribute__((section(".data.scheduler_stack")))
@@ -84,7 +96,7 @@ extern "C" bool scheduler_ready()
 
 extern "C" unsigned int scheduler_current_cpu_index()
 {
-    const unsigned int apic_id = lapic_current_id();
+    const unsigned int apic_id = scheduler_cpu_apic_id();
 
     for (unsigned int cpu = 0; cpu < scheduler_cpu_count; ++cpu)
     {
