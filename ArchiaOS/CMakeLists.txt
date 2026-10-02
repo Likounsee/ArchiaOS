@@ -99,7 +99,6 @@ set(ARCHIAOS_KERNEL_DEVICE_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_device.obj)
 set(ARCHIAOS_KERNEL_NET_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_net.obj)
 set(ARCHIAOS_KERNEL_BLOCK_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_block.obj)
 set(ARCHIAOS_KERNEL_GPT_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_gpt.obj)
-set(ARCHIAOS_KERNEL_OPENFS_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_openfs.obj)
 
 set(ARCHIAOS_KERNEL_ELF ${ARCHIAOS_BUILD}/ARCHIAOS_kernel.elf)
 
@@ -196,7 +195,6 @@ archiaos_kernel_compile(${ARCHIAOS_KERNEL_DEVICE_OBJ} ${ARCHIAOS_DRIVERS_DIR}/de
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_NET_OBJ} ${ARCHIAOS_DRIVERS_DIR}/net.cpp)
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_BLOCK_OBJ} ${ARCHIAOS_DRIVERS_DIR}/block.cpp)
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_GPT_OBJ} ${ARCHIAOS_FS_DIR}/gpt.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_OPENFS_OBJ} ${ARCHIAOS_FS_DIR}/openfs.cpp)
 
 add_custom_command(
     OUTPUT ${ARCHIAOS_KERNEL_ELF}
