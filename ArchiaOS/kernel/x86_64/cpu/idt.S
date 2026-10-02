@@ -2151,6 +2151,8 @@ idt_initialize:
     mov (%rsi,%rcx,8), %rax
     call idt_set_gate0
     /* Vector 8 (#DF) must use TSS IST1. */
+    cmp $0x80, %ecx
+    je .Lidt_user_gate
     cmp $8, %ecx
     je .Lidt_ist1
     cmp $2, %ecx
@@ -2187,6 +2189,10 @@ idt_set_gate0:
     movw $0x0008, 2(%rdi)
     movb $0x00, 4(%rdi)
     movb $0x8E, 5(%rdi)
+    ret
+.Lidt_user_gate:
+    movb $0x00, 4(%rdi)
+    movb $0xEE, 5(%rdi)
     ret
 
 .global idt_test_invalid_opcode
