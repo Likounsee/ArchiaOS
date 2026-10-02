@@ -15,6 +15,22 @@ extern "C" [[noreturn]] void scheduler_task1_entry()
     }
 }
 
+static void scheduler_debug_hex(const char* label, unsigned long long value)
+{
+    for (const char* p = label; *p; ++p)
+        asm volatile("outb %0,%1" : : "a"(*p), "Nd"(static_cast<unsigned short>(0xE9)) : "memory");
+
+    const char* digits = "0123456789ABCDEF";
+    asm volatile("outb %0,%1" : : "a"('0'), "Nd"(static_cast<unsigned short>(0xE9)) : "memory");
+    asm volatile("outb %0,%1" : : "a"('x'), "Nd"(static_cast<unsigned short>(0xE9)) : "memory");
+    for (int i = 15; i >= 0; --i)
+    {
+        const char c = digits[(value >> (i * 4)) & 0xF];
+        asm volatile("outb %0,%1" : : "a"(c), "Nd"(static_cast<unsigned short>(0xE9)) : "memory");
+    }
+    asm volatile("outb %0,%1" : : "a"('\n'), "Nd"(static_cast<unsigned short>(0xE9)) : "memory");
+}
+
 static ExceptionFrame* scheduler_make_task1_frame()
 {
     unsigned long long stack_top =
@@ -45,6 +61,11 @@ extern "C" bool scheduler_initialize(unsigned int cpu_count)
     }
 
     tasks[0][1].saved_frame = scheduler_make_task1_frame();
+    scheduler_debug_hex("SCHED FRAME=", reinterpret_cast<unsigned long long>(tasks[0][1].saved_frame));
+    scheduler_debug_hex("SCHED RIP=", tasks[0][1].saved_frame->rip);
+    scheduler_debug_hex("SCHED CS=", tasks[0][1].saved_frame->cs);
+    scheduler_debug_hex("SCHED FLAGS=", tasks[0][1].saved_frame->rflags);
+    scheduler_debug_hex("SCHED STACK=", reinterpret_cast<unsigned long long>(task1_stack) + SCHEDULER_TASK_STACK_SIZE);
     task1_counter = 0;
     return true;
 }
