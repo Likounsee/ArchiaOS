@@ -221,9 +221,12 @@ extern "C" void address_space_run_tests()
         for (;;) asm volatile("cli; hlt");
 
     const u64 physical = pmm_alloc_page();
+    u64 translated = 0;
     if (!physical ||
         !address_space_map(&space, NOVOS_USER_VIRTUAL_BASE, physical, true, false) ||
-        !address_space_is_user_mapped(&space, NOVOS_USER_VIRTUAL_BASE))
+        !address_space_is_user_mapped(&space, NOVOS_USER_VIRTUAL_BASE) ||
+        !address_space_translate_user(&space, NOVOS_USER_VIRTUAL_BASE + 123, &translated) ||
+        translated != physical + 123)
         for (;;) asm volatile("cli; hlt");
 
     pmm_free_page(physical);
