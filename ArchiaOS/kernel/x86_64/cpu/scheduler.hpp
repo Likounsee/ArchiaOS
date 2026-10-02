@@ -58,4 +58,6 @@ extern "C" bool scheduler_create_kernel_thread(
     unsigned int* task_id);
 extern "C" [[noreturn]] void scheduler_bootstrap_entry();
 extern "C" bool scheduler_kernel_thread_test();
+extern "C" [[noreturn]] void scheduler_thread_exit();
+extern "C" bool scheduler_kernel_thread_exited(unsigned int cpu_index);
 extern "C" unsigned long long scheduler_kernel_thread_counter(unsigned int cpu_index, unsigned int thread_index);
