@@ -184,8 +184,11 @@ extern "C" bool scheduler_run_test()
     for (unsigned int i = 0; i < SCHEDULER_QUANTUM_TICKS; ++i)
         scheduler_timer_tick(0, &test_frame);
 
-    return scheduler_current_task(0) == 0 &&
-           scheduler_switch_count(0) == 2;
+    const bool ok =
+        scheduler_current_task(0) == 0 &&
+        scheduler_switch_count(0) == 2;
+    scheduler_ready_flag = false;
+    return ok;
 }
 
 extern "C" unsigned long long scheduler_take_bootstrap_stack()
