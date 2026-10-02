@@ -42,8 +42,7 @@ extern "C" ExceptionFrame* irq_dispatch(ExceptionFrame* frame)
     if (vector == 0x20)
     {
         lapic_timer_interrupt();
-        frame = scheduler_timer_tick(0, frame);
-
+        frame = scheduler_timer_tick(scheduler_current_cpu_index(), frame);
     }
     else if (vector == 0x21)
     {
