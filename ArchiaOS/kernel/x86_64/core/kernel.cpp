@@ -235,7 +235,9 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     }
     debug_str("STORAGE: GPT OK\n");
     if (!openfs_test()) {
-        debug_str("[KERNEL] OPENFS TEST FAILED\n");
+        debug_str("[KERNEL] OPENFS TEST FAILED STAGE ");
+        debug_char(static_cast<char>('0' + openfs_test_stage_get()));
+        debug_char('\n');
         halt();
     }
     debug_str("STORAGE: OPENFS OK\n");
