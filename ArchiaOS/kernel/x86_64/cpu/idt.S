@@ -2085,7 +2085,9 @@ isr_common:
      */
     andq $-16, %rsp
     call exception_dispatch
-    mov %r12, %rsp
+    mov %rax, %r13
+
+    mov %r13, %rsp
 
     popq %r15
     popq %r14
