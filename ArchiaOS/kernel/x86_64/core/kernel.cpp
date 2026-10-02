@@ -13,6 +13,7 @@
 #include "../fs/vfs.hpp"
 #include "../drivers/pci.hpp"
 #include "../drivers/input.hpp"
+#include "../drivers/graphics.hpp"
 #include "../cpu/features.hpp"
 #include "../cpu/security.hpp"
 #include "../cpu/smp.hpp"
@@ -270,6 +271,12 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         halt();
     }
     debug_str("INPUT: EVENT QUEUE OK\n");
+    if (!graphics_test())
+    {
+        debug_str("[KERNEL] GRAPHICS TEST FAILED\n");
+        halt();
+    }
+    debug_str("GRAPHICS: SOFTWARE COMPOSITOR OK\n");
 
     debug_str("CPU: testing invalid opcode handler\n");
     exception_expect_invalid_opcode(
@@ -461,12 +468,18 @@ extern "C" void kernel_main(BootInfo* bootInfo)
             }
         }
 
-        volatile UINT32* fb = reinterpret_cast<volatile UINT32*>(bootInfo->framebuffer_base);
-        const UINT32 pitchPixels = bootInfo->framebuffer_pitch / 4;
-        const UINT32 background = bootInfo->framebuffer_pixel_format == 0 ? 0x00101820U : 0x00201810U;
-        fill_rect(fb, pitchPixels, bootInfo->framebuffer_width, bootInfo->framebuffer_height, 0, 0, bootInfo->framebuffer_width, bootInfo->framebuffer_height, background);
-        fill_rect(fb, pitchPixels, bootInfo->framebuffer_width, bootInfo->framebuffer_height, 48, 48, 640, 96, 0x00FFFFFFU);
-        fill_rect(fb, pitchPixels, bootInfo->framebuffer_width, bootInfo->framebuffer_height, 60, 60, 616, 72, background);
+        GraphicsSurface surface{
+            reinterpret_cast<volatile UINT32*>(bootInfo->framebuffer_base),
+            bootInfo->framebuffer_width,
+            bootInfo->framebuffer_height,
+            bootInfo->framebuffer_pitch / 4
+        };
+        if (!graphics_initialize(&surface))
+        {
+            debug_str("[KERNEL] GRAPHICS FRAMEBUFFER INIT FAILED\\n");
+            halt();
+        }
+        graphics_frame(&surface);
     }
 
     debug_str("PROCESS: ELF LOADER READY\n");
