@@ -270,6 +270,9 @@ isr_table:
 
 .section .text
 
+.extern scheduler_take_bootstrap_stack
+.extern scheduler_task1_entry
+
 .global isr0
 .type isr0, @function
 isr0:
@@ -2085,7 +2088,11 @@ isr_common:
      */
     andq $-16, %rsp
     call exception_dispatch
-    mov %rax, %rsp
+    mov %rax, %r14
+    call scheduler_take_bootstrap_stack
+    test %rax, %rax
+    jnz .Lscheduler_bootstrap
+    mov %r14, %rsp
 
     popq %r15
     popq %r14
@@ -2105,6 +2112,26 @@ isr_common:
 
     add $16, %rsp
     iretq
+
+.Lscheduler_bootstrap:
+    mov %rax, %rsp
+    xorq %rax, %rax
+    xorq %rbx, %rbx
+    xorq %rcx, %rcx
+    xorq %rdx, %rdx
+    xorq %rbp, %rbp
+    xorq %rdi, %rdi
+    xorq %rsi, %rsi
+    xorq %r8, %r8
+    xorq %r9, %r9
+    xorq %r10, %r10
+    xorq %r11, %r11
+    xorq %r12, %r12
+    xorq %r13, %r13
+    xorq %r14, %r14
+    xorq %r15, %r15
+    sti
+    jmp scheduler_task1_entry
 
 .global idt_load_current
 .global idt_initialize
