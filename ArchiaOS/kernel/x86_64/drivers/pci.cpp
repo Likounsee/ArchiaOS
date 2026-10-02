@@ -30,6 +30,53 @@ static uint32_t config_read32(uint8_t bus, uint8_t device, uint8_t function, uin
     return io_in32(0xCFC);
 }
 
+static void read_bars(PciDevice* device)
+{
+    if (!device)
+        return;
+
+    for (unsigned int i = 0; i < 6; ++i)
+        device->bars[i] = {};
+
+    const uint32_t header = config_read32(device->bus, device->device, device->function, 0x0C);
+    const uint8_t header_type = static_cast<uint8_t>((header >> 16) & 0x7FU);
+    const unsigned int bar_count = header_type == 0 ? 6 : 2;
+
+    for (unsigned int i = 0; i < bar_count; ++i)
+    {
+        const uint32_t low = config_read32(
+            device->bus, device->device, device->function,
+            static_cast<uint8_t>(0x10U + i * 4U));
+
+        if (low == 0)
+            continue;
+
+        PciBar& bar = device->bars[i];
+        bar.present = true;
+        bar.flags = low & 0xFU;
+
+        if ((low & 0x1U) != 0)
+        {
+            bar.base = static_cast<uint64_t>(low & ~0x3U);
+            bar.flags = low & 0x3U;
+            continue;
+        }
+
+        const uint32_t memory_type = (low >> 1) & 0x3U;
+        bar.base = static_cast<uint64_t>(low & ~0xFU);
+
+        if (memory_type == 0x2U && i + 1 < bar_count)
+        {
+            const uint32_t high = config_read32(
+                device->bus, device->device, device->function,
+                static_cast<uint8_t>(0x10U + (i + 1) * 4U));
+            bar.base |= static_cast<uint64_t>(high) << 32;
+            device->bars[i + 1].present = false;
+            ++i;
+        }
+    }
+}
+
 extern "C" bool pci_initialize()
 {
     device_count = 0;
@@ -56,7 +103,8 @@ extern "C" bool pci_initialize()
             const uint32_t class_info =
                 config_read32(0, device, function, 0x08);
 
-            devices[device_count++] = PciDevice{
+            PciDevice& entry = devices[device_count++];
+            entry = PciDevice{
                 0,
                 static_cast<uint8_t>(device),
                 static_cast<uint8_t>(function),
@@ -64,8 +112,10 @@ extern "C" bool pci_initialize()
                 static_cast<uint16_t>(id >> 16),
                 static_cast<uint8_t>(class_info >> 24),
                 static_cast<uint8_t>(class_info >> 16),
-                static_cast<uint8_t>(class_info >> 8)
+                static_cast<uint8_t>(class_info >> 8),
+                {}
             };
+            read_bars(&entry);
         }
     }
 
@@ -90,6 +140,13 @@ extern "C" const PciDevice* pci_find_class(uint8_t class_code, uint8_t subclass)
             devices[i].subclass == subclass)
             return &devices[i];
     return nullptr;
+}
+
+extern "C" const PciBar* pci_get_bar(const PciDevice* device, uint8_t index)
+{
+    if (!device || index >= 6)
+        return nullptr;
+    return &device->bars[index];
 }
 
 extern "C" bool pci_test()
