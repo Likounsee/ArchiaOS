@@ -16,6 +16,7 @@
 #include "../drivers/graphics.hpp"
 #include "../drivers/gui.hpp"
 #include "../drivers/device.hpp"
+#include "../drivers/net.hpp"
 #include "../cpu/features.hpp"
 #include "../cpu/security.hpp"
 #include "../cpu/smp.hpp"
@@ -256,6 +257,12 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         halt();
     }
     debug_str("DRIVER: DEVICE MANAGER OK\n");
+    if (!net_test())
+    {
+        debug_str("[KERNEL] NETWORK TEST FAILED\n");
+        halt();
+    }
+    debug_str("NET: LOOPBACK OK\n");
 
     debug_str("CPU: testing invalid opcode handler\n");
     exception_expect_invalid_opcode(
