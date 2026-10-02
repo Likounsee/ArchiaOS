@@ -55,7 +55,6 @@ static bool map_stack(AddressSpace* space, uint64_t* top)
         return false;
 
     const uint64_t stack_top = NOVOS_USER_VIRTUAL_TOP;
-    const uint64_t guard_page = stack_top - 4ULL * NOVOS_PAGE_SIZE;
     const uint64_t stack_base = stack_top - 3ULL * NOVOS_PAGE_SIZE;
 
     /* Keep one unmapped guard page below the user stack. */
