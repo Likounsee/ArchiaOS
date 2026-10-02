@@ -200,6 +200,8 @@ extern "C" bool vfs_stat(const char* path, VfsStat* stat)
     if (!stat)
         return false;
     const unsigned int node = find_node(path);
+    if (node == 0 && (!path || path[0] != '/' || path[1] != 0))
+        return false;
     if (node >= VFS_MAX_NODES || nodes[node].type == VFS_NODE_UNUSED)
         return false;
     stat->type = nodes[node].type;
