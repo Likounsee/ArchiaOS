@@ -10,7 +10,7 @@ static inline void zero_table(u64 physical)
 
 static u64 new_table()
 {
-    const u64 physical = pmm_alloc_page();
+    const u64 physical = pmm_alloc_page_above(0x01000000ULL);
     if (physical) zero_table(physical);
     return physical;
 }
