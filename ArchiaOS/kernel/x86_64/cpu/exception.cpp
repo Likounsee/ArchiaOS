@@ -1,4 +1,5 @@
 #include "idt.hpp"
+#include "scheduler.hpp"
 
 static inline void debug_char(char c)
 {
@@ -63,7 +64,12 @@ extern "C" unsigned char tss_ist1_stack_top[];
 
 extern "C" ExceptionFrame* exception_dispatch(ExceptionFrame* frame)
 {
-    debug_str("[EXC] Vector: ");
+    const bool scheduler_timer_irq =
+        frame->vector == 0x20 && scheduler_ready();
+
+    if (!scheduler_timer_irq)
+    {
+        debug_str("[EXC] Vector: ");
     debug_hex64(frame->vector);
     debug_str("  Error: ");
     debug_hex64(frame->error_code);
@@ -71,7 +77,8 @@ extern "C" ExceptionFrame* exception_dispatch(ExceptionFrame* frame)
     debug_hex64(frame->rip);
     debug_str("  RFLAGS: ");
     debug_hex64(frame->rflags);
-    debug_str("\n");
+        debug_str("\n");
+    }
 
     if ((frame->vector >= 0x20 && frame->vector <= 0x2F) ||
         frame->vector == 0xFF)
