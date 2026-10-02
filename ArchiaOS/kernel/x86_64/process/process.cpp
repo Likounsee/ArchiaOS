@@ -2,6 +2,7 @@
 #include "../cpu/idt.hpp"
 #include "../memory/paging.hpp"
 #include "../memory/pmm.hpp"
+#include "ipc.hpp"
 
 extern "C" [[noreturn]] void ring3_enter(uint64_t rip, uint64_t rsp);
 
@@ -9,6 +10,7 @@ static Process* current_process = nullptr;
 static uint32_t next_pid = 1;
 /* Initial process state is kept kernel-owned until the first user transition. */
 static volatile unsigned long long syscall_count = 0;
+static volatile bool ipc_user_ok = false;
 
 struct Elf64Header
 {
@@ -205,6 +207,11 @@ extern "C" uint32_t process_current_pid()
     return current_process ? current_process->pid : 0;
 }
 
+extern "C" bool process_ipc_user_ok()
+{
+    return __atomic_load_n(&ipc_user_ok, __ATOMIC_ACQUIRE);
+}
+
 extern "C" unsigned long long process_syscall_count()
 {
     return __atomic_load_n(&syscall_count, __ATOMIC_ACQUIRE);
@@ -225,6 +232,32 @@ extern "C" bool process_handle_syscall(ExceptionFrame* frame)
         case 2:
             frame->rax = 0;
             break;
+        case 3:
+            frame->rax = static_cast<uint64_t>(ipc_create(current_process->pid));
+            break;
+        case 4:
+            frame->rax = ipc_send(
+                static_cast<int>(frame->rbx),
+                current_process->pid,
+                0,
+                frame->rcx) ? 0 : static_cast<uint64_t>(-1);
+            break;
+        case 5:
+        {
+            IpcMessage message{};
+            if (ipc_receive(
+                    static_cast<int>(frame->rbx),
+                    current_process->pid,
+                    &message))
+            {
+                frame->rax = message.value;
+                if (message.value == 0x12345678ULL)
+                    ipc_user_ok = true;
+            }
+            else
+                frame->rax = static_cast<uint64_t>(-1);
+            break;
+        }
         default:
             frame->rax = static_cast<uint64_t>(-1);
             break;
@@ -235,7 +268,7 @@ extern "C" bool process_handle_syscall(ExceptionFrame* frame)
 
 extern "C" bool process_run_ring3_test()
 {
-    static uint8_t image[0x109] = {};
+    static uint8_t image[0x11E] = {};
     for (unsigned int i = 0; i < sizeof(image); ++i)
         image[i] = 0;
 
@@ -272,19 +305,20 @@ extern "C" bool process_run_ring3_test()
     put64(image + 72, 0x100);
     put64(image + 80, 0x400100);
     put64(image + 88, 0);
-    put64(image + 96, 9);
-    put64(image + 104, 9);
+    put64(image + 96, 30);
+    put64(image + 104, 30);
     put64(image + 112, 0x1000);
 
-    image[0x100] = 0xB8;
-    image[0x101] = 0x01;
-    image[0x102] = 0x00;
-    image[0x103] = 0x00;
-    image[0x104] = 0x00;
-    image[0x105] = 0xCD;
-    image[0x106] = 0x80;
-    image[0x107] = 0xEB;
-    image[0x108] = 0xFE;
+    const uint8_t user_code[] = {
+        0xB8, 0x03, 0x00, 0x00, 0x00, 0xCD, 0x80,
+        0x89, 0xC3,
+        0xB9, 0x78, 0x56, 0x34, 0x12,
+        0xB8, 0x04, 0x00, 0x00, 0x00, 0xCD, 0x80,
+        0xB8, 0x05, 0x00, 0x00, 0x00, 0xCD, 0x80,
+        0xEB, 0xFE
+    };
+    for (unsigned int i = 0; i < sizeof(user_code); ++i)
+        image[0x100 + i] = user_code[i];
 
     static Process process{};
     if (!process_create_elf(&process, image, sizeof(image)))
