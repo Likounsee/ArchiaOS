@@ -74,7 +74,7 @@ extern "C" void smp_ap_entry(
         for (;;)
             asm volatile("hlt");
     }
-    if (tss_current_selector() != 0x18U)
+    if (tss_current_selector() != 0x28U)
     {
         smp_debug("SMP: AP TSS LOAD FAILED\n");
         for (;;)
