@@ -9,6 +9,7 @@
 #include "../memory/vmm.hpp"
 #include "../memory/heap.hpp"
 #include "../memory/address_space.hpp"
+#include "../process/process.hpp"
 #include "../cpu/features.hpp"
 #include "../cpu/security.hpp"
 #include "../cpu/smp.hpp"
@@ -415,9 +416,6 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         asm volatile("pause");
     }
 
-    irq_disable();
-    lapic_stop_timer();
-
     if (!preemptive_test_ok)
     {
         debug_str("[KERNEL] SCHEDULER PER-CPU TEST FAILED\n");
@@ -449,5 +447,15 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         fill_rect(fb, pitchPixels, bootInfo->framebuffer_width, bootInfo->framebuffer_height, 60, 60, 616, 72, background);
     }
 
-    halt();
+    debug_str("PROCESS: ELF LOADER READY\n");
+    if (!process_run_ring3_test())
+    {
+        irq_disable();
+        lapic_stop_timer();
+        debug_str("[KERNEL] RING3 PROCESS FAILED\n");
+        halt();
+    }
+
+    for (;;)
+        asm volatile("hlt");
 }
