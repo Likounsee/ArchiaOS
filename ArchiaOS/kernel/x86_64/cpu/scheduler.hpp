@@ -32,3 +32,4 @@ extern "C" unsigned int scheduler_current_task(unsigned int cpu_index);
 extern "C" unsigned long long scheduler_switch_count(unsigned int cpu_index);
 extern "C" bool scheduler_run_test();
 extern "C" unsigned long long scheduler_task1_counter_get();
+extern "C" unsigned long long scheduler_take_bootstrap_stack();
