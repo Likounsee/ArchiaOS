@@ -271,7 +271,7 @@ isr_table:
 .section .text
 
 .extern scheduler_take_bootstrap_stack
-.extern scheduler_task1_entry
+.extern scheduler_bootstrap_entry
 
 .global isr0
 .type isr0, @function
@@ -2131,7 +2131,7 @@ isr_common:
     xorq %r14, %r14
     xorq %r15, %r15
     sti
-    jmp scheduler_task1_entry
+    jmp scheduler_bootstrap_entry
 
 .global idt_load_current
 .global idt_initialize
