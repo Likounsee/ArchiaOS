@@ -14,6 +14,7 @@
 #include "../drivers/pci.hpp"
 #include "../drivers/input.hpp"
 #include "../drivers/graphics.hpp"
+#include "../drivers/gui.hpp"
 #include "../cpu/features.hpp"
 #include "../cpu/security.hpp"
 #include "../cpu/smp.hpp"
@@ -242,6 +243,12 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         halt();
     }
     debug_str("GRAPHICS: SOFTWARE COMPOSITOR OK\n");
+    if (!gui_test())
+    {
+        debug_str("[KERNEL] GUI TEST FAILED\n");
+        halt();
+    }
+    debug_str("GUI: WINDOW MANAGER OK\n");
 
     debug_str("CPU: testing invalid opcode handler\n");
     exception_expect_invalid_opcode(
@@ -444,7 +451,7 @@ extern "C" void kernel_main(BootInfo* bootInfo)
             debug_str("[KERNEL] GRAPHICS FRAMEBUFFER INIT FAILED\\n");
             halt();
         }
-        graphics_frame(&surface);
+        gui_render(&surface);
     }
 
     debug_str("PROCESS: ELF LOADER READY\n");
