@@ -90,7 +90,11 @@ extern "C" ExceptionFrame* exception_dispatch(ExceptionFrame* frame)
     if (frame->vector == 0x80)
     {
         if (process_handle_syscall(frame))
+        {
+            if (process_syscall_count() == 1)
+                debug_str("SYSCALL: RING3 OK\n");
             return frame;
+        }
 
         debug_str("[SYSCALL] invalid user syscall\n");
         for (;;)
