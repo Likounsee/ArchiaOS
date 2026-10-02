@@ -11,6 +11,7 @@
 #include "../memory/address_space.hpp"
 #include "../process/process.hpp"
 #include "../fs/vfs.hpp"
+#include "../drivers/pci.hpp"
 #include "../cpu/features.hpp"
 #include "../cpu/security.hpp"
 #include "../cpu/smp.hpp"
@@ -256,6 +257,12 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         halt();
     }
     debug_str("VFS: RAMFS OK\n");
+    if (!pci_test())
+    {
+        debug_str("[KERNEL] PCI ENUMERATION FAILED\n");
+        halt();
+    }
+    debug_str("PCI: ENUMERATION OK\n");
 
     debug_str("CPU: testing invalid opcode handler\n");
     exception_expect_invalid_opcode(
