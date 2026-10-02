@@ -299,8 +299,14 @@ extern "C" bool scheduler_kernel_thread_test()
     if (a == b || a < 2 || b < 2)
         return false;
 
-    scheduler_set_ready_for_kernel();
     return true;
+}
+
+extern "C" unsigned long long scheduler_kernel_thread_counter(unsigned int cpu_index, unsigned int thread_index)
+{
+    if (cpu_index >= scheduler_cpu_count || thread_index >= 2)
+        return 0;
+    return __atomic_load_n(&kernel_thread_counters[cpu_index][thread_index], __ATOMIC_ACQUIRE);
 }
 
 extern "C" bool scheduler_set_ready_for_kernel()
