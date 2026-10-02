@@ -104,7 +104,7 @@ extern "C" void smp_ap_entry(
 
     smp_debug("SMP: AP SCHEDULER READY\n");
     smp_debug("SMP: AP SCHEDULER INDEX ");
-    smp_debug_hex(scheduler_current_cpu_index());
+    smp_debug_hex("SMP: AP SCHEDULER INDEX ", scheduler_current_cpu_index());
     smp_debug("\n");
     scheduler_cpu_start(processorIndex);
     lapic_timer_start();
