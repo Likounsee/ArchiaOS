@@ -1,0 +1,296 @@
+#include "process.hpp"
+#include "../cpu/idt.hpp"
+#include "../memory/paging.hpp"
+#include "../memory/pmm.hpp"
+
+extern "C" [[noreturn]] void ring3_enter(uint64_t rip, uint64_t rsp);
+
+static Process* current_process = nullptr;
+static uint32_t next_pid = 1;
+static volatile unsigned long long syscall_count = 0;
+
+struct Elf64Header
+{
+    uint8_t ident[16];
+    uint16_t type;
+    uint16_t machine;
+    uint32_t version;
+    uint64_t entry;
+    uint64_t phoff;
+    uint64_t shoff;
+    uint32_t flags;
+    uint16_t ehsize;
+    uint16_t phentsize;
+    uint16_t phnum;
+    uint16_t shentsize;
+    uint16_t shnum;
+    uint16_t shstrndx;
+};
+
+struct Elf64ProgramHeader
+{
+    uint32_t type;
+    uint32_t flags;
+    uint64_t offset;
+    uint64_t vaddr;
+    uint64_t paddr;
+    uint64_t filesz;
+    uint64_t memsz;
+    uint64_t align;
+};
+
+static bool range_ok(uint64_t offset, uint64_t size, uint64_t limit)
+{
+    return offset <= limit && size <= limit - offset;
+}
+
+static bool map_stack(AddressSpace* space, uint64_t* top)
+{
+    if (!space || !top)
+        return false;
+
+    const uint64_t stack_top = NOVOS_USER_VIRTUAL_TOP;
+    const uint64_t stack_base = stack_top - 4ULL * NOVOS_PAGE_SIZE;
+
+    for (uint64_t va = stack_base; va < stack_top; va += NOVOS_PAGE_SIZE)
+    {
+        const uint64_t physical = pmm_alloc_page_above(0x01000000ULL);
+        if (!physical || !address_space_map(space, va, physical, true, false))
+            return false;
+
+        auto* page = reinterpret_cast<uint8_t*>(paging_physical_to_virtual(physical));
+        for (unsigned int i = 0; i < 4096; ++i)
+            page[i] = 0;
+    }
+
+    *top = stack_top;
+    return true;
+}
+
+extern "C" bool process_create_elf(
+    Process* process, const uint8_t* image, uint64_t image_size)
+{
+    if (!process || !image || image_size < sizeof(Elf64Header))
+        return false;
+
+    const auto* header = reinterpret_cast<const Elf64Header*>(image);
+    if (header->ident[0] != 0x7F || header->ident[1] != 'E' ||
+        header->ident[2] != 'L' || header->ident[3] != 'F' ||
+        header->ident[4] != 2 || header->ident[5] != 1 ||
+        header->type != 2 || header->machine != 62 ||
+        header->version != 1 || header->ehsize != sizeof(Elf64Header) ||
+        header->phentsize != sizeof(Elf64ProgramHeader) ||
+        header->phnum == 0)
+        return false;
+
+    if (!range_ok(header->phoff,
+                  static_cast<uint64_t>(header->phnum) * header->phentsize,
+                  image_size))
+        return false;
+
+    AddressSpace space{};
+    if (!address_space_create(&space))
+        return false;
+
+    const auto* phdrs = reinterpret_cast<const Elf64ProgramHeader*>(
+        image + header->phoff);
+
+    bool loaded = false;
+    for (unsigned int i = 0; i < header->phnum; ++i)
+    {
+        const auto& ph = phdrs[i];
+        if (ph.type != 1)
+            continue;
+        if (ph.memsz < ph.filesz || ph.filesz == 0 ||
+            !range_ok(ph.offset, ph.filesz, image_size) ||
+            ph.vaddr < NOVOS_USER_VIRTUAL_BASE ||
+            ph.vaddr >= NOVOS_USER_VIRTUAL_TOP ||
+            ph.memsz > NOVOS_USER_VIRTUAL_TOP - ph.vaddr ||
+            (ph.align != 0 && (ph.align & (ph.align - 1)) != 0))
+        {
+            address_space_destroy(&space);
+            return false;
+        }
+
+        const uint64_t base = ph.vaddr & ~0xFFFULL;
+        const uint64_t end = (ph.vaddr + ph.memsz + 0xFFFULL) & ~0xFFFULL;
+        for (uint64_t va = base; va < end; va += NOVOS_PAGE_SIZE)
+        {
+            const uint64_t physical = pmm_alloc_page_above(0x01000000ULL);
+            if (!physical || !address_space_map(
+                    &space, va, physical,
+                    (ph.flags & 2U) != 0, (ph.flags & 1U) != 0))
+            {
+                address_space_destroy(&space);
+                return false;
+            }
+
+            auto* page = reinterpret_cast<uint8_t*>(
+                paging_physical_to_virtual(physical));
+            for (unsigned int j = 0; j < 4096; ++j)
+                page[j] = 0;
+
+            const uint64_t page_end = va + NOVOS_PAGE_SIZE;
+            const uint64_t copy_begin = ph.vaddr > va ? ph.vaddr : va;
+            const uint64_t file_end = ph.vaddr + ph.filesz;
+            const uint64_t copy_end = file_end < page_end ? file_end : page_end;
+            if (copy_begin < copy_end)
+            {
+                const uint64_t source_offset =
+                    ph.offset + (copy_begin - ph.vaddr);
+                auto* destination = page + (copy_begin - va);
+                for (uint64_t n = 0; n < copy_end - copy_begin; ++n)
+                    destination[n] = image[source_offset + n];
+            }
+        }
+        loaded = true;
+    }
+
+    if (!loaded)
+    {
+        address_space_destroy(&space);
+        return false;
+    }
+
+    uint64_t stack_top = 0;
+    if (!map_stack(&space, &stack_top))
+    {
+        address_space_destroy(&space);
+        return false;
+    }
+
+    if (header->entry < NOVOS_USER_VIRTUAL_BASE ||
+        header->entry >= NOVOS_USER_VIRTUAL_TOP ||
+        !address_space_is_user_mapped(&space, header->entry))
+    {
+        address_space_destroy(&space);
+        return false;
+    }
+
+    process->pid = next_pid++;
+    process->state = PROCESS_READY;
+    process->address_space = space;
+    process->entry = header->entry;
+    process->user_stack_top = stack_top;
+    return true;
+}
+
+extern "C" bool process_destroy(Process* process)
+{
+    if (!process || process == current_process)
+        return false;
+    if (!address_space_destroy(&process->address_space))
+        return false;
+    process->state = PROCESS_EXITED;
+    process->pid = 0;
+    process->entry = 0;
+    process->user_stack_top = 0;
+    return true;
+}
+
+extern "C" bool process_activate(Process* process)
+{
+    if (!process || !process->pid || !process->address_space.pml4_physical)
+        return false;
+    if (!address_space_activate(&process->address_space))
+        return false;
+    current_process = process;
+    process->state = PROCESS_RUNNING;
+    return true;
+}
+
+extern "C" uint32_t process_current_pid()
+{
+    return current_process ? current_process->pid : 0;
+}
+
+extern "C" unsigned long long process_syscall_count()
+{
+    return __atomic_load_n(&syscall_count, __ATOMIC_ACQUIRE);
+}
+
+extern "C" bool process_handle_syscall(ExceptionFrame* frame)
+{
+    if (!frame || !current_process || (frame->cs & 3ULL) != 3ULL)
+        return false;
+
+    __atomic_fetch_add(&syscall_count, 1ULL, __ATOMIC_RELAXED);
+
+    switch (frame->rax)
+    {
+        case 1:
+            frame->rax = current_process->pid;
+            break;
+        case 2:
+            frame->rax = 0;
+            break;
+        default:
+            frame->rax = static_cast<uint64_t>(-1);
+            break;
+    }
+    frame->rip += 2;
+    return true;
+}
+
+extern "C" bool process_run_ring3_test()
+{
+    static uint8_t image[0x109] = {};
+    for (unsigned int i = 0; i < sizeof(image); ++i)
+        image[i] = 0;
+
+    image[0] = 0x7F; image[1] = 'E'; image[2] = 'L'; image[3] = 'F';
+    image[4] = 2; image[5] = 1; image[6] = 1;
+
+    auto put16 = [](uint8_t* p, uint16_t v)
+    {
+        p[0] = static_cast<uint8_t>(v);
+        p[1] = static_cast<uint8_t>(v >> 8);
+    };
+    auto put32 = [](uint8_t* p, uint32_t v)
+    {
+        for (unsigned int i = 0; i < 4; ++i)
+            p[i] = static_cast<uint8_t>(v >> (i * 8));
+    };
+    auto put64 = [](uint8_t* p, uint64_t v)
+    {
+        for (unsigned int i = 0; i < 8; ++i)
+            p[i] = static_cast<uint8_t>(v >> (i * 8));
+    };
+
+    put16(image + 16, 2);
+    put16(image + 18, 62);
+    put32(image + 20, 1);
+    put64(image + 24, 0x400100ULL);
+    put64(image + 32, 64);
+    put16(image + 52, 64);
+    put16(image + 54, 56);
+    put16(image + 56, 1);
+
+    put32(image + 64, 1);
+    put32(image + 68, 5);
+    put64(image + 72, 0x100);
+    put64(image + 80, 0x400100);
+    put64(image + 88, 0);
+    put64(image + 96, 9);
+    put64(image + 104, 9);
+    put64(image + 112, 0x1000);
+
+    image[0x100] = 0xB8;
+    image[0x101] = 0x01;
+    image[0x102] = 0x00;
+    image[0x103] = 0x00;
+    image[0x104] = 0x00;
+    image[0x105] = 0xCD;
+    image[0x106] = 0x80;
+    image[0x107] = 0xEB;
+    image[0x108] = 0xFE;
+
+    static Process process{};
+    if (!process_create_elf(&process, image, sizeof(image)))
+        return false;
+    if (!process_activate(&process))
+        return false;
+
+    asm volatile("sti" : : : "memory");
+    ring3_enter(process.entry, process.user_stack_top);
+}
