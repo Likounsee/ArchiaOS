@@ -370,6 +370,13 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         halt();
     }
 
+    if (!scheduler_kernel_thread_test())
+    {
+        debug_str("[KERNEL] KERNEL THREAD CREATION FAILED\n");
+        halt();
+    }
+    debug_str("SCHEDULER: REAL KERNEL THREADS READY\n");
+
     if (!scheduler_set_ready_for_kernel())
     {
         debug_str("[KERNEL] SCHEDULER READY FAILED\n");
@@ -397,7 +404,9 @@ extern "C" void kernel_main(BootInfo* bootInfo)
             }
         }
 
-        if (all_cpus_started)
+        if (all_cpus_started &&
+            scheduler_kernel_thread_counter(0, 0) != 0 &&
+            scheduler_kernel_thread_counter(0, 1) != 0)
         {
             preemptive_test_ok = true;
             break;
