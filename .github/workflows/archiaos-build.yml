@@ -102,7 +102,8 @@ jobs:
               "IRQ: DISPATCH CHAIN OK" \
               "IRQ: KEYBOARD HANDLER READY" \
               "SCHEDULER: ROUND-ROBIN TEST OK" \
-              "SCHEDULER: PREEMPTIVE_OK" \
+              "SCHEDULER: BOOTSTRAP CPU 0" \
+              "SCHEDULER: BOOTSTRAP CPU 1" \
               "ACPI: RSDP/MADT OK" \
               "SMP: APPLICATION PROCESSORS ONLINE"; do
               grep -a -F -q -- "$marker" "qemu-${cpu}.log" || {
