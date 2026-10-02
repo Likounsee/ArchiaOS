@@ -20,6 +20,9 @@ static_assert(sizeof(OpenFsInode)==128,"OpenFS inode size");
 static_assert(sizeof(OpenFsDirEntry)==64,"OpenFS directory entry size");
 static const BlockDevice* mounted=nullptr;
 static uint32_t openfs_test_stage=0;
+static uint8_t openfs_test_disk[512*4096]={};
+static bool openfs_test_read(const BlockDevice* d,uint64_t lba,uint32_t count,void* out){if(!d||d->context!=openfs_test_disk||!out||lba>=4096||!count||static_cast<uint64_t>(count)>4096-lba)return false;for(uint64_t i=0;i<uint64_t(count)*512;++i)static_cast<uint8_t*>(out)[i]=openfs_test_disk[lba*512+i];return true;}
+static bool openfs_test_write(const BlockDevice* d,uint64_t lba,uint32_t count,const void* in){if(!d||d->context!=openfs_test_disk||!in||lba>=4096||!count||static_cast<uint64_t>(count)>4096-lba)return false;for(uint64_t i=0;i<uint64_t(count)*512;++i)openfs_test_disk[lba*512+i]=static_cast<const uint8_t*>(in)[i];return true;}
 
 static bool io_read(uint64_t block,void* buffer){if(!mounted||!buffer||!mounted->sector_size||OPENFS_BLOCK_SIZE%mounted->sector_size)return false;return block_read(mounted,block*(OPENFS_BLOCK_SIZE/mounted->sector_size),OPENFS_BLOCK_SIZE/mounted->sector_size,buffer);}
 static bool io_write(uint64_t block,const void* buffer){if(!mounted||!buffer||!mounted->sector_size||OPENFS_BLOCK_SIZE%mounted->sector_size)return false;return block_write(mounted,block*(OPENFS_BLOCK_SIZE/mounted->sector_size),OPENFS_BLOCK_SIZE/mounted->sector_size,buffer);}
@@ -202,11 +205,10 @@ extern "C" bool openfs_read(const char* name,uint64_t offset,void* data,uint64_t
 extern "C" uint32_t openfs_test_stage_get(){return openfs_test_stage;}
 extern "C" bool openfs_test(){
  openfs_test_stage=1;
- if(!block_memory_test())return false;
- const BlockDevice* d=block_get(1);
- if(!d)return false;
- openfs_test_stage=2;if(!openfs_format(d))return false;
- openfs_test_stage=3;if(!openfs_mount(d))return false;
+ for(uint32_t i=0;i<sizeof(openfs_test_disk);++i)openfs_test_disk[i]=0;
+ BlockDevice d{0,BLOCK_DEVICE_MEMORY,512,4096,openfs_test_read,openfs_test_write,openfs_test_disk};
+ openfs_test_stage=2;if(!openfs_format(&d))return false;
+ openfs_test_stage=3;if(!openfs_mount(&d))return false;
  openfs_test_stage=4;if(!openfs_create("hello",1))return false;
  static const char msg[]="OpenFS persistent";char out[sizeof(msg)]={};uint64_t n=0;uint32_t diagnostic_inode=0;
  openfs_test_stage=17;uint8_t diagnostic_dir[OPENFS_BLOCK_SIZE]={};if(!io_read(OPENFS_DIRECTORY_BLOCK,diagnostic_dir))return false;bool raw_name=false;for(uint32_t i=0;i+4<OPENFS_BLOCK_SIZE;++i)if(diagnostic_dir[i]=='h'&&diagnostic_dir[i+1]=='e'&&diagnostic_dir[i+2]=='l'&&diagnostic_dir[i+3]=='l'&&diagnostic_dir[i+4]=='o'){raw_name=true;break;}if(!raw_name)return false;openfs_test_stage=18;auto* diagnostic_entries=reinterpret_cast<const OpenFsDirEntry*>(diagnostic_dir);bool found_raw=false;for(uint32_t i=0;i<OPENFS_DIRECTORY_ENTRIES;++i)if(diagnostic_entries[i].inode&&name_equal(diagnostic_entries[i].name,"hello")&&diagnostic_entries[i].parent==0){found_raw=true;break;}if(!found_raw)return false;if(!find_child(0,"hello",&diagnostic_inode,nullptr))return false;openfs_test_stage=19;if(!find_file("hello",&diagnostic_inode))return false;
