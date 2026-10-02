@@ -5,6 +5,7 @@ static SchedulerTask tasks[SCHEDULER_MAX_CPUS][SCHEDULER_MAX_TASKS];
 alignas(4096) __attribute__((section(".data.scheduler_stack"))) static unsigned char task1_stack[SCHEDULER_TASK_STACK_SIZE] = {};
 static volatile unsigned long long task1_counter = 0;
 static unsigned int scheduler_cpu_count = 1;
+static volatile unsigned long long bootstrap_stack_top = 0;
 
 extern "C" [[noreturn]] void scheduler_task1_entry()
 {
@@ -13,38 +14,6 @@ extern "C" [[noreturn]] void scheduler_task1_entry()
         __atomic_fetch_add(&task1_counter, 1ULL, __ATOMIC_RELAXED);
         asm volatile("pause");
     }
-}
-
-static void scheduler_debug_hex(const char* label, unsigned long long value)
-{
-    for (const char* p = label; *p; ++p)
-        asm volatile("outb %0,%1" : : "a"(*p), "Nd"(static_cast<unsigned short>(0xE9)) : "memory");
-
-    const char* digits = "0123456789ABCDEF";
-    asm volatile("outb %0,%1" : : "a"('0'), "Nd"(static_cast<unsigned short>(0xE9)) : "memory");
-    asm volatile("outb %0,%1" : : "a"('x'), "Nd"(static_cast<unsigned short>(0xE9)) : "memory");
-    for (int i = 15; i >= 0; --i)
-    {
-        const char c = digits[(value >> (i * 4)) & 0xF];
-        asm volatile("outb %0,%1" : : "a"(c), "Nd"(static_cast<unsigned short>(0xE9)) : "memory");
-    }
-    asm volatile("outb %0,%1" : : "a"('\n'), "Nd"(static_cast<unsigned short>(0xE9)) : "memory");
-}
-
-static ExceptionFrame* scheduler_make_task1_frame()
-{
-    unsigned long long stack_top =
-        reinterpret_cast<unsigned long long>(task1_stack) +
-        SCHEDULER_TASK_STACK_SIZE;
-    stack_top &= ~0xFULL;
-    stack_top -= sizeof(ExceptionFrame);
-
-    ExceptionFrame* frame = reinterpret_cast<ExceptionFrame*>(stack_top);
-    *frame = {};
-    frame->rip = reinterpret_cast<unsigned long long>(&scheduler_task1_entry);
-    frame->cs = 0x08;
-    frame->rflags = 0x202;
-    return frame;
 }
 
 extern "C" bool scheduler_initialize(unsigned int cpu_count)
@@ -60,12 +29,8 @@ extern "C" bool scheduler_initialize(unsigned int cpu_count)
         tasks[cpu][1] = SchedulerTask{1, cpu, 1, SCHEDULER_QUANTUM_TICKS, nullptr};
     }
 
-    tasks[0][1].saved_frame = scheduler_make_task1_frame();
-    scheduler_debug_hex("SCHED FRAME=", reinterpret_cast<unsigned long long>(tasks[0][1].saved_frame));
-    scheduler_debug_hex("SCHED RIP=", tasks[0][1].saved_frame->rip);
-    scheduler_debug_hex("SCHED CS=", tasks[0][1].saved_frame->cs);
-    scheduler_debug_hex("SCHED FLAGS=", tasks[0][1].saved_frame->rflags);
-    scheduler_debug_hex("SCHED STACK=", reinterpret_cast<unsigned long long>(task1_stack) + SCHEDULER_TASK_STACK_SIZE);
+    tasks[0][1].saved_frame = nullptr;
+    bootstrap_stack_top = 0;
     task1_counter = 0;
     return true;
 }
@@ -91,11 +56,22 @@ extern "C" ExceptionFrame* scheduler_timer_tick(
         cpu.next_task = old;
 
         SchedulerTask& next = tasks[cpu_index][cpu.current_task];
+        next.remaining_quantum = SCHEDULER_QUANTUM_TICKS;
+        ++cpu.switches;
+
+        if (next.saved_frame == nullptr && next.id == 1)
+        {
+            unsigned long long stack_top =
+                reinterpret_cast<unsigned long long>(task1_stack) +
+                SCHEDULER_TASK_STACK_SIZE;
+            stack_top &= ~0xFULL;
+            bootstrap_stack_top = stack_top;
+            return current_frame;
+        }
+
         if (next.saved_frame == nullptr)
             return current_frame;
 
-        next.remaining_quantum = SCHEDULER_QUANTUM_TICKS;
-        ++cpu.switches;
         return next.saved_frame;
     }
 
@@ -139,4 +115,9 @@ extern "C" bool scheduler_run_test()
 
     return scheduler_current_task(0) == 0 &&
            scheduler_switch_count(0) == 2;
+}
+
+extern "C" unsigned long long scheduler_take_bootstrap_stack()
+{
+    return __atomic_exchange_n(&bootstrap_stack_top, 0ULL, __ATOMIC_ACQ_REL);
 }
