@@ -9,8 +9,7 @@ static volatile unsigned long long task1_counters[SCHEDULER_MAX_CPUS] = {};
 static unsigned int scheduler_cpu_count = 1;
 static unsigned int scheduler_apic_ids[SCHEDULER_MAX_CPUS] = {};
 static volatile bool scheduler_ready_flag = false;
-static volatile unsigned long long bootstrap_stack_top = 0;
-static volatile unsigned int bootstrap_cpu_index = 0;
+static volatile unsigned long long bootstrap_stack_top[SCHEDULER_MAX_CPUS] = {};
 
 extern "C" [[noreturn]] void scheduler_task1_entry()
 {
@@ -41,8 +40,8 @@ extern "C" bool scheduler_initialize(unsigned int cpu_count)
         scheduler_apic_ids[cpu] = 0xFFFFFFFFU;
     }
 
-    bootstrap_stack_top = 0;
-    bootstrap_cpu_index = 0;
+    for (unsigned int cpu = 0; cpu < cpu_count; ++cpu)
+        bootstrap_stack_top[cpu] = 0;
     return true;
 }
 
@@ -114,8 +113,7 @@ extern "C" ExceptionFrame* scheduler_timer_tick(
                 reinterpret_cast<unsigned long long>(task1_stacks[cpu_index]) +
                 SCHEDULER_TASK_STACK_SIZE;
             stack_top &= ~0xFULL;
-            bootstrap_stack_top = stack_top;
-            bootstrap_cpu_index = cpu_index;
+            bootstrap_stack_top[cpu_index] = stack_top;
             return current_frame;
         }
 
@@ -177,7 +175,10 @@ extern "C" bool scheduler_run_test()
 
 extern "C" unsigned long long scheduler_take_bootstrap_stack()
 {
-    return __atomic_exchange_n(&bootstrap_stack_top, 0ULL, __ATOMIC_ACQ_REL);
+    const unsigned int cpu = scheduler_current_cpu_index();
+    if (cpu >= scheduler_cpu_count)
+        return 0;
+    return __atomic_exchange_n(&bootstrap_stack_top[cpu], 0ULL, __ATOMIC_ACQ_REL);
 }
 
 extern "C" bool scheduler_set_ready_for_kernel()
