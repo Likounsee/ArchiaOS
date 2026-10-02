@@ -147,11 +147,11 @@ static bool create_node(const char* path,uint32_t mode){
  OpenFsDirEntry entry{};
  entry.inode=inode_no;entry.type=mode;entry.parent=parent;
  for(uint32_t i=0;i<OPENFS_NAME_SIZE&&leaf[i];++i)entry.name[i]=leaf[i];
- dir_write_entry(db,slot,&entry);
+ dir_write_entry(db,slot,&entry);openfs_test_stage=30;
  if(!inode_write(inode_no,&inode)||!io_write(OPENFS_DIRECTORY_BLOCK,db)){
   inode={};inode_write(inode_no,&inode);return false;
  }
- uint8_t verify[OPENFS_BLOCK_SIZE]={};if(!io_read(OPENFS_DIRECTORY_BLOCK,verify))return false;OpenFsDirEntry verified{};dir_read_entry(verify,slot,&verified);if(!verified.inode||verified.parent!=parent||!name_equal(verified.name,leaf))return false;
+ openfs_test_stage=31;uint8_t verify[OPENFS_BLOCK_SIZE]={};if(!io_read(OPENFS_DIRECTORY_BLOCK,verify))return false;OpenFsDirEntry verified{};dir_read_entry(verify,slot,&verified);if(!verified.inode||verified.parent!=parent||!name_equal(verified.name,leaf))return false;
  return true;
 }
 extern "C" bool openfs_create(const char* name,uint32_t mode){
