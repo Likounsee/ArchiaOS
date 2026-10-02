@@ -1,17 +1,25 @@
 #include "scheduler.hpp"
+#include "lapic.hpp"
 
 static SchedulerCpu cpus[SCHEDULER_MAX_CPUS];
 static SchedulerTask tasks[SCHEDULER_MAX_CPUS][SCHEDULER_MAX_TASKS];
-alignas(4096) __attribute__((section(".data.scheduler_stack"))) static unsigned char task1_stack[SCHEDULER_TASK_STACK_SIZE] = {};
-static volatile unsigned long long task1_counter = 0;
+alignas(4096) __attribute__((section(".data.scheduler_stack")))
+static unsigned char task1_stacks[SCHEDULER_MAX_CPUS][SCHEDULER_TASK_STACK_SIZE] = {};
+static volatile unsigned long long task1_counters[SCHEDULER_MAX_CPUS] = {};
 static unsigned int scheduler_cpu_count = 1;
+static unsigned int scheduler_apic_ids[SCHEDULER_MAX_CPUS] = {};
+static volatile bool scheduler_ready_flag = false;
 static volatile unsigned long long bootstrap_stack_top = 0;
+static volatile unsigned int bootstrap_cpu_index = 0;
 
 extern "C" [[noreturn]] void scheduler_task1_entry()
 {
+    const unsigned int cpu = scheduler_current_cpu_index();
+
     for (;;)
     {
-        __atomic_fetch_add(&task1_counter, 1ULL, __ATOMIC_RELAXED);
+        if (cpu < SCHEDULER_MAX_CPUS)
+            __atomic_fetch_add(&task1_counters[cpu], 1ULL, __ATOMIC_RELAXED);
         asm volatile("pause");
     }
 }
@@ -22,24 +30,65 @@ extern "C" bool scheduler_initialize(unsigned int cpu_count)
         return false;
 
     scheduler_cpu_count = cpu_count;
+    scheduler_ready_flag = false;
+
     for (unsigned int cpu = 0; cpu < cpu_count; ++cpu)
     {
         cpus[cpu] = SchedulerCpu{cpu, 0, 1, 2, 0};
         tasks[cpu][0] = SchedulerTask{0, cpu, 1, SCHEDULER_QUANTUM_TICKS, nullptr};
         tasks[cpu][1] = SchedulerTask{1, cpu, 1, SCHEDULER_QUANTUM_TICKS, nullptr};
+        task1_counters[cpu] = 0;
+        scheduler_apic_ids[cpu] = 0xFFFFFFFFU;
     }
 
-    tasks[0][1].saved_frame = nullptr;
     bootstrap_stack_top = 0;
-    task1_counter = 0;
+    bootstrap_cpu_index = 0;
     return true;
+}
+
+extern "C" bool scheduler_set_cpu_apic_ids(
+    const unsigned int* apic_ids,
+    unsigned int count)
+{
+    if (apic_ids == nullptr || count != scheduler_cpu_count)
+        return false;
+
+    for (unsigned int cpu = 0; cpu < count; ++cpu)
+        scheduler_apic_ids[cpu] = apic_ids[cpu];
+
+    return true;
+}
+
+extern "C" void scheduler_cpu_start(unsigned int cpu_index)
+{
+    if (cpu_index < scheduler_cpu_count)
+        cpus[cpu_index].current_task = 0;
+}
+
+extern "C" bool scheduler_ready()
+{
+    return __atomic_load_n(&scheduler_ready_flag, __ATOMIC_ACQUIRE);
+}
+
+extern "C" unsigned int scheduler_current_cpu_index()
+{
+    const unsigned int apic_id = lapic_current_id();
+
+    for (unsigned int cpu = 0; cpu < scheduler_cpu_count; ++cpu)
+    {
+        if (scheduler_apic_ids[cpu] == apic_id)
+            return cpu;
+    }
+
+    return 0;
 }
 
 extern "C" ExceptionFrame* scheduler_timer_tick(
     unsigned int cpu_index,
     ExceptionFrame* current_frame)
 {
-    if (cpu_index >= scheduler_cpu_count || current_frame == nullptr)
+    if (cpu_index >= scheduler_cpu_count || current_frame == nullptr ||
+        !scheduler_ready())
         return current_frame;
 
     SchedulerCpu& cpu = cpus[cpu_index];
@@ -62,10 +111,11 @@ extern "C" ExceptionFrame* scheduler_timer_tick(
         if (next.saved_frame == nullptr && next.id == 1)
         {
             unsigned long long stack_top =
-                reinterpret_cast<unsigned long long>(task1_stack) +
+                reinterpret_cast<unsigned long long>(task1_stacks[cpu_index]) +
                 SCHEDULER_TASK_STACK_SIZE;
             stack_top &= ~0xFULL;
             bootstrap_stack_top = stack_top;
+            bootstrap_cpu_index = cpu_index;
             return current_frame;
         }
 
@@ -92,15 +142,23 @@ extern "C" unsigned long long scheduler_switch_count(unsigned int cpu_index)
     return cpus[cpu_index].switches;
 }
 
-extern "C" unsigned long long scheduler_task1_counter_get()
+extern "C" unsigned long long scheduler_task1_counter_get(unsigned int cpu_index)
 {
-    return __atomic_load_n(&task1_counter, __ATOMIC_ACQUIRE);
+    if (cpu_index >= scheduler_cpu_count)
+        return 0;
+    return __atomic_load_n(&task1_counters[cpu_index], __ATOMIC_ACQUIRE);
 }
 
 extern "C" bool scheduler_run_test()
 {
     if (!scheduler_initialize(1))
         return false;
+
+    unsigned int apic_id = lapic_current_id();
+    if (!scheduler_set_cpu_apic_ids(&apic_id, 1))
+        return false;
+
+    scheduler_ready_flag = true;
 
     ExceptionFrame test_frame = {};
     for (unsigned int i = 0; i < SCHEDULER_QUANTUM_TICKS; ++i)
