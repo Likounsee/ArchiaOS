@@ -7,6 +7,7 @@ extern "C" [[noreturn]] void ring3_enter(uint64_t rip, uint64_t rsp);
 
 static Process* current_process = nullptr;
 static uint32_t next_pid = 1;
+/* Initial process state is kept kernel-owned until the first user transition. */
 static volatile unsigned long long syscall_count = 0;
 
 struct Elf64Header
