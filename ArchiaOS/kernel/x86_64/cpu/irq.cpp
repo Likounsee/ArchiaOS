@@ -43,6 +43,15 @@ extern "C" ExceptionFrame* irq_dispatch(ExceptionFrame* frame)
     {
         lapic_timer_interrupt();
         frame = scheduler_timer_tick(0, frame);
+        if (scheduler_current_task(0) == 1 && scheduler_switch_count(0) == 1)
+        {
+            const unsigned long long cs = frame->cs;
+            const unsigned long long rip = frame->rip;
+            asm volatile("outb %0,%1" : : "a"('S'), "Nd"(static_cast<unsigned short>(0xE9)) : "memory");
+            asm volatile("outb %0,%1" : : "a"('W'), "Nd"(static_cast<unsigned short>(0xE9)) : "memory");
+            (void)cs;
+            (void)rip;
+        }
     }
     else if (vector == 0x21)
     {
