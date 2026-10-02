@@ -45,41 +45,6 @@ static void halt()
         asm volatile("cli; hlt");
 }
 
-static void put_pixel(
-    volatile UINT32* fb,
-    UINT32 pitchPixels,
-    UINT32 x,
-    UINT32 y,
-    UINT32 pixel)
-{
-    fb[static_cast<UINT64>(y) * pitchPixels + x] = pixel;
-}
-
-static void fill_rect(
-    volatile UINT32* fb,
-    UINT32 pitchPixels,
-    UINT32 width,
-    UINT32 height,
-    UINT32 x,
-    UINT32 y,
-    UINT32 w,
-    UINT32 h,
-    UINT32 pixel)
-{
-    if (x >= width || y >= height)
-        return;
-
-    if (w > width - x)
-        w = width - x;
-
-    if (h > height - y)
-        h = height - y;
-
-    for (UINT32 py = 0; py < h; ++py)
-        for (UINT32 px = 0; px < w; ++px)
-            put_pixel(fb, pitchPixels, x + px, y + py, pixel);
-}
-
 extern "C" void pmm_run_tests(BootInfo* bootInfo);
 
 extern "C" void kernel_main(BootInfo* bootInfo)
