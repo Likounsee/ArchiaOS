@@ -105,6 +105,7 @@ jobs:
               "SCHEDULER: PREEMPTIVE_OK" \
               "STORAGE: BLOCK DEVICE OK" \
               "STORAGE: GPT OK" \
+              "STORAGE: OPENFS OK" \
               "ACPI: RSDP/MADT OK" \
               "SMP: APPLICATION PROCESSORS ONLINE"; do
               grep -a -F -q -- "$marker" "qemu-${cpu}.log" || {
