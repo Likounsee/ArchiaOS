@@ -7,6 +7,7 @@ alignas(4096) __attribute__((section(".data.scheduler_stack")))
 static unsigned char task_stacks[SCHEDULER_MAX_CPUS][SCHEDULER_MAX_TASKS][SCHEDULER_TASK_STACK_SIZE] = {};
 static volatile unsigned long long task1_counters[SCHEDULER_MAX_CPUS] = {};
 static volatile unsigned long long kernel_thread_counters[SCHEDULER_MAX_CPUS][2] = {};
+static volatile unsigned int kernel_thread_exit_id[SCHEDULER_MAX_CPUS] = {};
 static unsigned int scheduler_cpu_count = 1;
 static unsigned int scheduler_apic_ids[SCHEDULER_MAX_CPUS] = {};
 static volatile bool scheduler_ready_flag = false;
@@ -62,6 +63,7 @@ extern "C" bool scheduler_initialize(unsigned int cpu_count)
         task1_counters[cpu] = 0;
         kernel_thread_counters[cpu][0] = 0;
         kernel_thread_counters[cpu][1] = 0;
+        kernel_thread_exit_id[cpu] = 0;
         scheduler_apic_ids[cpu] = 0xFFFFFFFFU;
         bootstrap_stack_top[cpu] = 0;
         bootstrap_entry[cpu] = nullptr;
@@ -287,19 +289,60 @@ static void kernel_thread_test_entry1(void*)
         asm volatile("pause");
 }
 
+static void kernel_thread_test_exit_entry(void*)
+{
+    const unsigned int cpu = scheduler_current_cpu_index();
+    if (cpu < SCHEDULER_MAX_CPUS)
+        __atomic_fetch_add(&kernel_thread_counters[cpu][1], 1ULL, __ATOMIC_RELAXED);
+    scheduler_thread_exit();
+}
+
+extern "C" [[noreturn]] void scheduler_thread_exit()
+{
+    const unsigned int cpu = scheduler_current_cpu_index();
+    if (cpu >= scheduler_cpu_count)
+        for (;;) asm volatile("cli; hlt");
+
+    const unsigned int task_id = cpus[cpu].current_task;
+    if (task_id < 2 || task_id >= SCHEDULER_MAX_TASKS)
+        for (;;) asm volatile("cli; hlt");
+
+    SchedulerTask& task = tasks[cpu][task_id];
+    task.state = SCHEDULER_TASK_STOPPED;
+    task.remaining_quantum = 0;
+    if (cpus[cpu].task_count > 0)
+        --cpus[cpu].task_count;
+
+    asm volatile("sti" : : : "memory");
+    for (;;)
+        asm volatile("hlt");
+}
+
 extern "C" bool scheduler_kernel_thread_test()
 {
     unsigned int cpu = scheduler_current_cpu_index();
     unsigned int a = 0;
     unsigned int b = 0;
+    unsigned int exit_id = 0;
     if (!scheduler_create_kernel_thread(kernel_thread_test_entry0, nullptr, cpu, &a) ||
-        !scheduler_create_kernel_thread(kernel_thread_test_entry1, nullptr, cpu, &b))
+        !scheduler_create_kernel_thread(kernel_thread_test_entry1, nullptr, cpu, &b) ||
+        !scheduler_create_kernel_thread(kernel_thread_test_exit_entry, nullptr, cpu, &exit_id))
         return false;
 
-    if (a == b || a < 2 || b < 2)
+    if (a == b || a < 2 || b < 2 || exit_id < 2 ||
+        exit_id == a || exit_id == b)
         return false;
 
+    kernel_thread_exit_id[cpu] = exit_id;
     return true;
+}
+
+extern "C" bool scheduler_kernel_thread_exited(unsigned int cpu_index)
+{
+    if (cpu_index >= scheduler_cpu_count)
+        return false;
+    const unsigned int id = kernel_thread_exit_id[cpu_index];
+    return id >= 2 && tasks[cpu_index][id].state == SCHEDULER_TASK_STOPPED;
 }
 
 extern "C" unsigned long long scheduler_kernel_thread_counter(unsigned int cpu_index, unsigned int thread_index)
