@@ -12,7 +12,7 @@ extern "C" bool scheduler_initialize(unsigned int cpu_count)
     scheduler_cpu_count = cpu_count;
     for (unsigned int cpu = 0; cpu < cpu_count; ++cpu)
     {
-        cpus[cpu] = SchedulerCpu{cpu, 0, 0, 2, 0};
+        cpus[cpu] = SchedulerCpu{cpu, 0, 1, 2, 0};
         tasks[cpu][0] = SchedulerTask{0, cpu, 1, SCHEDULER_QUANTUM_TICKS};
         tasks[cpu][1] = SchedulerTask{1, cpu, 1, SCHEDULER_QUANTUM_TICKS};
     }
