@@ -3,10 +3,8 @@
 static constexpr uint32_t OPENFS_INODE_COUNT=128;
 static constexpr uint32_t OPENFS_BITMAP_BLOCK=1;
 static constexpr uint32_t OPENFS_INODE_BLOCK=2;
-static constexpr uint32_t OPENFS_INODE_BLOCKS=4;
 static constexpr uint32_t OPENFS_DIRECTORY_BLOCK=6;
 static constexpr uint32_t OPENFS_DATA_BLOCK=7;
-static constexpr uint32_t OPENFS_DIRECTORY_ENTRY_SIZE=64;
 static constexpr uint32_t OPENFS_DIRECTORY_ENTRIES=64;
 static constexpr uint32_t OPENFS_DIRECT_COUNT=8;
 static constexpr uint32_t OPENFS_MAX_FILE=OPENFS_DIRECT_COUNT*OPENFS_BLOCK_SIZE;
@@ -47,7 +45,8 @@ extern "C" bool openfs_mount(const BlockDevice* device){
  return sb->magic==OPENFS_MAGIC&&sb->version==OPENFS_VERSION&&sb->block_size==OPENFS_BLOCK_SIZE&&sb->inode_size==OPENFS_INODE_SIZE&&sb->inode_count==OPENFS_INODE_COUNT&&sb->directory_block==OPENFS_DIRECTORY_BLOCK&&sb->data_block==OPENFS_DATA_BLOCK&&sb->total_blocks==(device->sector_count*device->sector_size)/OPENFS_BLOCK_SIZE;
 }
 extern "C" bool openfs_create(const char* name,uint32_t mode){
- if(!name||!name[0]||!mounted||find_file(name,&mode))return false;
+ if(!name||!name[0]||!mounted)return false;
+ uint32_t existing=0;if(find_file(name,&existing))return false;
  uint32_t inode_no=0;OpenFsInode inode{};for(uint32_t i=1;i<OPENFS_INODE_COUNT;++i)if(inode_read(i,&inode)&&inode.mode==0){inode_no=i;break;}if(!inode_no)return false;
  uint64_t data=0;if(!allocate_block(&data))return false;uint8_t db[OPENFS_BLOCK_SIZE]={};if(!io_read(OPENFS_DIRECTORY_BLOCK,db)){bitmap_set(data,false);return false;}auto* entries=reinterpret_cast<OpenFsDirEntry*>(db);uint32_t slot=OPENFS_DIRECTORY_ENTRIES;for(uint32_t i=0;i<OPENFS_DIRECTORY_ENTRIES;++i)if(!entries[i].inode){slot=i;break;}if(slot==OPENFS_DIRECTORY_ENTRIES){bitmap_set(data,false);return false;}
  inode={};inode.mode=mode;inode.links=1;inode.direct[0]=data;OpenFsDirEntry entry{};entry.inode=inode_no;entry.type=mode;for(uint32_t i=0;i<OPENFS_NAME_SIZE&&name[i];++i)entry.name[i]=name[i];entries[slot]=entry;
