@@ -177,7 +177,7 @@ extern "C" bool openfs_unlink(const char* name){
   if(inode.direct[i]&&!bitmap_set(inode.direct[i],false))return false;
  inode={};
  if(!inode_write(inode_no,&inode))return false;
- entries[slot]={};
+ for(uint32_t i=0;i<sizeof(OpenFsDirEntry);++i)db[slot*sizeof(OpenFsDirEntry)+i]=0;
  return io_write(OPENFS_DIRECTORY_BLOCK,db);
 }
 static bool allocate_block(uint64_t* result){
