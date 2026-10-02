@@ -102,6 +102,7 @@ jobs:
               "IRQ: DISPATCH CHAIN OK" \
               "IRQ: KEYBOARD HANDLER READY" \
               "SCHEDULER: ROUND-ROBIN TEST OK" \
+              "SCHEDULER: PREEMPTIVE CONTEXT SWITCH OK" \
               "ACPI: RSDP/MADT OK" \
               "SMP: APPLICATION PROCESSORS ONLINE"; do
               grep -q "$marker" "qemu-${cpu}.log" || {
