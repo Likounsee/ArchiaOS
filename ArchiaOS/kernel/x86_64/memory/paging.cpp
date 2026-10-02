@@ -154,7 +154,7 @@ static bool split_2m_pde(u64* pde)
 
 static u64 allocate_table_page()
 {
-    const u64 physical = pmm_alloc_page();
+    const u64 physical = pmm_alloc_page_above(0x01000000ULL);
     if (!physical) return 0;
     zero_page(physical);
     return physical;
