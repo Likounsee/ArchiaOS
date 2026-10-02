@@ -15,6 +15,7 @@
 #include "../drivers/input.hpp"
 #include "../drivers/graphics.hpp"
 #include "../drivers/gui.hpp"
+#include "../drivers/device.hpp"
 #include "../cpu/features.hpp"
 #include "../cpu/security.hpp"
 #include "../cpu/smp.hpp"
@@ -249,6 +250,12 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         halt();
     }
     debug_str("GUI: WINDOW MANAGER OK\n");
+    if (!device_manager_test())
+    {
+        debug_str("[KERNEL] DEVICE MANAGER TEST FAILED\n");
+        halt();
+    }
+    debug_str("DRIVER: DEVICE MANAGER OK\n");
 
     debug_str("CPU: testing invalid opcode handler\n");
     exception_expect_invalid_opcode(
