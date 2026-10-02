@@ -2,7 +2,7 @@
 
 static SchedulerCpu cpus[SCHEDULER_MAX_CPUS];
 static SchedulerTask tasks[SCHEDULER_MAX_CPUS][SCHEDULER_MAX_TASKS];
-alignas(16) static unsigned char task1_stack[SCHEDULER_TASK_STACK_SIZE];
+alignas(4096) __attribute__((section(".data.scheduler_stack"))) static unsigned char task1_stack[SCHEDULER_TASK_STACK_SIZE] = {};
 static volatile unsigned long long task1_counter = 0;
 static unsigned int scheduler_cpu_count = 1;
 
