@@ -1,4 +1,5 @@
 #include "scheduler.hpp"
+#include "lapic.hpp"
 
 static SchedulerCpu cpus[SCHEDULER_MAX_CPUS];
 static SchedulerTask tasks[SCHEDULER_MAX_CPUS][SCHEDULER_MAX_TASKS];
