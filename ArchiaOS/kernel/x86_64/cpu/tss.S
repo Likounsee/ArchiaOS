@@ -92,7 +92,7 @@ tss_load:
 
 .type tss_load_cpu, @function
 tss_load_cpu:
-    mov $0x18, %ax
+    mov $0x28, %ax
     ltr %ax
     ret
 
