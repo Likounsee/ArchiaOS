@@ -55,8 +55,10 @@ static bool map_stack(AddressSpace* space, uint64_t* top)
         return false;
 
     const uint64_t stack_top = NOVOS_USER_VIRTUAL_TOP;
-    const uint64_t stack_base = stack_top - 4ULL * NOVOS_PAGE_SIZE;
+    const uint64_t guard_page = stack_top - 4ULL * NOVOS_PAGE_SIZE;
+    const uint64_t stack_base = stack_top - 3ULL * NOVOS_PAGE_SIZE;
 
+    /* Keep one unmapped guard page below the user stack. */
     for (uint64_t va = stack_base; va < stack_top; va += NOVOS_PAGE_SIZE)
     {
         const uint64_t physical = pmm_alloc_page_above(0x01000000ULL);
