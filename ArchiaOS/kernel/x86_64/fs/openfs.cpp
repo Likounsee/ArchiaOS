@@ -72,6 +72,10 @@ extern "C" bool openfs_mount(const BlockDevice* device){
   sb->data_block==OPENFS_DATA_BLOCK&&
   sb->total_blocks==(device->sector_count*device->sector_size)/OPENFS_BLOCK_SIZE;
 }
+static uint32_t dir_u32(const uint8_t* p){return static_cast<uint32_t>(p[0])|(static_cast<uint32_t>(p[1])<<8)|(static_cast<uint32_t>(p[2])<<16)|(static_cast<uint32_t>(p[3])<<24);}
+static void dir_set_u32(uint8_t* p,uint32_t v){p[0]=static_cast<uint8_t>(v);p[1]=static_cast<uint8_t>(v>>8);p[2]=static_cast<uint8_t>(v>>16);p[3]=static_cast<uint8_t>(v>>24);}
+static void dir_read_entry(const uint8_t* block,uint32_t slot,OpenFsDirEntry* out){*out={};const uint8_t* p=block+slot*sizeof(OpenFsDirEntry);out->inode=dir_u32(p);out->type=dir_u32(p+4);out->parent=dir_u32(p+8);for(uint32_t i=0;i<OPENFS_NAME_SIZE;++i)out->name[i]=static_cast<char>(p[12+i]);}
+static void dir_write_entry(uint8_t* block,uint32_t slot,const OpenFsDirEntry* in){uint8_t* p=block+slot*sizeof(OpenFsDirEntry);for(uint32_t i=0;i<sizeof(OpenFsDirEntry);++i)p[i]=0;dir_set_u32(p,in->inode);dir_set_u32(p+4,in->type);dir_set_u32(p+8,in->parent);for(uint32_t i=0;i<OPENFS_NAME_SIZE;++i)p[12+i]=static_cast<uint8_t>(in->name[i]);}
 static bool find_child(uint32_t parent,const char* name,uint32_t* inode_no,uint32_t* slot){
  if(!mounted||!name||!inode_no)return false;
  uint8_t b[OPENFS_BLOCK_SIZE]={};
@@ -151,11 +155,11 @@ static bool create_node(const char* path,uint32_t mode){
  OpenFsDirEntry entry{};
  entry.inode=inode_no;entry.type=mode;entry.parent=parent;
  for(uint32_t i=0;i<OPENFS_NAME_SIZE&&leaf[i];++i)entry.name[i]=leaf[i];
- entries[slot]=entry;
+ dir_write_entry(db,slot,&entry);
  if(!inode_write(inode_no,&inode)||!io_write(OPENFS_DIRECTORY_BLOCK,db)){
   inode={};inode_write(inode_no,&inode);return false;
  }
- uint8_t verify[OPENFS_BLOCK_SIZE]={};if(!io_read(OPENFS_DIRECTORY_BLOCK,verify))return false;auto* verified=reinterpret_cast<const OpenFsDirEntry*>(verify);if(!verified[slot].inode||verified[slot].parent!=parent||!name_equal(verified[slot].name,leaf))return false;
+ uint8_t verify[OPENFS_BLOCK_SIZE]={};if(!io_read(OPENFS_DIRECTORY_BLOCK,verify))return false;OpenFsDirEntry verified{};dir_read_entry(verify,slot,&verified);if(!verified.inode||verified.parent!=parent||!name_equal(verified.name,leaf))return false;
  return true;
 }
 extern "C" bool openfs_create(const char* name,uint32_t mode){
@@ -211,7 +215,7 @@ extern "C" bool openfs_test(){
  openfs_test_stage=3;if(!openfs_mount(&d))return false;
  openfs_test_stage=4;if(!openfs_create("hello",1))return false;openfs_test_stage=16;const uint64_t directory_offset=static_cast<uint64_t>(OPENFS_DIRECTORY_BLOCK)*OPENFS_BLOCK_SIZE;bool direct_name=false;for(uint32_t i=0;i<OPENFS_BLOCK_SIZE-4;++i)if(openfs_test_disk[directory_offset+i]=='h'&&openfs_test_disk[directory_offset+i+1]=='e'&&openfs_test_disk[directory_offset+i+2]=='l'&&openfs_test_disk[directory_offset+i+3]=='l'&&openfs_test_disk[directory_offset+i+4]=='o'){direct_name=true;break;}if(!direct_name)return false;
  static const char msg[]="OpenFS persistent";char out[sizeof(msg)]={};uint64_t n=0;uint32_t diagnostic_inode=0;
- openfs_test_stage=17;uint8_t diagnostic_dir[OPENFS_BLOCK_SIZE]={};if(!io_read(OPENFS_DIRECTORY_BLOCK,diagnostic_dir))return false;bool raw_name=false;for(uint32_t i=0;i+4<OPENFS_BLOCK_SIZE;++i)if(diagnostic_dir[i]=='h'&&diagnostic_dir[i+1]=='e'&&diagnostic_dir[i+2]=='l'&&diagnostic_dir[i+3]=='l'&&diagnostic_dir[i+4]=='o'){raw_name=true;break;}if(!raw_name)return false;openfs_test_stage=18;auto* diagnostic_entries=reinterpret_cast<const OpenFsDirEntry*>(diagnostic_dir);bool found_raw=false;for(uint32_t i=0;i<OPENFS_DIRECTORY_ENTRIES;++i)if(diagnostic_entries[i].inode&&name_equal(diagnostic_entries[i].name,"hello")&&diagnostic_entries[i].parent==0){found_raw=true;break;}if(!found_raw)return false;if(!find_child(0,"hello",&diagnostic_inode,nullptr))return false;openfs_test_stage=19;if(!find_file("hello",&diagnostic_inode))return false;
+ openfs_test_stage=17;uint8_t diagnostic_dir[OPENFS_BLOCK_SIZE]={};if(!io_read(OPENFS_DIRECTORY_BLOCK,diagnostic_dir))return false;bool raw_name=false;for(uint32_t i=0;i+4<OPENFS_BLOCK_SIZE;++i)if(diagnostic_dir[i]=='h'&&diagnostic_dir[i+1]=='e'&&diagnostic_dir[i+2]=='l'&&diagnostic_dir[i+3]=='l'&&diagnostic_dir[i+4]=='o'){raw_name=true;break;}if(!raw_name)return false;openfs_test_stage=18;bool found_raw=false;for(uint32_t i=0;i<OPENFS_DIRECTORY_ENTRIES;++i){OpenFsDirEntry e{};dir_read_entry(diagnostic_dir,i,&e);if(e.inode&&name_equal(e.name,"hello")&&e.parent==0){found_raw=true;break;}}if(!found_raw)return false;if(!find_child(0,"hello",&diagnostic_inode,nullptr))return false;openfs_test_stage=19;if(!find_file("hello",&diagnostic_inode))return false;
  openfs_test_stage=5;if(!openfs_write("hello",0,msg,sizeof(msg)))return false;openfs_test_stage=6;if(!openfs_read("hello",0,out,sizeof(out),&n)||n!=sizeof(msg)||!name_equal(out,msg))return false;
  static uint8_t large[OPENFS_BLOCK_SIZE*3+37];static uint8_t check[sizeof(large)];
  for(uint32_t i=0;i<sizeof(large);++i)large[i]=static_cast<uint8_t>((i*37U)+11U);
