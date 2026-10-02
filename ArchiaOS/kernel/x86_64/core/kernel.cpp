@@ -18,6 +18,7 @@
 #include "../drivers/device.hpp"
 #include "../drivers/net.hpp"
 #include "../drivers/block.hpp"
+#include "../drivers/storage.hpp"
 #include "../fs/gpt.hpp"
 #include "../cpu/features.hpp"
 #include "../cpu/security.hpp"
@@ -233,6 +234,11 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         halt();
     }
     debug_str("STORAGE: GPT OK\n");
+    if (!storage_test()) {
+        debug_str("[KERNEL] STORAGE CONTROLLER TEST FAILED\n");
+        halt();
+    }
+    debug_str("STORAGE: CONTROLLER DISCOVERY OK\n");
     if (!vfs_test())
     {
         debug_str("[KERNEL] VFS TEST FAILED\n");
