@@ -383,10 +383,24 @@ extern "C" void kernel_main(BootInfo* bootInfo)
 
     if (!preemptive_test_ok)
     {
-        debug_str("[KERNEL] SCHEDULER PREEMPTIVE CONTEXT SWITCH FAILED\n");
+        debug_str("[KERNEL] SCHEDULER PER-CPU TEST FAILED\n");
+        for (unsigned int cpu = 0; cpu < scheduler_cpu_count; ++cpu)
+        {
+            debug_str("SCHEDULER CPU ");
+            debug_char(static_cast<char>('0' + (cpu % 10)));
+            debug_str(" switches=");
+            const unsigned long long switches = scheduler_switch_count(cpu);
+            for (int shift = 60; shift >= 0; shift -= 4)
+                debug_char("0123456789ABCDEF"[(switches >> shift) & 0xFULL]);
+            debug_str(" counter=");
+            const unsigned long long counter = scheduler_task1_counter_get(cpu);
+            for (int shift = 60; shift >= 0; shift -= 4)
+                debug_char("0123456789ABCDEF"[(counter >> shift) & 0xFULL]);
+            debug_str("\n");
+        }
         halt();
     }
-    debug_str("SCHEDULER: PREEMPTIVE CONTEXT SWITCH OK\n");
+    debug_str("SCHEDULER: PER-CPU PREEMPTIVE CONTEXT SWITCH OK\n");
 
     if (bootInfo->framebuffer_base)
     {
