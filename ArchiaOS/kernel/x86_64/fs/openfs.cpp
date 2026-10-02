@@ -37,6 +37,37 @@ static bool valid_name(const char* name){
  return length>0;
 }
 static bool name_equal(const char* a,const char* b){for(uint32_t i=0;i<OPENFS_NAME_SIZE;++i){if(a[i]!=b[i])return false;if(a[i]==0)return true;}return true;}
+extern "C" bool openfs_format(const BlockDevice* device){
+ if(!device||!device->sector_size||OPENFS_BLOCK_SIZE%device->sector_size)return false;
+ uint64_t blocks=(device->sector_count*device->sector_size)/OPENFS_BLOCK_SIZE;
+ if(blocks<OPENFS_DATA_BLOCK+8||blocks>OPENFS_BLOCK_SIZE*8)return false;
+ mounted=device;
+ uint8_t zero[OPENFS_BLOCK_SIZE]={};
+ for(uint32_t b=0;b<OPENFS_DATA_BLOCK;++b)if(!io_write(b,zero))return false;
+ OpenFsSuperblock sb{};
+ sb.magic=OPENFS_MAGIC;sb.version=OPENFS_VERSION;sb.block_size=OPENFS_BLOCK_SIZE;
+ sb.inode_size=OPENFS_INODE_SIZE;sb.inode_count=OPENFS_INODE_COUNT;sb.total_blocks=blocks;
+ sb.bitmap_block=OPENFS_BITMAP_BLOCK;sb.inode_table_block=OPENFS_INODE_BLOCK;
+ sb.directory_block=OPENFS_DIRECTORY_BLOCK;sb.data_block=OPENFS_DATA_BLOCK;sb.generation=1;
+ uint8_t sb_block[OPENFS_BLOCK_SIZE]={};
+ *reinterpret_cast<OpenFsSuperblock*>(sb_block)=sb;
+ if(!io_write(0,sb_block))return false;
+ for(uint32_t b=0;b<OPENFS_DATA_BLOCK;++b)if(!bitmap_set(b,true))return false;
+ OpenFsInode root{};root.mode=2;root.links=1;
+ return inode_write(0,&root);
+}
+extern "C" bool openfs_mount(const BlockDevice* device){
+ if(!device||!device->sector_size||OPENFS_BLOCK_SIZE%device->sector_size)return false;
+ mounted=device;
+ uint8_t b[OPENFS_BLOCK_SIZE]={};
+ if(!io_read(0,b))return false;
+ const auto* sb=reinterpret_cast<const OpenFsSuperblock*>(b);
+ return sb->magic==OPENFS_MAGIC&&sb->version==OPENFS_VERSION&&
+  sb->block_size==OPENFS_BLOCK_SIZE&&sb->inode_size==OPENFS_INODE_SIZE&&
+  sb->inode_count==OPENFS_INODE_COUNT&&sb->directory_block==OPENFS_DIRECTORY_BLOCK&&
+  sb->data_block==OPENFS_DATA_BLOCK&&
+  sb->total_blocks==(device->sector_count*device->sector_size)/OPENFS_BLOCK_SIZE;
+}
 static bool find_child(uint32_t parent,const char* name,uint32_t* inode_no,uint32_t* slot){
  if(!mounted||!name||!inode_no)return false;
  uint8_t b[OPENFS_BLOCK_SIZE]={};
