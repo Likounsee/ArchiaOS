@@ -183,37 +183,6 @@ extern "C" bool address_space_is_user_mapped(
            (NOVOS_PAGE_PRESENT | NOVOS_PAGE_USER);
 }
 
-extern "C" bool address_space_translate_user(const AddressSpace* space, u64 virtual_address, u64* physical_address)
-{
-    if (!space || !space->pml4_physical || !physical_address ||
-        virtual_address < NOVOS_USER_VIRTUAL_BASE ||
-        virtual_address >= NOVOS_USER_VIRTUAL_TOP)
-        return false;
-    auto* pml4 = table(space->pml4_physical);
-    if (!pml4) return false;
-    const u64 e4 = pml4[(virtual_address >> 39) & 0x1FF];
-    if (!(e4 & NOVOS_PAGE_PRESENT) || !(e4 & NOVOS_PAGE_USER)) return false;
-    auto* pdpt = table(e4 & ~0xFFFULL);
-    const u64 e3 = pdpt[(virtual_address >> 30) & 0x1FF];
-    if (!(e3 & NOVOS_PAGE_PRESENT) || !(e3 & NOVOS_PAGE_USER)) return false;
-    if (e3 & NOVOS_PAGE_HUGE) {
-        *physical_address = (e3 & ~0x3FFFFFFFULL) | (virtual_address & 0x3FFFFFFFULL);
-        return true;
-    }
-    auto* pd = table(e3 & ~0xFFFULL);
-    const u64 e2 = pd[(virtual_address >> 21) & 0x1FF];
-    if (!(e2 & NOVOS_PAGE_PRESENT) || !(e2 & NOVOS_PAGE_USER)) return false;
-    if (e2 & NOVOS_PAGE_HUGE) {
-        *physical_address = (e2 & ~0x1FFFFFULL) | (virtual_address & 0x1FFFFFULL);
-        return true;
-    }
-    auto* pt = table(e2 & ~0xFFFULL);
-    const u64 e1 = pt[(virtual_address >> 12) & 0x1FF];
-    if (!(e1 & NOVOS_PAGE_PRESENT) || !(e1 & NOVOS_PAGE_USER)) return false;
-    *physical_address = (e1 & ~0xFFFULL) | (virtual_address & 0xFFFULL);
-    return true;
-}
-
 extern "C" void address_space_run_tests()
 {
     AddressSpace space{};
@@ -221,12 +190,9 @@ extern "C" void address_space_run_tests()
         for (;;) asm volatile("cli; hlt");
 
     const u64 physical = pmm_alloc_page();
-    u64 translated = 0;
     if (!physical ||
         !address_space_map(&space, NOVOS_USER_VIRTUAL_BASE, physical, true, false) ||
-        !address_space_is_user_mapped(&space, NOVOS_USER_VIRTUAL_BASE) ||
-        !address_space_translate_user(&space, NOVOS_USER_VIRTUAL_BASE + 123, &translated) ||
-        translated != physical + 123)
+        !address_space_is_user_mapped(&space, NOVOS_USER_VIRTUAL_BASE))
         for (;;) asm volatile("cli; hlt");
 
     pmm_free_page(physical);
