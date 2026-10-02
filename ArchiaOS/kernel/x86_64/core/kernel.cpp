@@ -6,6 +6,9 @@
 #include "../cpu/acpi.hpp"
 #include "../memory/pmm.hpp"
 #include "../memory/paging.hpp"
+#include "../memory/vmm.hpp"
+#include "../memory/heap.hpp"
+#include "../memory/address_space.hpp"
 #include "../cpu/features.hpp"
 #include "../cpu/security.hpp"
 #include "../cpu/smp.hpp"
@@ -223,6 +226,28 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     }
     paging_run_tests();
     debug_str("MM: paging ACTIVE\n");
+
+    debug_str("MM: initializing virtual memory manager\n");
+    if (!vmm_initialize())
+    {
+        debug_str("[KERNEL] VMM INIT FAILED\n");
+        halt();
+    }
+    vmm_run_tests();
+    debug_str("MM: VMM OK\n");
+
+    debug_str("MM: initializing kernel heap\n");
+    if (!heap_initialize())
+    {
+        debug_str("[KERNEL] HEAP INIT FAILED\n");
+        halt();
+    }
+    heap_run_tests();
+    debug_str("MM: KERNEL HEAP OK\n");
+
+    debug_str("MM: testing independent address space\n");
+    address_space_run_tests();
+    debug_str("MM: ADDRESS SPACE OK\n");
 
     debug_str("CPU: testing invalid opcode handler\n");
     exception_expect_invalid_opcode(
