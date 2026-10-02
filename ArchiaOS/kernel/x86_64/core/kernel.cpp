@@ -320,18 +320,20 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     }
     debug_str("SMP: APPLICATION PROCESSORS ONLINE\n");
 
-    debug_str("SCHEDULER: starting preemptive context-switch test\n");
-    if (!scheduler_initialize(1))
+    debug_str("SCHEDULER: starting per-CPU preemptive context-switch test\n");
+
+    const unsigned int scheduler_cpu_count =
+        acpi->processor_count < SCHEDULER_MAX_CPUS
+            ? acpi->processor_count
+            : SCHEDULER_MAX_CPUS;
+
+    if (!scheduler_initialize(scheduler_cpu_count))
     {
         debug_str("[KERNEL] SCHEDULER PREEMPTIVE INIT FAILED\n");
         halt();
     }
 
     unsigned int scheduler_apic_ids[SCHEDULER_MAX_CPUS] = {};
-    const unsigned int scheduler_cpu_count =
-        acpi->processor_count < SCHEDULER_MAX_CPUS
-            ? acpi->processor_count
-            : SCHEDULER_MAX_CPUS;
     for (unsigned int cpu = 0; cpu < scheduler_cpu_count; ++cpu)
         scheduler_apic_ids[cpu] = acpi->processor_apic_ids[cpu];
 
