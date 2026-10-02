@@ -32,7 +32,7 @@ extern "C" bool irq_initialize()
 extern "C" ExceptionFrame* irq_dispatch(ExceptionFrame* frame)
 {
     if (frame == nullptr)
-        return;
+        return nullptr;
 
     const unsigned long long vector = frame->vector;
 
