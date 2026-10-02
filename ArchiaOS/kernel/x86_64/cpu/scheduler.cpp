@@ -127,6 +127,15 @@ extern "C" ExceptionFrame* scheduler_timer_tick(
                 SCHEDULER_TASK_STACK_SIZE;
             stack_top &= ~0xFULL;
             bootstrap_stack_top[cpu_index] = stack_top;
+            if (__atomic_exchange_n(&task1_started[cpu_index], 1U, __ATOMIC_ACQ_REL) == 0)
+            {
+                const char* p = "SCHEDULER: BOOTSTRAP CPU ";
+                for (; *p; ++p)
+                    asm volatile("outb %0,%1" : : "a"(*p), "Nd"(static_cast<unsigned short>(0xE9)) : "memory");
+                const char digit = static_cast<char>('0' + (cpu_index % 10));
+                asm volatile("outb %0,%1" : : "a"(digit), "Nd"(static_cast<unsigned short>(0xE9)) : "memory");
+                asm volatile("outb %0,%1" : : "a"('\\n'), "Nd"(static_cast<unsigned short>(0xE9)) : "memory");
+            }
             return current_frame;
         }
 
