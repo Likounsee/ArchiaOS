@@ -19,7 +19,6 @@
 #include "../drivers/net.hpp"
 #include "../drivers/block.hpp"
 #include "../fs/gpt.hpp"
-#include "../fs/openfs.hpp"
 #include "../cpu/features.hpp"
 #include "../cpu/security.hpp"
 #include "../cpu/smp.hpp"
