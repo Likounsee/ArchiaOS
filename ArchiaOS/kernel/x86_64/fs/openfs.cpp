@@ -5,6 +5,7 @@ static constexpr uint32_t OPENFS_BITMAP_BLOCK=1;
 static constexpr uint32_t OPENFS_INODE_BLOCK=2;
 static constexpr uint32_t OPENFS_DIRECTORY_BLOCK=6;
 static constexpr uint32_t OPENFS_DATA_BLOCK=7;
+static constexpr uint32_t OPENFS_DIRECTORY_ENTRY_SIZE=64;
 static constexpr uint32_t OPENFS_DIRECTORY_ENTRIES=64;
 static constexpr uint32_t OPENFS_DIRECT_COUNT=8;
 static constexpr uint32_t OPENFS_MAX_FILE=OPENFS_DIRECT_COUNT*OPENFS_BLOCK_SIZE;
@@ -74,7 +75,7 @@ extern "C" bool openfs_mount(const BlockDevice* device){
 }
 static uint32_t dir_u32(const uint8_t* p){return static_cast<uint32_t>(p[0])|(static_cast<uint32_t>(p[1])<<8)|(static_cast<uint32_t>(p[2])<<16)|(static_cast<uint32_t>(p[3])<<24);}
 static void dir_set_u32(uint8_t* p,uint32_t v){p[0]=static_cast<uint8_t>(v);p[1]=static_cast<uint8_t>(v>>8);p[2]=static_cast<uint8_t>(v>>16);p[3]=static_cast<uint8_t>(v>>24);}
-static void dir_read_entry(const uint8_t* block,uint32_t slot,OpenFsDirEntry* out){*out={};const uint8_t* p=block+slot*sizeof(OpenFsDirEntry);out->inode=dir_u32(p);out->type=dir_u32(p+4);out->parent=dir_u32(p+8);for(uint32_t i=0;i<OPENFS_NAME_SIZE;++i)out->name[i]=static_cast<char>(p[12+i]);}
+static void dir_read_entry(const uint8_t* block,uint32_t slot,OpenFsDirEntry* out){*out={};const uint8_t* p=block+slot*OPENFS_DIRECTORY_ENTRY_SIZE;out->inode=dir_u32(p);out->type=dir_u32(p+4);out->parent=dir_u32(p+8);for(uint32_t i=0;i<OPENFS_NAME_SIZE;++i)out->name[i]=static_cast<char>(p[12+i]);}
 static void dir_write_entry(uint8_t* block,uint32_t slot,const OpenFsDirEntry* in){uint8_t* p=block+slot*sizeof(OpenFsDirEntry);for(uint32_t i=0;i<sizeof(OpenFsDirEntry);++i)p[i]=0;dir_set_u32(p,in->inode);dir_set_u32(p+4,in->type);dir_set_u32(p+8,in->parent);for(uint32_t i=0;i<OPENFS_NAME_SIZE;++i)p[12+i]=static_cast<uint8_t>(in->name[i]);}
 static bool find_child(uint32_t parent,const char* name,uint32_t* inode_no,uint32_t* slot){
  if(!mounted||!name||!inode_no)return false;
