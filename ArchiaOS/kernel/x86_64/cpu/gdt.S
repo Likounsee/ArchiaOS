@@ -2,7 +2,7 @@
 .align 16
 .global gdt_tables
 gdt_tables:
-    .zero 256 * 40
+    .zero 256 * 48
 
 .align 16
 .global gdt_pointers
@@ -23,7 +23,7 @@ gdt_load_current:
 gdt_load_cpu:
     /* One GDT is 5 entries = 40 bytes; one pointer is 10 bytes. */
     mov %edi, %eax
-    imul $40, %eax, %eax
+    imul $48, %eax, %eax
     lea gdt_tables(%rip), %rdx
     add %rax, %rdx
 
@@ -64,8 +64,10 @@ gdt_initialize_cpu:
      *   0x00 null
      *   0x08 64-bit kernel code
      *   0x10 kernel data
-     *   0x18 low 64-bit TSS descriptor
-     *   0x20 high 64-bit TSS descriptor
+     *   0x18 64-bit user code (DPL3)
+     *   0x20 64-bit user data (DPL3)
+     *   0x28 low 64-bit TSS descriptor
+     *   0x30 high 64-bit TSS descriptor
      */
     mov %edi, %eax
     imul $40, %eax, %eax
@@ -78,11 +80,16 @@ gdt_initialize_cpu:
     movq $0, 16(%rcx)
     movq $0, 24(%rcx)
     movq $0, 32(%rcx)
+    movq $0, 40(%rcx)
 
     movabsq $0x00AF9A000000FFFF, %rax
     movq %rax, 8(%rcx)
     movabsq $0x00CF92000000FFFF, %rax
     movq %rax, 16(%rcx)
+    movabsq $0x00AFFA000000FFFF, %rax
+    movq %rax, 24(%rcx)
+    movabsq $0x00CFF2000000FFFF, %rax
+    movq %rax, 32(%rcx)
 
     /* The per-CPU TSS array is 104 bytes per CPU. */
     mov %edi, %eax
@@ -91,19 +98,19 @@ gdt_initialize_cpu:
     add %rax, %rdx
 
     /* 64-bit TSS descriptor, limit = 103, type = available 64-bit TSS. */
-    movw $103, 24(%rcx)
+    movw $103, 40(%rcx)
     mov %rdx, %rax
-    mov %ax, 26(%rcx)
+    mov %ax, 42(%rcx)
     shr $16, %rax
-    mov %al, 28(%rcx)
+    mov %al, 44(%rcx)
     mov %rdx, %rax
     shr $24, %rax
-    mov %al, 31(%rcx)
-    movb $0x89, 29(%rcx)
-    movb $0x00, 30(%rcx)
+    mov %al, 47(%rcx)
+    movb $0x89, 45(%rcx)
+    movb $0x00, 46(%rcx)
     mov %rdx, %rax
     shr $32, %rax
-    mov %eax, 32(%rcx)
+    mov %eax, 48(%rcx)
     ret
 
 .size gdt_load_current, .-gdt_load_current
