@@ -6,7 +6,6 @@ static SchedulerTask tasks[SCHEDULER_MAX_CPUS][SCHEDULER_MAX_TASKS];
 alignas(4096) __attribute__((section(".data.scheduler_stack")))
 static unsigned char task1_stacks[SCHEDULER_MAX_CPUS][SCHEDULER_TASK_STACK_SIZE] = {};
 static volatile unsigned long long task1_counters[SCHEDULER_MAX_CPUS] = {};
-static volatile unsigned char task1_started[SCHEDULER_MAX_CPUS] = {};
 static unsigned int scheduler_cpu_count = 1;
 static unsigned int scheduler_apic_ids[SCHEDULER_MAX_CPUS] = {};
 static volatile bool scheduler_ready_flag = false;
@@ -15,17 +14,6 @@ static volatile unsigned long long bootstrap_stack_top[SCHEDULER_MAX_CPUS] = {};
 extern "C" [[noreturn]] void scheduler_task1_entry()
 {
     const unsigned int cpu = scheduler_current_cpu_index();
-
-    if (cpu < SCHEDULER_MAX_CPUS &&
-        __atomic_exchange_n(&task1_started[cpu], 1U, __ATOMIC_ACQ_REL) == 0)
-    {
-        const char* prefix = "SCHEDULER: TASK1 CPU ";
-        for (const char* p = prefix; *p; ++p)
-            asm volatile("outb %0,%1" : : "a"(*p), "Nd"(static_cast<unsigned short>(0xE9)) : "memory");
-        const char digit = static_cast<char>('0' + (cpu % 10));
-        asm volatile("outb %0,%1" : : "a"(digit), "Nd"(static_cast<unsigned short>(0xE9)) : "memory");
-        asm volatile("outb %0,%1" : : "a"('\n'), "Nd"(static_cast<unsigned short>(0xE9)) : "memory");
-    }
 
     for (;;)
     {
@@ -49,7 +37,6 @@ extern "C" bool scheduler_initialize(unsigned int cpu_count)
         tasks[cpu][0] = SchedulerTask{0, cpu, 1, SCHEDULER_QUANTUM_TICKS, nullptr};
         tasks[cpu][1] = SchedulerTask{1, cpu, 1, SCHEDULER_QUANTUM_TICKS, nullptr};
         task1_counters[cpu] = 0;
-        task1_started[cpu] = 0;
         scheduler_apic_ids[cpu] = 0xFFFFFFFFU;
     }
 
@@ -129,14 +116,6 @@ extern "C" ExceptionFrame* scheduler_timer_tick(
                 SCHEDULER_TASK_STACK_SIZE;
             stack_top &= ~0xFULL;
             bootstrap_stack_top[cpu_index] = stack_top;
-            if (__atomic_exchange_n(&task1_started[cpu_index], 1U, __ATOMIC_ACQ_REL) == 0)
-            {
-                const char* p = "SCHEDULER: BOOTSTRAP CPU ";
-                for (; *p; ++p)
-                    asm volatile("outb %0,%1" : : "a"(*p), "Nd"(static_cast<unsigned short>(0xE9)) : "memory");
-                const char digit = static_cast<char>('0' + (cpu_index % 10));
-                asm volatile("outb %0,%1" : : "a"(digit), "Nd"(static_cast<unsigned short>(0xE9)) : "memory");
-            }
             return current_frame;
         }
 
