@@ -17,14 +17,6 @@ static void test_str(const char* s)
         test_char(s[i]);
 }
 
-static void test_hex64(u64 value)
-{
-    const char* digits = "0123456789ABCDEF";
-    test_str(" 0x");
-    for (int i = 15; i >= 0; --i)
-        test_char(digits[(value >> (i * 4)) & 0xF]);
-}
-
 static void fail(const char* message)
 {
     test_str(message);
@@ -274,10 +266,6 @@ extern "C" void paging_run_tests()
      * while we install a single RET instruction, then remapped RO+NX.
      * Executing it must raise #PF with the recovery RIP below.
      */
-    test_str("PAGING NX TEST ENTRY");
-    test_hex64(paging_get_4k_entry(testPage));
-    test_str("\n");
-
     const unsigned long long nxRecovery =
         reinterpret_cast<unsigned long long>(&&nx_page_fault_recovered);
 
