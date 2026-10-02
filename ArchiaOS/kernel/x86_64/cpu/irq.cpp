@@ -1,6 +1,7 @@
 #include "irq.hpp"
 #include "lapic.hpp"
 #include "scheduler.hpp"
+#include "../drivers/input.hpp"
 
 static volatile unsigned long long irq_dispatch_count = 0;
 static volatile unsigned long long keyboard_irq_count = 0;
@@ -48,6 +49,8 @@ extern "C" ExceptionFrame* irq_dispatch(ExceptionFrame* frame)
     {
         keyboard_last_scancode = io_in8(0x60);
         __atomic_fetch_add(&keyboard_irq_count, 1ULL, __ATOMIC_RELAXED);
+        const InputEvent event{INPUT_EVENT_KEYBOARD, keyboard_last_scancode, 1};
+        input_push(&event);
     }
 
     /* Vector 0xFF is the LAPIC spurious vector and must not receive EOI. */
