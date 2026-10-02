@@ -15,7 +15,7 @@ struct OpenFsInode {
     uint64_t direct[8];
     uint64_t created;
     uint64_t modified;
-    uint8_t reserved[24];
+    uint8_t reserved[32];
 } __attribute__((packed));
 
 extern "C" bool openfs_format(const BlockDevice* device);
