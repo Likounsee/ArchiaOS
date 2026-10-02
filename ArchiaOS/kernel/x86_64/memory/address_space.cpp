@@ -2,20 +2,37 @@
 #include "paging.hpp"
 #include "pmm.hpp"
 
+static inline void zero_table(u64 physical)
+{
+    auto* table = reinterpret_cast<u64*>(paging_physical_to_virtual(physical));
+    for (unsigned int i = 0; i < 512; ++i) table[i] = 0;
+}
+
+static u64 new_table()
+{
+    const u64 physical = pmm_alloc_page();
+    if (physical) zero_table(physical);
+    return physical;
+}
+
+static u64* table(u64 physical)
+{
+    return reinterpret_cast<u64*>(paging_physical_to_virtual(physical));
+}
+
 extern "C" bool address_space_create(AddressSpace* space)
 {
     if (!space) return false;
-    const u64 pml4 = pmm_alloc_page();
+    const u64 pml4 = new_table();
     if (!pml4) return false;
-    auto* table = reinterpret_cast<u64*>(paging_physical_to_virtual(pml4));
-    if (!table) { pmm_free_page(pml4); return false; }
-    for (unsigned int i = 0; i < 512; ++i) table[i] = 0;
 
-    const u64 kernel = paging_pml4_physical();
-    auto* current = reinterpret_cast<u64*>(paging_physical_to_virtual(kernel));
-    if (!current) { pmm_free_page(pml4); return false; }
+    auto* dst = table(pml4);
+    auto* src = table(paging_pml4_physical());
+    if (!dst || !src) { pmm_free_page(pml4); return false; }
+
+    /* Upper-half kernel/HHDM mappings are shared read-only page-table roots. */
     for (unsigned int i = 256; i < 512; ++i)
-        table[i] = current[i];
+        dst[i] = src[i];
 
     space->pml4_physical = pml4;
     space->active = false;
@@ -26,17 +43,47 @@ extern "C" bool address_space_map(
     AddressSpace* space, u64 virtual_address, u64 physical_address,
     bool writable, bool executable)
 {
-    if (!space || (virtual_address & 0xFFFULL) || (physical_address & 0xFFFULL) ||
+    if (!space || !space->pml4_physical ||
+        (virtual_address & 0xFFFULL) ||
+        (physical_address & 0xFFFULL) ||
         virtual_address < NOVOS_USER_VIRTUAL_BASE ||
         virtual_address >= NOVOS_USER_VIRTUAL_TOP)
         return false;
 
-    /* Temporarily switch CR3 and use the paging walker against this address space. */
-    const u64 old = paging_pml4_physical();
-    (void)old;
-    /* The current paging API intentionally owns the active hierarchy; mapping
-       arbitrary CR3s will be added in the next address-space hardening pass. */
-    return false;
+    auto* pml4 = table(space->pml4_physical);
+    if (!pml4) return false;
+
+    const unsigned int i4 = (virtual_address >> 39) & 0x1FF;
+    const unsigned int i3 = (virtual_address >> 30) & 0x1FF;
+    const unsigned int i2 = (virtual_address >> 21) & 0x1FF;
+    const unsigned int i1 = (virtual_address >> 12) & 0x1FF;
+
+    auto ensure = [](u64& entry) -> bool {
+        if (entry & NOVOS_PAGE_PRESENT) return true;
+        const u64 page = new_table();
+        if (!page) return false;
+        entry = page | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE | NOVOS_PAGE_USER;
+        return true;
+    };
+
+    if (!ensure(pml4[i4])) return false;
+    auto* pdpt = table(pml4[i4] & ~0xFFFULL);
+    if (!ensure(pdpt[i3])) return false;
+    if (pdpt[i3] & NOVOS_PAGE_HUGE) return false;
+
+    auto* pd = table(pdpt[i3] & ~0xFFFULL);
+    if (!ensure(pd[i2])) return false;
+    if (pd[i2] & NOVOS_PAGE_HUGE) return false;
+
+    auto* pt = table(pd[i2] & ~0xFFFULL);
+    if (!pt) return false;
+
+    u64 flags = NOVOS_PAGE_PRESENT | NOVOS_PAGE_USER;
+    if (writable) flags |= NOVOS_PAGE_WRITE;
+    if (!executable) flags |= NOVOS_PAGE_NO_EXECUTE;
+    pt[i1] = physical_address | flags;
+
+    return true;
 }
 
 extern "C" bool address_space_activate(AddressSpace* space)
@@ -47,9 +94,26 @@ extern "C" bool address_space_activate(AddressSpace* space)
     return true;
 }
 
-extern "C" bool address_space_is_user_mapped(const AddressSpace*, u64)
+extern "C" bool address_space_is_user_mapped(
+    const AddressSpace* space, u64 virtual_address)
 {
-    return false;
+    if (!space || !space->pml4_physical) return false;
+    auto* pml4 = table(space->pml4_physical);
+    if (!pml4) return false;
+    const u64 e4 = pml4[(virtual_address >> 39) & 0x1FF];
+    if (!(e4 & NOVOS_PAGE_PRESENT) || !(e4 & NOVOS_PAGE_USER)) return false;
+    auto* pdpt = table(e4 & ~0xFFFULL);
+    const u64 e3 = pdpt[(virtual_address >> 30) & 0x1FF];
+    if (!(e3 & NOVOS_PAGE_PRESENT) || !(e3 & NOVOS_PAGE_USER)) return false;
+    if (e3 & NOVOS_PAGE_HUGE) return true;
+    auto* pd = table(e3 & ~0xFFFULL);
+    const u64 e2 = pd[(virtual_address >> 21) & 0x1FF];
+    if (!(e2 & NOVOS_PAGE_PRESENT) || !(e2 & NOVOS_PAGE_USER)) return false;
+    if (e2 & NOVOS_PAGE_HUGE) return true;
+    auto* pt = table(e2 & ~0xFFFULL);
+    return (pt[(virtual_address >> 12) & 0x1FF] &
+            (NOVOS_PAGE_PRESENT | NOVOS_PAGE_USER)) ==
+           (NOVOS_PAGE_PRESENT | NOVOS_PAGE_USER);
 }
 
 extern "C" void address_space_run_tests()
@@ -57,4 +121,12 @@ extern "C" void address_space_run_tests()
     AddressSpace space{};
     if (!address_space_create(&space))
         for (;;) asm volatile("cli; hlt");
+
+    const u64 physical = pmm_alloc_page();
+    if (!physical ||
+        !address_space_map(&space, NOVOS_USER_VIRTUAL_BASE, physical, true, false) ||
+        !address_space_is_user_mapped(&space, NOVOS_USER_VIRTUAL_BASE))
+        for (;;) asm volatile("cli; hlt");
+
+    pmm_free_page(physical);
 }
