@@ -201,7 +201,7 @@ extern "C" uint32_t openfs_test_stage_get(){return openfs_test_stage;}
 extern "C" bool openfs_test(){
  openfs_test_stage=1;
  for(uint32_t i=0;i<sizeof(openfs_test_disk);++i)openfs_test_disk[i]=0;
- BlockDevice d{0,BLOCK_DEVICE_MEMORY,512,4096,openfs_test_read,openfs_test_write,openfs_test_disk};
+ BlockDevice d{0,BLOCK_DEVICE_MEMORY,512,4096,openfs_test_read,openfs_test_write,const_cast<uint8_t*>(openfs_test_disk)};
  openfs_test_stage=2;if(!openfs_format(&d))return false;
  openfs_test_stage=3;if(!openfs_mount(&d))return false;
  openfs_test_stage=4;if(!openfs_create("hello",1))return false;openfs_test_stage=16;const uint64_t directory_offset=static_cast<uint64_t>(OPENFS_DIRECTORY_BLOCK)*OPENFS_BLOCK_SIZE;bool direct_name=false;for(uint32_t i=0;i<OPENFS_BLOCK_SIZE-4;++i)if(openfs_test_disk[directory_offset+i]=='h'&&openfs_test_disk[directory_offset+i+1]=='e'&&openfs_test_disk[directory_offset+i+2]=='l'&&openfs_test_disk[directory_offset+i+3]=='l'&&openfs_test_disk[directory_offset+i+4]=='o'){direct_name=true;break;}if(!direct_name)return false;
