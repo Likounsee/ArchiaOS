@@ -14,7 +14,7 @@ static constexpr uint32_t OPENFS_MAX_FILE=OPENFS_DIRECT_COUNT*OPENFS_BLOCK_SIZE;
 struct OpenFsSuperblock {
  uint32_t magic,version,block_size,inode_size,inode_count;
  uint64_t total_blocks,bitmap_block,inode_table_block,directory_block,data_block,generation;
- uint8_t uuid[16]; uint8_t reserved[420];
+ uint8_t uuid[16]; uint8_t reserved[428];
 } __attribute__((packed));
 struct OpenFsDirEntry { uint32_t inode,type; char name[OPENFS_NAME_SIZE]; uint8_t reserved[8]; } __attribute__((packed));
 static_assert(sizeof(OpenFsSuperblock)==512,"OpenFS superblock size");
