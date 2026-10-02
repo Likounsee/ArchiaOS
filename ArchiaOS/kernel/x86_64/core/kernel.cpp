@@ -10,6 +10,7 @@
 #include "../memory/heap.hpp"
 #include "../memory/address_space.hpp"
 #include "../process/process.hpp"
+#include "../fs/vfs.hpp"
 #include "../cpu/features.hpp"
 #include "../cpu/security.hpp"
 #include "../cpu/smp.hpp"
@@ -249,6 +250,12 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     debug_str("MM: testing independent address space\n");
     address_space_run_tests();
     debug_str("MM: ADDRESS SPACE OK\n");
+    if (!vfs_test())
+    {
+        debug_str("[KERNEL] VFS TEST FAILED\n");
+        halt();
+    }
+    debug_str("VFS: RAMFS OK\n");
 
     debug_str("CPU: testing invalid opcode handler\n");
     exception_expect_invalid_opcode(
