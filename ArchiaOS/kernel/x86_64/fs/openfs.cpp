@@ -209,7 +209,7 @@ extern "C" bool openfs_test(){
  openfs_test_stage=3;if(!openfs_mount(&d))return false;
  openfs_test_stage=4;if(!openfs_create("hello",1))return false;
  static const char msg[]="OpenFS persistent";char out[sizeof(msg)]={};uint64_t n=0;uint32_t diagnostic_inode=0;
- openfs_test_stage=19;if(!find_child(0,"hello",&diagnostic_inode,nullptr))return false;if(!find_file("hello",&diagnostic_inode))return false;
+ openfs_test_stage=18;if(!find_child(0,"hello",&diagnostic_inode,nullptr))return false;openfs_test_stage=19;if(!find_file("hello",&diagnostic_inode))return false;
  openfs_test_stage=5;if(!openfs_write("hello",0,msg,sizeof(msg)))return false;openfs_test_stage=6;if(!openfs_read("hello",0,out,sizeof(out),&n)||n!=sizeof(msg)||!name_equal(out,msg))return false;
  static uint8_t large[OPENFS_BLOCK_SIZE*3+37];static uint8_t check[sizeof(large)];
  for(uint32_t i=0;i<sizeof(large);++i)large[i]=static_cast<uint8_t>((i*37U)+11U);
