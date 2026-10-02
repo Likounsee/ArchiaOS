@@ -14,7 +14,7 @@ static volatile unsigned long long bootstrap_stack_top[SCHEDULER_MAX_CPUS] = {};
 static volatile SchedulerThreadEntry bootstrap_entry[SCHEDULER_MAX_CPUS] = {};
 static volatile void* bootstrap_argument[SCHEDULER_MAX_CPUS] = {};
 
-extern "C" [[noreturn]] void scheduler_task1_entry()
+extern "C" [[noreturn]] void scheduler_task1_entry(void*)
 {
     const unsigned int cpu = scheduler_current_cpu_index();
     for (;;)
@@ -219,7 +219,7 @@ extern "C" SchedulerThreadEntry scheduler_take_bootstrap_entry(void** argument)
 
     SchedulerThreadEntry entry =
         __atomic_exchange_n(&bootstrap_entry[cpu], nullptr, __ATOMIC_ACQ_REL);
-    void* arg = __atomic_exchange_n(&bootstrap_argument[cpu], nullptr, __ATOMIC_ACQ_REL);
+    void* arg = const_cast<void*>(__atomic_exchange_n(&bootstrap_argument[cpu], nullptr, __ATOMIC_ACQ_REL));
     if (argument)
         *argument = arg;
     return entry;
