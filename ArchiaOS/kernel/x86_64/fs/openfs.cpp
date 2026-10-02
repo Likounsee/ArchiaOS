@@ -209,14 +209,14 @@ extern "C" bool openfs_test(){
  openfs_test_stage=3;if(!openfs_mount(&d))return false;
  openfs_test_stage=4;if(!openfs_create("hello",1))return false;
  static const char msg[]="OpenFS persistent";char out[sizeof(msg)]={};uint64_t n=0;
- openfs_test_stage=5;if(!openfs_write("hello",0,msg,sizeof(msg))||!openfs_read("hello",0,out,sizeof(out),&n)||n!=sizeof(msg)||!name_equal(out,msg))return false;
+ openfs_test_stage=5;if(!openfs_write("hello",0,msg,sizeof(msg)))return false;openfs_test_stage=6;if(!openfs_read("hello",0,out,sizeof(out),&n)||n!=sizeof(msg)||!name_equal(out,msg))return false;
  static uint8_t large[OPENFS_BLOCK_SIZE*3+37];static uint8_t check[sizeof(large)];
  for(uint32_t i=0;i<sizeof(large);++i)large[i]=static_cast<uint8_t>((i*37U)+11U);
- openfs_test_stage=6;if(!openfs_write("hello",123,large,sizeof(large))||!openfs_read("hello",123,check,sizeof(check),&n)||n!=sizeof(check))return false;
+ openfs_test_stage=7;if(!openfs_write("hello",123,large,sizeof(large)))return false;openfs_test_stage=8;if(!openfs_read("hello",123,check,sizeof(check),&n)||n!=sizeof(check))return false;
  for(uint32_t i=0;i<sizeof(check);++i)if(check[i]!=large[i])return false;
- openfs_test_stage=7;if(!openfs_unlink("hello")||openfs_read("hello",0,out,sizeof(out),&n)||!openfs_create("hello",1))return false;
- openfs_test_stage=8;if(!openfs_unlink("hello")||openfs_read("hello",0,out,sizeof(out),&n)||!openfs_create("hello",1))return false;
- openfs_test_stage=9;if(!openfs_mkdir("system")||!openfs_create("system/config",1)||!openfs_write("system/config",0,msg,sizeof(msg)))return false;
- openfs_test_stage=10;if(!openfs_read("system/config",0,out,sizeof(out),&n)||n!=sizeof(msg)||!name_equal(out,msg))return false;
- openfs_test_stage=11;return !openfs_create("this-name-is-intentionally-too-long-for-openfs-123456",1);
+ openfs_test_stage=9;if(!openfs_unlink("hello")||openfs_read("hello",0,out,sizeof(out),&n)||!openfs_create("hello",1))return false;
+ openfs_test_stage=10;if(!openfs_unlink("hello")||openfs_read("hello",0,out,sizeof(out),&n)||!openfs_create("hello",1))return false;
+ openfs_test_stage=11;if(!openfs_mkdir("system")||!openfs_create("system/config",1)||!openfs_write("system/config",0,msg,sizeof(msg)))return false;
+ openfs_test_stage=12;if(!openfs_read("system/config",0,out,sizeof(out),&n)||n!=sizeof(msg)||!name_equal(out,msg))return false;
+ openfs_test_stage=13;return !openfs_create("this-name-is-intentionally-too-long-for-openfs-123456",1);
 }
