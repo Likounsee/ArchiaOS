@@ -388,7 +388,7 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         debug_str("[KERNEL] SCHEDULER PER-CPU TEST FAILED\n");
         halt();
     }
-    debug_str("SCHEDULER: PREEMPTIVE CONTEXT SWITCH OK\n");
+    debug_str("SCHEDULER: PREEMPTIVE_OK\n");
 
     if (bootInfo->framebuffer_base)
     {
