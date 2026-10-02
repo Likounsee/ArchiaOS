@@ -206,7 +206,7 @@ extern "C" bool scheduler_set_ready_for_kernel()
 
 extern "C" bool scheduler_set_local_cpu_index(unsigned int cpu_index)
 {
-    if (cpu_index >= scheduler_cpu_count)
+    if (cpu_index >= SCHEDULER_MAX_CPUS)
         return false;
 
     const unsigned long long value =
