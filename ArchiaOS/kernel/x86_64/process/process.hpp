@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include "address_space.hpp"
 
+struct ExceptionFrame;
+
 struct Process
 {
     uint32_t pid;
@@ -26,4 +28,5 @@ extern "C" bool process_destroy(Process* process);
 extern "C" bool process_activate(Process* process);
 extern "C" uint32_t process_current_pid();
 extern "C" unsigned long long process_syscall_count();
+extern "C" bool process_handle_syscall(ExceptionFrame* frame);
 extern "C" bool process_run_ring3_test();
