@@ -7,6 +7,7 @@
 #include "idt.hpp"
 #include "../memory/pmm.hpp"
 #include "../memory/paging.hpp"
+#include "scheduler.hpp"
 
 static constexpr uint64_t TRAMPOLINE_LIMIT = 0x100000ULL;
 static constexpr uint64_t TRAMPOLINE_MAILBOX_OFFSET = 0x400ULL;
@@ -81,8 +82,14 @@ extern "C" void smp_ap_entry(
     __atomic_store_n(&mailbox->started, 1U, __ATOMIC_RELEASE);
     smp_debug("SMP: AP REPORTED ONLINE\n");
 
-    (void)processorIndex;
     (void)apicId;
+
+    while (!scheduler_ready())
+        asm volatile("pause");
+
+    scheduler_cpu_start(processorIndex);
+    lapic_timer_start();
+    irq_enable();
 
     for (;;)
         asm volatile("hlt");
