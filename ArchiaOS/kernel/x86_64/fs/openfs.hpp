@@ -25,4 +25,5 @@ extern "C" bool openfs_unlink(const char* name);
 extern "C" bool openfs_mkdir(const char* path);
 extern "C" bool openfs_write(const char* name, uint64_t offset, const void* data, uint64_t size);
 extern "C" bool openfs_read(const char* name, uint64_t offset, void* data, uint64_t size, uint64_t* read_size);
+extern "C" uint32_t openfs_test_stage_get();
 extern "C" bool openfs_test();
