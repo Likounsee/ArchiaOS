@@ -180,6 +180,57 @@ extern "C" bool vfs_create(const char* path)
     return false;
 }
 
+extern "C" bool vfs_unlink(const char* path)
+{
+    const unsigned int node = find_node(path);
+    if (node == 0 || node >= VFS_MAX_NODES || nodes[node].type == VFS_NODE_UNUSED)
+        return false;
+    if (nodes[node].type == VFS_NODE_DIRECTORY)
+    {
+        for (unsigned int i = 1; i < VFS_MAX_NODES; ++i)
+            if (nodes[i].type != VFS_NODE_UNUSED && nodes[i].parent == node)
+                return false;
+    }
+    nodes[node] = {};
+    return true;
+}
+
+extern "C" bool vfs_stat(const char* path, VfsStat* stat)
+{
+    if (!stat)
+        return false;
+    const unsigned int node = find_node(path);
+    if (node >= VFS_MAX_NODES || nodes[node].type == VFS_NODE_UNUSED)
+        return false;
+    stat->type = nodes[node].type;
+    stat->parent = nodes[node].parent;
+    stat->size = nodes[node].size;
+    return true;
+}
+
+extern "C" bool vfs_readdir(const char* path, uint32_t index, VfsDirEntry* entry)
+{
+    if (!entry)
+        return false;
+    const unsigned int node = find_node(path);
+    if (node >= VFS_MAX_NODES || nodes[node].type != VFS_NODE_DIRECTORY)
+        return false;
+    uint32_t seen = 0;
+    for (unsigned int i = 1; i < VFS_MAX_NODES; ++i)
+    {
+        if (nodes[i].type == VFS_NODE_UNUSED || nodes[i].parent != node)
+            continue;
+        if (seen++ != index)
+            continue;
+        entry->type = nodes[i].type;
+        entry->size = nodes[i].size;
+        for (unsigned int j = 0; j < sizeof(entry->name); ++j)
+            entry->name[j] = nodes[i].name[j];
+        return true;
+    }
+    return false;
+}
+
 extern "C" bool vfs_write(
     const char* path, uint64_t offset, const void* data, uint64_t size)
 {
@@ -240,6 +291,19 @@ extern "C" bool vfs_test()
     for (unsigned int i = 0; i < sizeof(message); ++i)
         if (buffer[i] != message[i])
             return false;
+
+    VfsStat stat{};
+    VfsDirEntry entry{};
+    if (!vfs_stat("/system/hello", &stat) ||
+        stat.type != VFS_NODE_FILE || stat.size != sizeof(message) ||
+        !vfs_readdir("/system", 0, &entry) ||
+        entry.type != VFS_NODE_FILE || !text_equal(entry.name, "hello") ||
+        entry.size != sizeof(message) ||
+        vfs_readdir("/system", 1, &entry) ||
+        !vfs_unlink("/system/hello") ||
+        vfs_stat("/system/hello", &stat) ||
+        vfs_read("/system/hello", 0, buffer, sizeof(buffer), &read_size))
+        return false;
 
     return true;
 }
