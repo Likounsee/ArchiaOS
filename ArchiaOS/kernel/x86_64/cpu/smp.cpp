@@ -102,6 +102,7 @@ extern "C" void smp_ap_entry(
     while (!scheduler_ready())
         asm volatile("pause");
 
+    smp_debug("SMP: AP SCHEDULER READY\n");
     scheduler_cpu_start(processorIndex);
     lapic_timer_start();
     irq_enable();
