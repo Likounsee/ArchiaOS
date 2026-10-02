@@ -30,6 +30,7 @@ extern "C" bool scheduler_initialize(unsigned int cpu_count);
 extern "C" bool scheduler_set_cpu_apic_ids(const unsigned int* apic_ids, unsigned int count);
 extern "C" void scheduler_cpu_start(unsigned int cpu_index);
 extern "C" bool scheduler_ready();
+extern "C" bool scheduler_set_ready_for_kernel();
 extern "C" unsigned int scheduler_current_cpu_index();
 extern "C" ExceptionFrame* scheduler_timer_tick(unsigned int cpu_index, ExceptionFrame* current_frame);
 extern "C" unsigned int scheduler_current_task(unsigned int cpu_index);
