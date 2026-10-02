@@ -343,15 +343,11 @@ extern "C" void kernel_main(BootInfo* bootInfo)
 
     /* Release APs into their per-CPU scheduler loops. */
     scheduler_cpu_start(0);
-    /* scheduler_ready is published by the scheduler before timers are enabled. */
-    extern volatile bool scheduler_ready_flag_unused;
-    (void)scheduler_ready_flag_unused;
     lapic_timer_start();
     irq_enable();
 
     bool preemptive_test_ok = false;
     /* scheduler_ready is intentionally published only after APIC mapping. */
-    extern bool scheduler_set_ready_for_kernel();
     if (!scheduler_set_ready_for_kernel())
     {
         debug_str("[KERNEL] SCHEDULER READY FAILED\\n");
