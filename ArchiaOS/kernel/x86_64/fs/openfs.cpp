@@ -149,6 +149,16 @@ extern "C" bool openfs_unlink(const char* name){
  entries[slot]={};
  return io_write(OPENFS_DIRECTORY_BLOCK,db);
 }
+static bool allocate_block(uint64_t* result){
+ if(!result||!mounted)return false;
+ uint64_t blocks=(mounted->sector_count*mounted->sector_size)/OPENFS_BLOCK_SIZE;
+ for(uint64_t b=OPENFS_DATA_BLOCK;b<blocks;++b)
+  if(!bitmap_get(b)){
+   if(bitmap_set(b,true)){*result=b;return true;}
+   return false;
+  }
+ return false;
+}
 extern "C" bool openfs_write(const char* name,uint64_t offset,const void* data,uint64_t size){
  uint32_t n=0;if(!data||!find_file(name,&n)||offset>OPENFS_MAX_FILE||size>OPENFS_MAX_FILE-offset)return false;OpenFsInode inode{};if(!inode_read(n,&inode)||inode.mode==2)return false;
  const auto* src=static_cast<const uint8_t*>(data);uint64_t pos=0;while(pos<size){uint32_t bi=static_cast<uint32_t>((offset+pos)/OPENFS_BLOCK_SIZE);uint32_t in=static_cast<uint32_t>((offset+pos)%OPENFS_BLOCK_SIZE);if(bi>=OPENFS_DIRECT_COUNT)return false;uint64_t block=inode.direct[bi];if(!block){if(!allocate_block(&block))return false;inode.direct[bi]=block;}uint8_t b[OPENFS_BLOCK_SIZE]={};if(!io_read(block,b))return false;uint64_t count=size-pos;if(count>OPENFS_BLOCK_SIZE-in)count=OPENFS_BLOCK_SIZE-in;for(uint64_t i=0;i<count;++i)b[in+i]=src[pos+i];if(!io_write(block,b))return false;pos+=count;}if(offset+size>inode.size)inode.size=offset+size;return inode_write(n,&inode);
