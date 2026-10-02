@@ -62,6 +62,28 @@ extern "C" bool openfs_create(const char* name,uint32_t mode){
  inode={};inode.mode=mode;inode.links=1;inode.direct[0]=data;OpenFsDirEntry entry{};entry.inode=inode_no;entry.type=mode;for(uint32_t i=0;i<OPENFS_NAME_SIZE&&name[i];++i)entry.name[i]=name[i];entries[slot]=entry;
  if(!inode_write(inode_no,&inode)||!io_write(OPENFS_DIRECTORY_BLOCK,db)){bitmap_set(data,false);return false;}return true;
 }
+extern "C" bool openfs_unlink(const char* name){
+ uint32_t inode_no=0;
+ if(!valid_name(name)||!find_file(name,&inode_no)||inode_no==0)return false;
+ uint8_t db[OPENFS_BLOCK_SIZE]={};
+ if(!io_read(OPENFS_DIRECTORY_BLOCK,db))return false;
+ auto* entries=reinterpret_cast<OpenFsDirEntry*>(db);
+ uint32_t slot=OPENFS_DIRECTORY_ENTRIES;
+ for(uint32_t i=0;i<OPENFS_DIRECTORY_ENTRIES;++i)
+  if(entries[i].inode==inode_no&&name_equal(entries[i].name,name)){slot=i;break;}
+ if(slot==OPENFS_DIRECTORY_ENTRIES)return false;
+ OpenFsInode inode{};
+ if(!inode_read(inode_no,&inode)||inode.mode==0||inode.mode==2)return false;
+ for(uint32_t i=0;i<OPENFS_DIRECT_COUNT;++i)
+  if(inode.direct[i]){
+   if(!bitmap_set(inode.direct[i],false))return false;
+   inode.direct[i]=0;
+  }
+ inode={};
+ if(!inode_write(inode_no,&inode))return false;
+ entries[slot]={};
+ return io_write(OPENFS_DIRECTORY_BLOCK,db);
+}
 extern "C" bool openfs_write(const char* name,uint64_t offset,const void* data,uint64_t size){
  uint32_t n=0;if(!data||!find_file(name,&n)||offset>OPENFS_MAX_FILE||size>OPENFS_MAX_FILE-offset)return false;OpenFsInode inode{};if(!inode_read(n,&inode)||!inode.direct[0])return false;
  const auto* src=static_cast<const uint8_t*>(data);uint64_t pos=0;while(pos<size){uint32_t bi=static_cast<uint32_t>((offset+pos)/OPENFS_BLOCK_SIZE);uint32_t in=static_cast<uint32_t>((offset+pos)%OPENFS_BLOCK_SIZE);if(bi>=OPENFS_DIRECT_COUNT)return false;uint64_t block=inode.direct[bi];if(!block){if(!allocate_block(&block))return false;inode.direct[bi]=block;}uint8_t b[OPENFS_BLOCK_SIZE]={};if(!io_read(block,b))return false;uint64_t count=size-pos;if(count>OPENFS_BLOCK_SIZE-in)count=OPENFS_BLOCK_SIZE-in;for(uint64_t i=0;i<count;++i)b[in+i]=src[pos+i];if(!io_write(block,b))return false;pos+=count;}if(offset+size>inode.size)inode.size=offset+size;return inode_write(n,&inode);
@@ -73,5 +95,5 @@ extern "C" bool openfs_test(){
  static uint8_t disk[512*4096]={};struct C{uint8_t* p;};static C c{disk};
  const auto rd=[](const BlockDevice*d,uint64_t l,uint32_t n,void*o)->bool{auto*c=static_cast<C*>(d->context);if(l>=4096||!n||l+n>4096)return false;for(uint64_t i=0;i<uint64_t(n)*512;++i)static_cast<uint8_t*>(o)[i]=c->p[l*512+i];return true;};
  const auto wr=[](const BlockDevice*d,uint64_t l,uint32_t n,const void*i)->bool{auto*c=static_cast<C*>(d->context);if(l>=4096||!n||l+n>4096)return false;for(uint64_t x=0;x<uint64_t(n)*512;++x)c->p[l*512+x]=static_cast<const uint8_t*>(i)[x];return true;};
- BlockDevice d{0,BLOCK_DEVICE_MEMORY,512,4096,rd,wr,&c};if(!openfs_format(&d)||!openfs_mount(&d)||!openfs_create("hello",1))return false;static const char msg[]="OpenFS persistent";char out[sizeof(msg)]={};uint64_t n=0;if(!openfs_write("hello",0,msg,sizeof(msg))||!openfs_read("hello",0,out,sizeof(out),&n)||n!=sizeof(msg)||!name_equal(out,msg))return false;static uint8_t large[OPENFS_BLOCK_SIZE*3+37];static uint8_t check[sizeof(large)];for(uint32_t i=0;i<sizeof(large);++i)large[i]=static_cast<uint8_t>((i*37U)+11U);if(!openfs_write("hello",123,large,sizeof(large))||!openfs_read("hello",123,check,sizeof(check),&n)||n!=sizeof(check))return false;for(uint32_t i=0;i<sizeof(check);++i)if(check[i]!=large[i])return false;return !openfs_create("this-name-is-intentionally-too-long-for-openfs-123456",1);
+ BlockDevice d{0,BLOCK_DEVICE_MEMORY,512,4096,rd,wr,&c};if(!openfs_format(&d)||!openfs_mount(&d)||!openfs_create("hello",1))return false;static const char msg[]="OpenFS persistent";char out[sizeof(msg)]={};uint64_t n=0;if(!openfs_write("hello",0,msg,sizeof(msg))||!openfs_read("hello",0,out,sizeof(out),&n)||n!=sizeof(msg)||!name_equal(out,msg))return false;static uint8_t large[OPENFS_BLOCK_SIZE*3+37];static uint8_t check[sizeof(large)];for(uint32_t i=0;i<sizeof(large);++i)large[i]=static_cast<uint8_t>((i*37U)+11U);if(!openfs_write("hello",123,large,sizeof(large))||!openfs_read("hello",123,check,sizeof(check),&n)||n!=sizeof(check))return false;for(uint32_t i=0;i<sizeof(check);++i)if(check[i]!=large[i])return false;if(!openfs_unlink("hello")||openfs_read("hello",0,out,sizeof(out),&n)||!openfs_create("hello",1))return false;return !openfs_create("this-name-is-intentionally-too-long-for-openfs-123456",1);
 }
