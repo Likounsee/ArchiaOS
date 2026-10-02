@@ -31,7 +31,7 @@ static bool valid_name(const char* name){
  uint32_t length=0;
  while(name[length]){
   if(length>=OPENFS_NAME_SIZE-1)return false;
-  if(name[length]=='/'||name[length]=='\\\\')return false;
+  if(name[length]=='/'||name[length]=='\\')return false;
   ++length;
  }
  return length>0;
