@@ -35,7 +35,7 @@ extern "C" uint32_t openfs_kernel_test()
 
     openfs_inode_t inode{};
     const uint64_t inode_count=(mount.superblock.inode_table_blocks*(uint64_t)mount.superblock.block_size)/OPENFS_INODE_SIZE;
-    if(openfs_inode_read(&device,mount.superblock.inode_table_start,inode_count,file,&inode)!=OPENFS_INODE_OK)return 7U;
+    if(openfs_inode_read(&device,mount.superblock.inode_table_start,file,inode_count,&inode)!=OPENFS_INODE_OK)return 7U;
 
     static const char message[]="ArchiaOS OpenFS";
     if(openfs_file_write(&device,&mount.superblock,&inode,0U,message,sizeof(message))!=OPENFS_FILE_OK)return 8U;
