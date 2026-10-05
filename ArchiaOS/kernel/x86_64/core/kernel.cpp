@@ -11,6 +11,7 @@
 #include "../memory/address_space.hpp"
 #include "../process/process.hpp"
 #include "../fs/vfs.hpp"
+#include "../fs/openfs_adapter.hpp"
 #include "../drivers/pci.hpp"
 #include "../drivers/input.hpp"
 #include "../drivers/graphics.hpp"
@@ -229,6 +230,12 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         halt();
     }
     debug_str("STORAGE: BLOCK DEVICE OK\n");
+    if (!openfs_kernel_test())
+    {
+        debug_str("[KERNEL] OPENFS TEST FAILED\n");
+        halt();
+    }
+    debug_str("OPENFS: FORMAT/MOUNT/LOOKUP/READ/WRITE/FSCK OK\n");
     if (!gpt_test()) {
         debug_str("[KERNEL] GPT TEST FAILED\n");
         halt();
