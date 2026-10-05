@@ -50,6 +50,9 @@ set(ARCHIAOS_MEMORY_DIR ${ARCHIAOS_ROOT}/kernel/x86_64/memory)
 set(ARCHIAOS_PROCESS_DIR ${ARCHIAOS_ROOT}/kernel/x86_64/process)
 set(ARCHIAOS_FS_DIR ${ARCHIAOS_ROOT}/kernel/x86_64/fs)
 set(ARCHIAOS_DRIVERS_DIR ${ARCHIAOS_ROOT}/kernel/x86_64/drivers)
+set(ARCHIAOS_OPENFS_ROOT ${ARCHIAOS_ROOT}/../third_party/OpenFS/OpenFS)
+set(ARCHIAOS_OPENFS_INC ${ARCHIAOS_OPENFS_ROOT}/include)
+set(ARCHIAOS_OPENFS_COMPAT ${ARCHIAOS_FS_DIR}/openfs_compat)
 
 set(ARCHIAOS_BOOT_HEADERS
     ${ARCHIAOS_BOOT_INC}/uefi.h
@@ -100,6 +103,12 @@ set(ARCHIAOS_KERNEL_NET_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_net.obj)
 set(ARCHIAOS_KERNEL_BLOCK_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_block.obj)
 set(ARCHIAOS_KERNEL_GPT_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_gpt.obj)
 set(ARCHIAOS_KERNEL_STORAGE_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_storage.obj)
+set(ARCHIAOS_KERNEL_OPENFS_COMPAT_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_openfs_compat.obj)
+set(ARCHIAOS_KERNEL_OPENFS_ADAPTER_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_openfs_adapter.obj)
+set(ARCHIAOS_KERNEL_OPENFS_TEST_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_openfs_test.obj)
+set(ARCHIAOS_OPENFS_C_SOURCES
+    allocator.c bitmap.c crc32c.c dir.c extent.c file.c format.c fsck.c
+    inode.c inode_alloc.c journal.c link.c mount.c path.c transaction.c)
 
 set(ARCHIAOS_KERNEL_ELF ${ARCHIAOS_BUILD}/ARCHIAOS_kernel.elf)
 
@@ -125,7 +134,7 @@ function(archiaos_kernel_compile output source)
             -fno-stack-protector -fno-pie -fno-asynchronous-unwind-tables
             -fno-threadsafe-statics -mgeneral-regs-only -mcmodel=kernel
             -mno-red-zone -mno-sse -mno-sse2
-            -I"${ARCHIAOS_COMMON}" -I"${ARCHIAOS_CPU_DIR}" -I"${ARCHIAOS_MEMORY_DIR}"
+            -I"${ARCHIAOS_COMMON}" -I"${ARCHIAOS_CPU_DIR}" -I"${ARCHIAOS_MEMORY_DIR}" -I"${ARCHIAOS_OPENFS_INC}"
             -c "${source}" -o "${output}"
         DEPENDS ${source} ${ARCHIAOS_COMMON}/boot_info.h
             ${ARCHIAOS_CPU_DIR}/cpuid.hpp
@@ -155,6 +164,34 @@ function(archiaos_kernel_asm_compile output source)
         COMMAND "${ARCHIAOS_CLANG}" -target x86_64-pc-none-elf
             -ffreestanding -O2 -fno-pie -fno-asynchronous-unwind-tables
             -mno-red-zone
+            -c "${source}" -o "${output}"
+        DEPENDS ${source}
+    )
+endfunction()
+
+function(archiaos_openfs_c_compile output source)
+    add_custom_command(
+        OUTPUT ${output}
+        COMMAND "${ARCHIAOS_CLANG}" -target x86_64-pc-none-elf
+            -x c -std=c11 -ffreestanding -O2 -Wall -Wextra -Werror -Wno-logical-op-parentheses -fno-builtin
+            -fno-stack-protector -fno-pie -fno-asynchronous-unwind-tables
+            -mgeneral-regs-only -mcmodel=kernel -mno-red-zone -mno-sse -mno-sse2
+            -I"${ARCHIAOS_OPENFS_COMPAT}" -I"${ARCHIAOS_OPENFS_INC}"
+            -c "${source}" -o "${output}"
+        DEPENDS ${source}
+    )
+endfunction()
+
+function(archiaos_openfs_cpp_compile output source)
+    add_custom_command(
+        OUTPUT ${output}
+        COMMAND "${ARCHIAOS_CLANG}" -target x86_64-pc-none-elf
+            -std=c++20 -ffreestanding -O2 -Wall -Wextra -Werror -fno-builtin
+            -fno-exceptions -fno-rtti -fno-stack-protector -fno-pie
+            -fno-asynchronous-unwind-tables -fno-threadsafe-statics
+            -mgeneral-regs-only -mcmodel=kernel -mno-red-zone -mno-sse -mno-sse2
+            -I"${ARCHIAOS_COMMON}" -I"${ARCHIAOS_CPU_DIR}" -I"${ARCHIAOS_MEMORY_DIR}"
+            -I"${ARCHIAOS_OPENFS_INC}"
             -c "${source}" -o "${output}"
         DEPENDS ${source}
     )
@@ -198,6 +235,16 @@ archiaos_kernel_compile(${ARCHIAOS_KERNEL_BLOCK_OBJ} ${ARCHIAOS_DRIVERS_DIR}/blo
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_GPT_OBJ} ${ARCHIAOS_FS_DIR}/gpt.cpp)
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_STORAGE_OBJ} ${ARCHIAOS_DRIVERS_DIR}/storage.cpp)
 
+archiaos_openfs_c_compile(${ARCHIAOS_KERNEL_OPENFS_COMPAT_OBJ} ${ARCHIAOS_OPENFS_COMPAT}/openfs_kernel_compat.c)
+foreach(openfs_source IN LISTS ARCHIAOS_OPENFS_C_SOURCES)
+    get_filename_component(openfs_name ${openfs_source} NAME_WE)
+    set(openfs_object ${ARCHIAOS_BUILD}/archiaos_openfs_${openfs_name}.obj)
+    archiaos_openfs_c_compile(${openfs_object} ${ARCHIAOS_OPENFS_ROOT}/src/${openfs_source})
+    list(APPEND ARCHIAOS_KERNEL_OPENFS_OBJECTS ${openfs_object})
+endforeach()
+archiaos_openfs_cpp_compile(${ARCHIAOS_KERNEL_OPENFS_ADAPTER_OBJ} ${ARCHIAOS_FS_DIR}/openfs_adapter.cpp)
+archiaos_openfs_cpp_compile(${ARCHIAOS_KERNEL_OPENFS_TEST_OBJ} ${ARCHIAOS_FS_DIR}/openfs_test.cpp)
+
 add_custom_command(
     OUTPUT ${ARCHIAOS_KERNEL_ELF}
     COMMAND "${ARCHIAOS_LLD}" -m elf_x86_64
@@ -226,6 +273,8 @@ add_custom_command(
         "${ARCHIAOS_KERNEL_VMM_OBJ}" "${ARCHIAOS_KERNEL_HEAP_OBJ}"
         "${ARCHIAOS_KERNEL_ADDRESS_SPACE_OBJ}"
         "${ARCHIAOS_KERNEL_PROCESS_OBJ}" "${ARCHIAOS_KERNEL_RING3_OBJ}" "${ARCHIAOS_KERNEL_IPC_OBJ}" "${ARCHIAOS_KERNEL_VFS_OBJ}" "${ARCHIAOS_KERNEL_PCI_OBJ}" "${ARCHIAOS_KERNEL_INPUT_OBJ}" "${ARCHIAOS_KERNEL_GRAPHICS_OBJ}" "${ARCHIAOS_KERNEL_GUI_OBJ}" "${ARCHIAOS_KERNEL_DEVICE_OBJ}" "${ARCHIAOS_KERNEL_NET_OBJ}" "${ARCHIAOS_KERNEL_BLOCK_OBJ}" "${ARCHIAOS_KERNEL_GPT_OBJ}" "${ARCHIAOS_KERNEL_STORAGE_OBJ}"
+        "${ARCHIAOS_KERNEL_OPENFS_COMPAT_OBJ}" "${ARCHIAOS_KERNEL_OPENFS_ADAPTER_OBJ}" "${ARCHIAOS_KERNEL_OPENFS_TEST_OBJ}"
+        ${ARCHIAOS_KERNEL_OPENFS_OBJECTS}
         -o "${ARCHIAOS_KERNEL_ELF}"
     DEPENDS
         ${ARCHIAOS_KERNEL_OBJ} ${ARCHIAOS_KERNEL_ENTRY_OBJ}
@@ -244,6 +293,8 @@ add_custom_command(
         ${ARCHIAOS_KERNEL_ADDRESS_SPACE_OBJ}
         ${ARCHIAOS_KERNEL_PROCESS_OBJ} ${ARCHIAOS_KERNEL_RING3_OBJ} ${ARCHIAOS_KERNEL_IPC_OBJ} ${ARCHIAOS_KERNEL_VFS_OBJ} ${ARCHIAOS_KERNEL_PCI_OBJ} ${ARCHIAOS_KERNEL_INPUT_OBJ} ${ARCHIAOS_KERNEL_GRAPHICS_OBJ} ${ARCHIAOS_KERNEL_GUI_OBJ} ${ARCHIAOS_KERNEL_DEVICE_OBJ} ${ARCHIAOS_KERNEL_NET_OBJ} ${ARCHIAOS_KERNEL_BLOCK_OBJ} ${ARCHIAOS_KERNEL_GPT_OBJ} ${ARCHIAOS_KERNEL_STORAGE_OBJ}
         ${ARCHIAOS_KERNEL_DIR}/kernel.ld
+        ${ARCHIAOS_KERNEL_OPENFS_COMPAT_OBJ} ${ARCHIAOS_KERNEL_OPENFS_ADAPTER_OBJ}
+        ${ARCHIAOS_KERNEL_OPENFS_TEST_OBJ} ${ARCHIAOS_KERNEL_OPENFS_OBJECTS}
 )
 
 function(archiaos_boot_compile output source)

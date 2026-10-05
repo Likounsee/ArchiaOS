@@ -2,7 +2,7 @@ name: ArchiaOS build
 
 on:
   push:
-    branches: [ "ArchiaOS" ]
+    branches: [ "ArchiaOS", "openfs-kernel-integration" ]
   pull_request:
     branches: [ "ArchiaOS" ]
 
@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install toolchain and firmware
         run: |
