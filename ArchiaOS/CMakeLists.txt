@@ -235,6 +235,16 @@ archiaos_kernel_compile(${ARCHIAOS_KERNEL_BLOCK_OBJ} ${ARCHIAOS_DRIVERS_DIR}/blo
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_GPT_OBJ} ${ARCHIAOS_FS_DIR}/gpt.cpp)
 archiaos_kernel_compile(${ARCHIAOS_KERNEL_STORAGE_OBJ} ${ARCHIAOS_DRIVERS_DIR}/storage.cpp)
 
+archiaos_openfs_c_compile(${ARCHIAOS_KERNEL_OPENFS_COMPAT_OBJ} ${ARCHIAOS_OPENFS_COMPAT}/openfs_kernel_compat.c)
+foreach(openfs_source IN LISTS ARCHIAOS_OPENFS_C_SOURCES)
+    get_filename_component(openfs_name ${openfs_source} NAME_WE)
+    set(openfs_object ${ARCHIAOS_BUILD}/archiaos_openfs_${openfs_name}.obj)
+    archiaos_openfs_c_compile(${openfs_object} ${ARCHIAOS_OPENFS_ROOT}/src/${openfs_source})
+    list(APPEND ARCHIAOS_KERNEL_OPENFS_OBJECTS ${openfs_object})
+endforeach()
+archiaos_openfs_cpp_compile(${ARCHIAOS_KERNEL_OPENFS_ADAPTER_OBJ} ${ARCHIAOS_FS_DIR}/openfs_adapter.cpp)
+archiaos_openfs_cpp_compile(${ARCHIAOS_KERNEL_OPENFS_TEST_OBJ} ${ARCHIAOS_FS_DIR}/openfs_test.cpp)
+
 add_custom_command(
     OUTPUT ${ARCHIAOS_KERNEL_ELF}
     COMMAND "${ARCHIAOS_LLD}" -m elf_x86_64
