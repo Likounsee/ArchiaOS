@@ -13,7 +13,31 @@ extern "C" uint32_t openfs_kernel_test()
     if(!disk)return false;
 
     openfs_block_device_t device{};
+    openfs_block_device_t second_device{};
     if(!openfs_kernel_attach(disk,0U,4096U,&device))return 1U;
+    if(!openfs_kernel_attach(disk,0U,4096U,&second_device))
+    {
+        openfs_kernel_detach(&device);
+        return 18U;
+    }
+
+    uint8_t first_probe[4096]={};
+    uint8_t second_probe[4096]={};
+    if(device.read(device.context,0U,1U,first_probe)!=OPENFS_IO_OK ||
+       second_device.read(second_device.context,0U,1U,second_probe)!=OPENFS_IO_OK)
+    {
+        openfs_kernel_detach(&second_device);
+        openfs_kernel_detach(&device);
+        return 19U;
+    }
+    for(size_t i=0U;i<sizeof(first_probe);++i)
+        if(first_probe[i]!=second_probe[i])
+        {
+            openfs_kernel_detach(&second_device);
+            openfs_kernel_detach(&device);
+            return 20U;
+        }
+    openfs_kernel_detach(&second_device);
 
     static const uint8_t uuid[16]={
         0x41,0x72,0x63,0x68,0x69,0x61,0x4f,0x53,
@@ -58,6 +82,11 @@ extern "C" uint32_t openfs_kernel_test()
     if(got!=sizeof(message))return 16U;
     for(size_t i=0U;i<sizeof(message);++i)if(buffer[i]!=message[i])return 17U;
 
-    if(openfs_unmount(&mount)!=OPENFS_MOUNT_OK)return 11U;
+    if(openfs_unmount(&mount)!=OPENFS_MOUNT_OK)
+    {
+        openfs_kernel_detach(&device);
+        return 11U;
+    }
+    openfs_kernel_detach(&device);
     return 0U;
 }
