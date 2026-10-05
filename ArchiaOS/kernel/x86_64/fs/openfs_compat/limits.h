@@ -8,5 +8,5 @@
 #define ULONG_MAX __ULONG_MAX__
 #define LLONG_MAX __LONG_LONG_MAX__
 #define LLONG_MIN (-LLONG_MAX-1)
-#define ULLONG_MAX __LONG_LONG_MAX__
+#define ULLONG_MAX (__LONG_LONG_MAX__ * 2ULL + 1ULL)
 #endif
