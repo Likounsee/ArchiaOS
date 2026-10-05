@@ -173,7 +173,7 @@ function(archiaos_openfs_c_compile output source)
     add_custom_command(
         OUTPUT ${output}
         COMMAND "${ARCHIAOS_CLANG}" -target x86_64-pc-none-elf
-            -x c -std=c11 -ffreestanding -O2 -Wall -Wextra -Werror -fno-builtin
+            -x c -std=c11 -ffreestanding -O2 -Wall -Wextra -Werror -Wno-logical-op-parentheses -fno-builtin
             -fno-stack-protector -fno-pie -fno-asynchronous-unwind-tables
             -mno-red-zone -mno-sse -mno-sse2
             -I"${ARCHIAOS_OPENFS_COMPAT}" -I"${ARCHIAOS_OPENFS_INC}"
