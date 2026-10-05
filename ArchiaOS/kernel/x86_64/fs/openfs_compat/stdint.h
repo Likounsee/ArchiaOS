@@ -22,6 +22,8 @@ typedef __UINTMAX_TYPE__ uintmax_t;
 #define UINT32_MAX __UINT32_MAX__
 #define UINT64_MAX __UINT64_MAX__
 #define SIZE_MAX __SIZE_MAX__
+#define INT32_C(v) __INT32_C(v)
+#define UINT32_C(v) __UINT32_C(v)
 #define INT64_C(v) __INT64_C(v)
 #define UINT64_C(v) __UINT64_C(v)
 #endif
