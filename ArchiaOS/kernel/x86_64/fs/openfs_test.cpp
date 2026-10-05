@@ -50,7 +50,7 @@ extern "C" uint32_t openfs_kernel_test()
     if(openfs_mount(&mount,&device)!=OPENFS_MOUNT_OK)return 3U;
 
     if(openfs_path_lookup_follow(&device,&mount.superblock,"/system/hello",&file)!=OPENFS_PATH_OK)return 13U;
-    if(openfs_inode_read(&device,mount.superblock.inode_table_start,inode_count,file,&inode)!=OPENFS_INODE_OK)return 7U;
+    if(openfs_inode_read(&device,mount.superblock.inode_table_start,file,inode_count,&inode)!=OPENFS_INODE_OK)return 7U;
 
     char buffer[sizeof(message)]={};
     size_t got=0U;
