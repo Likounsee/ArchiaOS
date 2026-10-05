@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include "../drivers/block.hpp"
-#include "../../../third_party/OpenFS/OpenFS/include/openfs/block_device.h"
+#include "openfs/block_device.h"
 
 extern "C" bool openfs_kernel_attach(
     const BlockDevice* device,
