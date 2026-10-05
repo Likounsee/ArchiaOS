@@ -134,7 +134,7 @@ function(archiaos_kernel_compile output source)
             -fno-stack-protector -fno-pie -fno-asynchronous-unwind-tables
             -fno-threadsafe-statics -mgeneral-regs-only -mcmodel=kernel
             -mno-red-zone -mno-sse -mno-sse2
-            -I"${ARCHIAOS_COMMON}" -I"${ARCHIAOS_CPU_DIR}" -I"${ARCHIAOS_MEMORY_DIR}"
+            -I"${ARCHIAOS_COMMON}" -I"${ARCHIAOS_CPU_DIR}" -I"${ARCHIAOS_MEMORY_DIR}" -I"${ARCHIAOS_OPENFS_INC}"
             -c "${source}" -o "${output}"
         DEPENDS ${source} ${ARCHIAOS_COMMON}/boot_info.h
             ${ARCHIAOS_CPU_DIR}/cpuid.hpp
