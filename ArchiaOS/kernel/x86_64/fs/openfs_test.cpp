@@ -1,10 +1,10 @@
 #include "openfs_adapter.hpp"
-#include "../../../third_party/OpenFS/OpenFS/include/openfs/format.h"
-#include "../../../third_party/OpenFS/OpenFS/include/openfs/mount.h"
-#include "../../../third_party/OpenFS/OpenFS/include/openfs/path.h"
-#include "../../../third_party/OpenFS/OpenFS/include/openfs/file.h"
-#include "../../../third_party/OpenFS/OpenFS/include/openfs/fsck.h"
-#include "../../../third_party/OpenFS/OpenFS/include/openfs/inode.h"
+#include "openfs/format.h"
+#include "openfs/mount.h"
+#include "openfs/path.h"
+#include "openfs/file.h"
+#include "openfs/fsck.h"
+#include "openfs/inode.h"
 #include "../drivers/block.hpp"
 
 extern "C" bool openfs_kernel_test()
