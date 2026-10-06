@@ -249,6 +249,10 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         halt();
     }
     debug_str("STORAGE: CONTROLLER DISCOVERY OK\n");
+    if (storage_real_block_device_count() > 0)
+        debug_str("STORAGE: REAL BLOCK DEVICE OK\n");
+    else
+        debug_str("STORAGE: NO REAL BLOCK DEVICE\n");
     if (!vfs_test())
     {
         debug_str("[KERNEL] VFS TEST FAILED\n");
