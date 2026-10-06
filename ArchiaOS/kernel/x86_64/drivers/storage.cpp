@@ -300,6 +300,54 @@ static bool ahci_flush(const BlockDevice* device)
 {
     if (!device || !device->context)
         return false;
+
+    auto* port = static_cast<AhciPortContext*>(device->context);
+    if (!port->initialized)
+        return false;
+
+    const int slot = ahci_find_slot(*port, 32);
+    if (slot < 0)
+        return false;
+
+    if (!wait_clear(ahci_reg(port->regs, AHCI_PxTFD), AHCI_TFD_BSY | AHCI_TFD_DRQ))
+        return false;
+
+    *ahci_reg(port->regs, AHCI_PxIS) = 0xFFFFFFFFU;
+
+    auto* header = reinterpret_cast<AhciCmdHeader*>(
+        port->command_list + static_cast<uint64_t>(slot) * sizeof(AhciCmdHeader));
+    zero_bytes(header, sizeof(AhciCmdHeader));
+    header->flags = 5U;
+    header->prdt_length = 0;
+    header->command_table =
+        static_cast<uint32_t>(port->table_physical & 0xFFFFFFFFULL);
+    header->command_table_upper =
+        static_cast<uint32_t>(port->table_physical >> 32);
+
+    zero_bytes(port->table, 0x1000);
+    auto* fis = reinterpret_cast<AhciFisH2D*>(port->table);
+    fis->type = ATA_FIS_REG_H2D;
+    fis->flags = 0x80;
+    fis->command = 0xEA;
+    fis->device = 0x40;
+
+    asm volatile("" ::: "memory");
+    *ahci_reg(port->regs, AHCI_PxCI) = 1U << slot;
+
+    for (uint32_t spin = 0; spin < AHCI_TIMEOUT; ++spin)
+    {
+        if ((*ahci_reg(port->regs, AHCI_PxIS) & AHCI_IS_TFES) != 0)
+            return false;
+        if ((*ahci_reg(port->regs, AHCI_PxCI) & (1U << slot)) == 0)
+            break;
+        if (spin + 1 == AHCI_TIMEOUT)
+            return false;
+    }
+
+    if ((*ahci_reg(port->regs, AHCI_PxIS) & AHCI_IS_TFES) != 0)
+        return false;
+
+    *ahci_reg(port->regs, AHCI_PxIS) = 0xFFFFFFFFU;
     return true;
 }
 
