@@ -10,6 +10,7 @@ struct BlockDevice {
     uint64_t sector_count;
     bool (*read)(const BlockDevice*,uint64_t,uint32_t,void*);
     bool (*write)(const BlockDevice*,uint64_t,uint32_t,const void*);
+    bool (*flush)(const BlockDevice*);
     void* context;
 };
 
@@ -19,4 +20,5 @@ extern "C" const BlockDevice* block_get(uint32_t);
 extern "C" unsigned int block_device_count();
 extern "C" bool block_read(const BlockDevice*,uint64_t,uint32_t,void*);
 extern "C" bool block_write(const BlockDevice*,uint64_t,uint32_t,const void*);
+extern "C" bool block_flush(const BlockDevice*);
 extern "C" bool block_memory_test();
