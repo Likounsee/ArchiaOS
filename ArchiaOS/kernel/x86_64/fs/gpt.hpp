@@ -14,3 +14,5 @@ extern "C" bool gpt_read_partitions(const BlockDevice*,GptPartition*,uint32_t,ui
 extern "C" bool gpt_test();
 
 extern "C" bool gpt_register_partitions(const BlockDevice*);
+
+extern "C" bool gpt_partition_is_archiaos_system(const BlockDevice*);
