@@ -128,22 +128,34 @@ extern "C" bool vfs_initialize()
         return true;
 
     const unsigned int device_count = block_device_count();
-    for (unsigned int index = 1U; index <= device_count; ++index)
+
+    /* Prefer an explicitly discovered GPT partition over a whole disk.
+       A raw disk is only considered as a compatibility fallback for
+       existing non-partitioned test media. */
+    for (unsigned int pass = 0U; pass < 2U; ++pass)
     {
-        const BlockDevice* disk = block_get(index);
-        if (!disk)
-            continue;
-
-        if (!openfs_kernel_attach(disk, 0U, 4096U, &openfs_device))
-            continue;
-
-        if (openfs_mount(&openfs_mount_state, &openfs_device) == OPENFS_MOUNT_OK)
+        for (unsigned int index = 1U; index <= device_count; ++index)
         {
-            initialized = true;
-            return true;
-        }
+            const BlockDevice* disk = block_get(index);
+            if (!disk)
+                continue;
 
-        openfs_kernel_detach(&openfs_device);
+            const bool is_partition = disk->type == BLOCK_DEVICE_PARTITION;
+            if ((pass == 0U && !is_partition) ||
+                (pass == 1U && is_partition))
+                continue;
+
+            if (!openfs_kernel_attach(disk, 0U, 4096U, &openfs_device))
+                continue;
+
+            if (openfs_mount(&openfs_mount_state, &openfs_device) == OPENFS_MOUNT_OK)
+            {
+                initialized = true;
+                return true;
+            }
+
+            openfs_kernel_detach(&openfs_device);
+        }
     }
 
     return false;
