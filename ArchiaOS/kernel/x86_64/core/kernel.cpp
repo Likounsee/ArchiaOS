@@ -252,7 +252,9 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     if (!vfs_test())
     {
         debug_str("[KERNEL] VFS TEST FAILED STAGE ");
-        debug_char(static_cast<char>('0' + (vfs_test_stage() % 10U)));
+        const uint32_t stage = vfs_test_stage();
+        debug_char(static_cast<char>('0' + ((stage / 10U) % 10U)));
+        debug_char(static_cast<char>('0' + (stage % 10U)));
         debug_str("\n");
         halt();
     }
