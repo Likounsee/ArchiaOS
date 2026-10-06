@@ -30,6 +30,18 @@ static uint32_t config_read32(uint8_t bus, uint8_t device, uint8_t function, uin
     return io_in32(0xCFC);
 }
 
+static void config_write32(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint32_t value)
+{
+    const uint32_t address =
+        0x80000000U |
+        (static_cast<uint32_t>(bus) << 16) |
+        (static_cast<uint32_t>(device) << 11) |
+        (static_cast<uint32_t>(function) << 8) |
+        (offset & 0xFCU);
+    io_out32(0xCF8, address);
+    io_out32(0xCFC, value);
+}
+
 static void read_bars(PciDevice* device)
 {
     if (!device)
@@ -147,6 +159,20 @@ extern "C" const PciBar* pci_get_bar(const PciDevice* device, uint8_t index)
     if (!device || index >= 6)
         return nullptr;
     return &device->bars[index];
+}
+
+extern "C" bool pci_enable_bus_master(const PciDevice* device)
+{
+    if (!device)
+        return false;
+    const uint32_t command_status = config_read32(device->bus, device->device, device->function, 0x04);
+    const uint16_t command = static_cast<uint16_t>(command_status & 0xFFFFU);
+    const uint16_t updated = static_cast<uint16_t>(command | 0x0006U);
+    if (updated != command)
+        config_write32(device->bus, device->device, device->function, 0x04,
+                       (command_status & 0xFFFF0000U) | updated);
+    const uint32_t verify = config_read32(device->bus, device->device, device->function, 0x04);
+    return (verify & 0x0006U) == 0x0006U;
 }
 
 extern "C" bool pci_test()
