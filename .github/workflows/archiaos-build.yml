@@ -45,8 +45,165 @@ jobs:
           llvm-objdump -d ArchiaOS/build/ARCHIAOS_kernel.elf | head -n 120
           llvm-objdump -d --start-address=0x1004B0 --stop-address=0x1004F0 ArchiaOS/build/ARCHIAOS_kernel.elf
 
-      - name: Prepare storage test disk
-        run: truncate -s 64M ArchiaOS/build/storage-test.img
+      - name: Prepare GPT + OpenFS storage test disk
+        run: |
+          python3 - <<'PY'
+          import struct
+          import zlib
+
+          SECTOR = 512
+          DISK_SECTORS = 131072
+          BS = 4096
+          BLOCKS = 16000
+          FIRST = 2048
+          PARTITION_SECTORS = 128000
+          ENTRY_COUNT = 128
+          ENTRY_SIZE = 128
+          ENTRY_SECTORS = 32
+          BACKUP_ENTRIES = DISK_SECTORS - 1 - ENTRY_SECTORS
+
+          TYPE_GUID = bytes.fromhex("A17E4F529B224C8DA613529C7B106E41")
+          UNIQUE_GUID = bytes.fromhex("712C91D40B5843A6B20D6F8E39C41755")
+          DISK_GUID = bytes.fromhex("C3A8295D4E6B47919A2F11C8723D5590")
+          OPENFS_UUID = bytes.fromhex("4A1B72D95E334F80A1C6287D9014632E")
+
+          def crc32c(data):
+              crc = 0xffffffff
+              for value in data:
+                  crc ^= value
+                  for _ in range(8):
+                      crc = (crc >> 1) ^ (0x82F63B78 if crc & 1 else 0)
+              return (~crc) & 0xffffffff
+
+          def put16(buf, off, value):
+              struct.pack_into("<H", buf, off, value)
+
+          def put32(buf, off, value):
+              struct.pack_into("<I", buf, off, value)
+
+          def put64(buf, off, value):
+              struct.pack_into("<Q", buf, off, value)
+
+          image = bytearray(DISK_SECTORS * SECTOR)
+
+          # Protective MBR.
+          mbr = memoryview(image)[0:SECTOR]
+          mbr[446 + 4] = 0xEE
+          put32(mbr, 446 + 8, 1)
+          put32(mbr, 446 + 12, 0xffffffff)
+          mbr[510:512] = b"\x55\xAA"
+
+          # One deterministic ArchiaOS/OpenFS GPT partition.
+          entries = bytearray(ENTRY_SECTORS * SECTOR)
+          entries[0:16] = TYPE_GUID
+          entries[16:32] = UNIQUE_GUID
+          put64(entries, 32, FIRST)
+          put64(entries, 40, FIRST + PARTITION_SECTORS - 1)
+          name = "ArchiaOS OpenFS".encode("utf-16le")
+          entries[56:56 + len(name)] = name
+          entries_crc = zlib.crc32(entries) & 0xffffffff
+
+          def make_header(current, backup, entries_lba):
+              h = bytearray(SECTOR)
+              h[0:8] = b"EFI PART"
+              put32(h, 8, 0x00010000)
+              put32(h, 12, 92)
+              put64(h, 24, current)
+              put64(h, 32, backup)
+              put64(h, 40, 34)
+              put64(h, 48, BACKUP_ENTRIES - 1)
+              h[56:72] = DISK_GUID
+              put64(h, 72, entries_lba)
+              put32(h, 80, ENTRY_COUNT)
+              put32(h, 84, ENTRY_SIZE)
+              put32(h, 88, entries_crc)
+              put32(h, 16, 0)
+              put32(h, 16, zlib.crc32(h[:92]) & 0xffffffff)
+              return h
+
+          image[2 * SECTOR:(2 + ENTRY_SECTORS) * SECTOR] = entries
+          image[BACKUP_ENTRIES * SECTOR:(BACKUP_ENTRIES + ENTRY_SECTORS) * SECTOR] = entries
+          image[SECTOR:2 * SECTOR] = make_header(1, DISK_SECTORS - 1, 2)
+          image[(DISK_SECTORS - 1) * SECTOR:DISK_SECTORS * SECTOR] = make_header(DISK_SECTORS - 1, 1, BACKUP_ENTRIES)
+
+          # OpenFS 1.3 layout for the 4096-byte, 16000-block partition.
+          bits = BS * 8
+          bb = (BLOCKS + bits - 1) // bits
+          journal = max(BLOCKS // 16, 8)
+          data = max(BLOCKS // 4, 8)
+          metadata = BLOCKS - 3
+          inode_table = metadata - bb - 1 - journal - data
+          while True:
+              inode_count = (inode_table * BS) // 256
+              ib = (inode_count + bits - 1) // bits
+              next_inode_table = metadata - 1 - bb - ib - data
+              if next_inode_table == inode_table:
+                  break
+              inode_table = next_inode_table
+
+          ib = (inode_count + bits - 1) // bits
+          ib_start = 3 + bb
+          it_start = ib_start + ib
+          journal_start = it_start + inode_table
+          data_start = journal_start + journal
+
+          partition = memoryview(image)[FIRST * SECTOR:(FIRST + PARTITION_SECTORS) * SECTOR]
+
+          # Superblock encoder.
+          sb = bytearray(BS)
+          sb[0:8] = b"OPENFS\x00\x00"
+          put16(sb, 8, 1)
+          put16(sb, 10, 3)
+          put64(sb, 12, 1)
+          put32(sb, 20, BS)
+          put32(sb, 24, BS)
+          put64(sb, 28, BLOCKS)
+          put64(sb, 36, 2)
+          put64(sb, 44, BLOCKS - 3)
+          put64(sb, 52, 3)
+          put64(sb, 60, bb)
+          put64(sb, 68, ib_start)
+          put64(sb, 76, ib)
+          put64(sb, 84, it_start)
+          put64(sb, 92, inode_table)
+          put64(sb, 100, journal_start)
+          put64(sb, 108, journal)
+          put64(sb, 116, data_start)
+          put64(sb, 124, data)
+          put64(sb, 132, 1)
+          put64(sb, 140, 1)
+          sb[148:164] = OPENFS_UUID
+          put32(sb, 4088, 0)
+          put32(sb, 4088, crc32c(sb[:4088]))
+
+          partition[0:BS] = sb
+          partition[(BLOCKS - 1) * BS:BLOCKS * BS] = sb
+
+          # Block bitmap: reserve every block before the data area and the backup superblock.
+          block_bitmap = memoryview(partition)[3 * BS:4 * BS]
+          for bit in list(range(data_start)) + [BLOCKS - 1]:
+              block_bitmap[bit // 8] |= 1 << (bit % 8)
+
+          # Inode bitmap: inode #1 is the root directory.
+          inode_bitmap = memoryview(partition)[ib_start * BS:(ib_start + ib) * BS]
+          inode_bitmap[0] |= 1
+
+          # Root inode.
+          inode = bytearray(256)
+          put64(inode, 0, 1)
+          put64(inode, 8, 1)
+          put64(inode, 32, 1)
+          put64(inode, 40, 1)
+          put32(inode, 72, 0o40755)
+          inode[216:224] = b"OINODE1\x00"
+          put32(inode, 224, 0)
+          put32(inode, 224, crc32c(inode[:224]))
+          inode_offset = it_start * BS
+          partition[inode_offset:inode_offset + 256] = inode
+
+          with open("ArchiaOS/build/storage-test.img", "wb") as f:
+              f.write(image)
+          PY
 
       - name: Prepare writable OVMF variables
         run: cp /usr/share/OVMF/OVMF_VARS_4M.fd ArchiaOS/build/OVMF_VARS_4M.fd
