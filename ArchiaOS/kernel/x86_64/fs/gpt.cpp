@@ -48,6 +48,77 @@ extern "C" bool gpt_read_partitions(const BlockDevice* d,GptPartition* out,uint3
     }
     return true;
 }
+struct GptBlockContext
+{
+    const BlockDevice* parent;
+    uint64_t first_lba;
+    uint64_t sector_count;
+};
+
+static GptBlockContext gpt_contexts[16]{};
+
+static bool gpt_partition_read(const BlockDevice* d,uint64_t lba,uint32_t count,void* out)
+{
+    if(!d||!out||!d->context||lba>=d->sector_count||!count||static_cast<uint64_t>(count)>d->sector_count-lba)
+        return false;
+    auto* c=static_cast<GptBlockContext*>(d->context);
+    if(!c->parent||lba>UINT64_MAX-c->first_lba||
+       static_cast<uint64_t>(count)>c->sector_count-lba)
+        return false;
+    return block_read(c->parent,c->first_lba+lba,count,out);
+}
+
+static bool gpt_partition_write(const BlockDevice* d,uint64_t lba,uint32_t count,const void* in)
+{
+    if(!d||!in||!d->context||lba>=d->sector_count||!count||static_cast<uint64_t>(count)>d->sector_count-lba)
+        return false;
+    auto* c=static_cast<GptBlockContext*>(d->context);
+    if(!c->parent||lba>UINT64_MAX-c->first_lba||
+       static_cast<uint64_t>(count)>c->sector_count-lba)
+        return false;
+    return block_write(c->parent,c->first_lba+lba,count,in);
+}
+
+static bool gpt_partition_flush(const BlockDevice* d)
+{
+    if(!d||!d->context)return false;
+    auto* c=static_cast<GptBlockContext*>(d->context);
+    return c->parent&&block_flush(c->parent);
+}
+
+extern "C" bool gpt_register_partitions(const BlockDevice* d)
+{
+    if(!d)return false;
+    GptPartition parts[128]{};
+    uint32_t count=0;
+    if(!gpt_read_partitions(d,parts,128,&count))return false;
+
+    bool registered=false;
+    for(uint32_t i=0;i<count&&i<16;++i)
+    {
+        if(parts[i].last_lba<parts[i].first_lba)continue;
+        const uint64_t sectors=parts[i].last_lba-parts[i].first_lba+1U;
+        GptBlockContext* ctx=nullptr;
+        for(auto& candidate:gpt_contexts)
+            if(!candidate.parent){ctx=&candidate;break;}
+        if(!ctx)break;
+        *ctx={d,parts[i].first_lba,sectors};
+
+        BlockDevice partition{
+            0,BLOCK_DEVICE_MEMORY,d->sector_size,sectors,
+            gpt_partition_read,gpt_partition_write,gpt_partition_flush,ctx
+        };
+        uint32_t id=0;
+        if(!block_register(&partition,&id))
+        {
+            *ctx={};
+            continue;
+        }
+        registered=true;
+    }
+    return registered;
+}
+
 extern "C" bool gpt_test() {
     constexpr uint32_t SS=512; constexpr uint64_t SC=4096;
     static uint8_t disk[SS*SC]={};
