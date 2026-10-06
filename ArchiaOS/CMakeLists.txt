@@ -242,8 +242,8 @@ foreach(openfs_source IN LISTS ARCHIAOS_OPENFS_C_SOURCES)
     archiaos_openfs_c_compile(${openfs_object} ${ARCHIAOS_OPENFS_ROOT}/src/${openfs_source})
     list(APPEND ARCHIAOS_KERNEL_OPENFS_OBJECTS ${openfs_object})
 endforeach()
-archiaos_openfs_cpp_compile(${ARCHIAOS_KERNEL_OPENFS_ADAPTER_OBJ} ${ARCHIAOS_KERNEL_X86_64_DIR}/fs/openfs_adapter.cpp)
-archiaos_openfs_cpp_compile(${ARCHIAOS_KERNEL_OPENFS_TEST_OBJ} ${ARCHIAOS_KERNEL_X86_64_DIR}/fs/openfs_test.cpp)
+archiaos_openfs_cpp_compile(${ARCHIAOS_KERNEL_OPENFS_ADAPTER_OBJ} ${ARCHIAOS_FS_DIR}/openfs_adapter.cpp)
+archiaos_openfs_cpp_compile(${ARCHIAOS_KERNEL_OPENFS_TEST_OBJ} ${ARCHIAOS_FS_DIR}/openfs_test.cpp)
 
 add_custom_command(
     OUTPUT ${ARCHIAOS_KERNEL_ELF}
