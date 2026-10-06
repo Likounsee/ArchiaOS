@@ -46,7 +46,8 @@ static openfs_io_result_t write_blocks(void* context,uint64_t first,uint32_t cou
 static openfs_io_result_t flush_blocks(void* context)
 {
     auto* c=static_cast<OpenFsKernelContext*>(context);
-    return c&&c->used&&c->device?OPENFS_IO_OK:OPENFS_IO_INVALID_ARGUMENT;
+    if(!c||!c->used||!c->device)return OPENFS_IO_INVALID_ARGUMENT;
+    return block_flush(c->device)?OPENFS_IO_OK:OPENFS_IO_IO_ERROR;
 }
 
 extern "C" bool openfs_kernel_attach(
