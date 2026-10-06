@@ -1,4 +1,5 @@
 #include "vfs.hpp"
+#include <string.h>
 #include "openfs_adapter.hpp"
 #include "openfs/crc32c.h"
 #include "openfs/file.h"
