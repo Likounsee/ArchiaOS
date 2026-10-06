@@ -62,7 +62,7 @@ extern "C" uint32_t openfs_kernel_test()
         return 21U;
     if(!openfs_kernel_attach(disk,0U,4096U,&device))return 1U;
     openfs_test_debug("OPENFS TEST: ATTACH OK\n");
-    if(!openfs_kernel_attach(disk,0U,4096U,&second_device))
+    if(!openfs_kernel_attach(&test_disk,0U,4096U,&second_device))
     {
         openfs_kernel_detach(&device);
         return 18U;
