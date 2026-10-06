@@ -127,21 +127,26 @@ extern "C" bool vfs_initialize()
     if (initialized)
         return true;
 
-    const BlockDevice* disk = block_get(1U);
-    if (!disk)
-        return false;
-
-    if (!openfs_kernel_attach(disk, 0U, 4096U, &openfs_device))
-        return false;
-
-    if (openfs_mount(&openfs_mount_state, &openfs_device) != OPENFS_MOUNT_OK)
+    const unsigned int device_count = block_device_count();
+    for (unsigned int index = 1U; index <= device_count; ++index)
     {
+        const BlockDevice* disk = block_get(index);
+        if (!disk)
+            continue;
+
+        if (!openfs_kernel_attach(disk, 0U, 4096U, &openfs_device))
+            continue;
+
+        if (openfs_mount(&openfs_mount_state, &openfs_device) == OPENFS_MOUNT_OK)
+        {
+            initialized = true;
+            return true;
+        }
+
         openfs_kernel_detach(&openfs_device);
-        return false;
     }
 
-    initialized = true;
-    return true;
+    return false;
 }
 
 extern "C" bool vfs_mkdir(const char* path)
