@@ -53,6 +53,7 @@ struct GptBlockContext
     const BlockDevice* parent;
     uint64_t first_lba;
     uint64_t sector_count;
+    uint8_t type_guid[16];
 };
 
 static GptBlockContext gpt_contexts[16]{};
@@ -102,7 +103,8 @@ extern "C" bool gpt_register_partitions(const BlockDevice* d)
         for(auto& candidate:gpt_contexts)
             if(!candidate.parent){ctx=&candidate;break;}
         if(!ctx)break;
-        *ctx={d,parts[i].first_lba,sectors};
+        *ctx={d,parts[i].first_lba,sectors,{}};
+        for(unsigned int b=0;b<16;++b) ctx->type_guid[b]=parts[i].type_guid[b];
 
         BlockDevice partition{
             0,BLOCK_DEVICE_PARTITION,d->sector_size,sectors,
@@ -142,4 +144,13 @@ extern "C" bool gpt_test() {
     GptPartition p[4]={};uint32_t n=0;
     if(!gpt_read_partitions(&d,p,4,&n)||n!=1||p[0].index!=1||p[0].first_lba!=2048||p[0].last_lba!=3071) return false;
     disk[SS+24]^=1; return !gpt_read_partitions(&d,p,4,&n);
+}
+
+extern "C" bool gpt_partition_is_archiaos_system(const BlockDevice* d)
+{
+    const uint8_t kTypeGuid[16]={0xA1,0x7E,0x4F,0x52,0x9B,0x22,0x4C,0x8D,0xA6,0x13,0x52,0x9C,0x7B,0x10,0x6E,0x41};
+    if(!d||d->type!=BLOCK_DEVICE_PARTITION||!d->context)return false;
+    const auto* c=static_cast<const GptBlockContext*>(d->context);
+    for(unsigned int i=0;i<16;++i) if(c->type_guid[i]!=kTypeGuid[i]) return false;
+    return true;
 }
