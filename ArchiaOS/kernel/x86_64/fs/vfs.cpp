@@ -368,10 +368,8 @@ extern "C" bool vfs_test()
         vfs_readdir("/vfs-test", 1U, &entry))
         return false;
 
-    if (openfs_unmount(&openfs_mount_state) != OPENFS_MOUNT_OK)
+    if (!vfs_sync() || !vfs_shutdown())
         return false;
-    openfs_kernel_detach(&openfs_device);
-    initialized = false;
 
     if (!vfs_initialize())
         return false;
