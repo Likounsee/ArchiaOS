@@ -7,6 +7,41 @@
 #include "openfs/inode.h"
 #include "../drivers/block.hpp"
 
+struct OpenFsTestWindow
+{
+    const BlockDevice* base;
+};
+
+static bool openfs_test_window_read(const BlockDevice* device, uint64_t lba,
+                                    uint32_t count, void* out)
+{
+    if (!device || !out || !device->context || !count ||
+        lba >= device->sector_count ||
+        static_cast<uint64_t>(count) > device->sector_count - lba)
+        return false;
+    const auto* window = static_cast<const OpenFsTestWindow*>(device->context);
+    return window->base && block_read(window->base, lba, count, out);
+}
+
+static bool openfs_test_window_write(const BlockDevice* device, uint64_t lba,
+                                     uint32_t count, const void* input)
+{
+    if (!device || !input || !device->context || !count ||
+        lba >= device->sector_count ||
+        static_cast<uint64_t>(count) > device->sector_count - lba)
+        return false;
+    const auto* window = static_cast<const OpenFsTestWindow*>(device->context);
+    return window->base && block_write(window->base, lba, count, input);
+}
+
+static bool openfs_test_window_flush(const BlockDevice* device)
+{
+    if (!device || !device->context)
+        return false;
+    const auto* window = static_cast<const OpenFsTestWindow*>(device->context);
+    return window->base && block_flush(window->base);
+}
+
 static void openfs_test_debug(const char* s)
 {
     for (int i = 0; s[i] != '\0'; ++i)
