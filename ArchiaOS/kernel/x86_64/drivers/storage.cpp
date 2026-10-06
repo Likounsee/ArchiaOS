@@ -506,5 +506,29 @@ extern "C" bool storage_test()
             return false;
     }
 
+    if (real_block_device_count != 0)
+    {
+        bool verified = false;
+        for (unsigned int port_number = 0; port_number < 32; ++port_number)
+        {
+            const AhciPortContext& port = ahci_ports[port_number];
+            if (!port.block_id)
+                continue;
+
+            const BlockDevice* device = block_get(port.block_id);
+            if (!device || device->sector_count == 0)
+                return false;
+
+            uint8_t sector[AHCI_SECTOR_SIZE] = {};
+            if (!block_read(device, 0, 1, sector))
+                return false;
+
+            verified = true;
+            break;
+        }
+        if (!verified)
+            return false;
+    }
+
     return true;
 }
