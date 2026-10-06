@@ -24,7 +24,6 @@ static constexpr uint32_t AHCI_PxCMD = 0x18;
 static constexpr uint32_t AHCI_PxTFD = 0x20;
 static constexpr uint32_t AHCI_PxSIG = 0x24;
 static constexpr uint32_t AHCI_PxSSTS = 0x28;
-static constexpr uint32_t AHCI_PxSERR = 0x30;
 static constexpr uint32_t AHCI_PxCI = 0x38;
 static constexpr uint32_t AHCI_CMD_ST = 1U << 0;
 static constexpr uint32_t AHCI_CMD_FRE = 1U << 4;
