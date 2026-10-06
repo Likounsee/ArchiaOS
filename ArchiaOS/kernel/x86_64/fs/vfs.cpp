@@ -267,6 +267,17 @@ extern "C" bool vfs_readdir(const char* path, uint32_t index, VfsDirEntry* entry
                 &child) != OPENFS_INODE_OK)
             return false;
 
+        if (child.generation != dir_entry.generation)
+            return false;
+
+        const uint32_t child_mode = child.mode & OPENFS_INODE_TYPE_MASK;
+        const uint8_t expected_type =
+            child_mode == OPENFS_INODE_MODE_DIRECTORY ? 2U :
+            child_mode == OPENFS_INODE_MODE_SYMLINK ? 3U :
+            child_mode == OPENFS_INODE_MODE_REGULAR ? 1U : 0U;
+        if (expected_type == 0U || expected_type != dir_entry.type)
+            return false;
+
         entry->size = child.size;
 
         unsigned int i = 0U;
