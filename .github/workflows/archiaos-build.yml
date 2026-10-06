@@ -45,6 +45,9 @@ jobs:
           llvm-objdump -d ArchiaOS/build/ARCHIAOS_kernel.elf | head -n 120
           llvm-objdump -d --start-address=0x1004B0 --stop-address=0x1004F0 ArchiaOS/build/ARCHIAOS_kernel.elf
 
+      - name: Prepare storage test disk
+        run: truncate -s 64M ArchiaOS/build/storage-test.img
+
       - name: Prepare writable OVMF variables
         run: cp /usr/share/OVMF/OVMF_VARS_4M.fd ArchiaOS/build/OVMF_VARS_4M.fd
 
@@ -63,6 +66,7 @@ jobs:
               -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
               -drive if=pflash,format=raw,file="ArchiaOS/build/OVMF_VARS_${cpu}.fd" \
               -drive format=raw,file=fat:rw:ArchiaOS/build/esp \
+              -drive format=raw,file=ArchiaOS/build/storage-test.img \
               -display none -serial none -monitor none \
               -debugcon stdio -global isa-debugcon.iobase=0xe9 \
               -no-reboot -no-shutdown > "qemu-${cpu}.log" 2>&1
@@ -105,6 +109,7 @@ jobs:
               "STORAGE: BLOCK DEVICE OK" \
               "STORAGE: GPT OK" \
               "STORAGE: CONTROLLER DISCOVERY OK" \
+              "STORAGE: REAL BLOCK DEVICE OK" \
               "ACPI: RSDP/MADT OK" \
               "SMP: APPLICATION PROCESSORS ONLINE"; do
               grep -a -F -q -- "$marker" "qemu-${cpu}.log" || {
@@ -138,6 +143,7 @@ jobs:
               -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
               -drive if=pflash,format=raw,file="ArchiaOS/build/OVMF_VARS_scale_${smp}.fd" \
               -drive format=raw,file=fat:rw:ArchiaOS/build/esp \
+              -drive format=raw,file=ArchiaOS/build/storage-test.img \
               -display none -serial none -monitor none \
               -debugcon stdio -global isa-debugcon.iobase=0xe9 \
               -no-reboot -no-shutdown > "qemu-scale-${smp}.log" 2>&1 || test $? -eq 124
