@@ -149,6 +149,26 @@ extern "C" bool vfs_initialize()
     return false;
 }
 
+extern "C" bool vfs_sync()
+{
+    if (!initialized)
+        return false;
+    return openfs_sync(&openfs_mount_state) == OPENFS_MOUNT_OK;
+}
+
+extern "C" bool vfs_shutdown()
+{
+    if (!initialized)
+        return true;
+
+    if (openfs_unmount(&openfs_mount_state) != OPENFS_MOUNT_OK)
+        return false;
+
+    openfs_kernel_detach(&openfs_device);
+    initialized = false;
+    return true;
+}
+
 extern "C" bool vfs_mkdir(const char* path)
 {
     if (!initialized || !path)
