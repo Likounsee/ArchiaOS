@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 
-enum BlockDeviceType : uint32_t { BLOCK_DEVICE_MEMORY=1, BLOCK_DEVICE_AHCI=2, BLOCK_DEVICE_NVME=3, BLOCK_DEVICE_USB=4 };
+enum BlockDeviceType : uint32_t { BLOCK_DEVICE_MEMORY=1, BLOCK_DEVICE_AHCI=2, BLOCK_DEVICE_NVME=3, BLOCK_DEVICE_USB=4, BLOCK_DEVICE_PARTITION=5 };
 
 struct BlockDevice {
     uint32_t id;
