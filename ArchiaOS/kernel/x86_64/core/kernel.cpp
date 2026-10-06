@@ -251,11 +251,7 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     debug_str("STORAGE: CONTROLLER DISCOVERY OK\n");
     if (!vfs_test())
     {
-        debug_str("[KERNEL] VFS TEST FAILED STAGE ");
-        const uint32_t stage = vfs_test_stage();
-        debug_char(static_cast<char>('0' + ((stage / 10U) % 10U)));
-        debug_char(static_cast<char>('0' + (stage % 10U)));
-        debug_str("\n");
+        debug_str("[KERNEL] VFS TEST FAILED\n");
         halt();
     }
     debug_str("VFS: OPENFS BACKEND OK\n");
