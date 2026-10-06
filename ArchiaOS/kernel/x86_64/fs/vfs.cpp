@@ -338,6 +338,23 @@ extern "C" bool vfs_test()
         vfs_readdir("/vfs-test", 1U, &entry))
         return false;
 
+    if (openfs_unmount(&openfs_mount_state) != OPENFS_MOUNT_OK)
+        return false;
+    openfs_kernel_detach(&openfs_device);
+    initialized = false;
+
+    if (!vfs_initialize())
+        return false;
+
+    memset(buffer, 0, sizeof(buffer));
+    read_size = 0U;
+    if (!vfs_read("/vfs-test/hello", 0U, buffer, sizeof(buffer), &read_size) ||
+        read_size != sizeof(message))
+        return false;
+    for (unsigned int i = 0U; i < sizeof(message); ++i)
+        if (buffer[i] != message[i])
+            return false;
+
     if (!vfs_unlink("/vfs-test/hello") ||
         !vfs_unlink("/vfs-test") ||
         vfs_stat("/vfs-test/hello", &stat))
