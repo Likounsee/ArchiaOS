@@ -34,3 +34,4 @@ extern "C" bool vfs_stat(const char* path, VfsStat* stat);
 extern "C" bool vfs_readdir(const char* path, uint32_t index, VfsDirEntry* entry);
 extern "C" bool vfs_read(const char* path, uint64_t offset, void* data, uint64_t size, uint64_t* read_size);
 extern "C" bool vfs_test();
+extern "C" uint32_t vfs_test_stage();
