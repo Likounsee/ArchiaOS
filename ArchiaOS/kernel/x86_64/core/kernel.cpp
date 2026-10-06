@@ -254,7 +254,7 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         debug_str("[KERNEL] VFS TEST FAILED\n");
         halt();
     }
-    debug_str("VFS: RAMFS OK\n");
+    debug_str("VFS: OPENFS BACKEND OK\n");
     if (!pci_test())
     {
         debug_str("[KERNEL] PCI ENUMERATION FAILED\n");
