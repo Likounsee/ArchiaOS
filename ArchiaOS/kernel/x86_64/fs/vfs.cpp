@@ -153,7 +153,7 @@ extern "C" bool vfs_sync()
 {
     if (!initialized)
         return false;
-    return vfs_sync();
+    return openfs_sync(&openfs_mount_state) == OPENFS_MOUNT_OK;
 }
 
 extern "C" bool vfs_shutdown()
