@@ -14,6 +14,10 @@ extern "C" uint32_t openfs_kernel_test()
 
     openfs_block_device_t device{};
     openfs_block_device_t second_device{};
+    if (openfs_kernel_attach(disk,0U,4095U,&device) ||
+        openfs_kernel_attach(disk,0U,65537U,&device) ||
+        openfs_kernel_attach(disk,disk->sector_count,4096U,&device))
+        return 21U;
     if(!openfs_kernel_attach(disk,0U,4096U,&device))return 1U;
     if(!openfs_kernel_attach(disk,0U,4096U,&second_device))
     {
