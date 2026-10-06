@@ -12,3 +12,5 @@ struct GptPartition {
 };
 extern "C" bool gpt_read_partitions(const BlockDevice*,GptPartition*,uint32_t,uint32_t*);
 extern "C" bool gpt_test();
+
+extern "C" bool gpt_register_partitions(const BlockDevice*);
