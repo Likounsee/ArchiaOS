@@ -419,10 +419,14 @@ extern "C" bool vfs_test()
         entry.name[2] != 'r' ||
         entry.name[3] != 'g' ||
         entry.name[4] != 'e' ||
-        entry.name[5] != 0 ||
-        vfs_readdir("/vfs-test", 2U, &entry))
+        entry.name[5] != 0)
     {
-        vfs_test_stage_value = 6U;
+        vfs_test_stage_value = 66U;
+        return false;
+    }
+    if (vfs_readdir("/vfs-test", 2U, &entry))
+    {
+        vfs_test_stage_value = 67U;
         return false;
     }
 
