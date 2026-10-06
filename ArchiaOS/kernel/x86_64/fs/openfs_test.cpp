@@ -17,7 +17,7 @@ extern "C" uint32_t openfs_kernel_test()
 {
     openfs_test_debug("OPENFS TEST: START\n");
     const BlockDevice* disk=block_get(1U);
-    if(!disk)return false;
+    if(!disk)return 22U;
 
     openfs_block_device_t device{};
     openfs_block_device_t second_device{};
