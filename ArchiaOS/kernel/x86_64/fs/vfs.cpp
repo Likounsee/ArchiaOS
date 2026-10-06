@@ -1,5 +1,4 @@
 #include "vfs.hpp"
-#include <string.h>
 #include "openfs_adapter.hpp"
 #include "openfs/crc32c.h"
 #include "openfs/file.h"
@@ -11,6 +10,11 @@
 static openfs_block_device_t openfs_device{};
 static openfs_mount_t openfs_mount_state{};
 static bool initialized = false;
+static void vfs_zero_buffer(char* buffer, unsigned int size) {
+    for (unsigned int i = 0U; i < size; ++i)
+        buffer[i] = 0;
+}
+
 
 static bool inode_count(uint64_t* count)
 {
@@ -347,7 +351,7 @@ extern "C" bool vfs_test()
     if (!vfs_initialize())
         return false;
 
-    memset(buffer, 0, sizeof(buffer));
+    vfs_zero_buffer(buffer, sizeof(buffer));
     read_size = 0U;
     if (!vfs_read("/vfs-test/hello", 0U, buffer, sizeof(buffer), &read_size) ||
         read_size != sizeof(message))
