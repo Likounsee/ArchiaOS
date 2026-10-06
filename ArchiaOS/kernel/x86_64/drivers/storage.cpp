@@ -568,7 +568,8 @@ extern "C" bool storage_test()
                 return false;
 
             uint8_t sector[AHCI_SECTOR_SIZE] = {};
-            if (!block_read(device, 0, 1, sector))
+            if (!block_read(device, 0, 1, sector) ||
+                !block_flush(device))
                 return false;
 
             verified = true;
