@@ -350,13 +350,26 @@ extern "C" bool vfs_test()
         return false;
 
     static const char message[] = "ArchiaOS OpenFS VFS";
+    static uint8_t large_message[9000];
+    static uint8_t large_buffer[9000];
     char buffer[sizeof(message)]{};
     uint64_t read_size = 0U;
 
+    for (unsigned int i = 0U; i < sizeof(large_message); ++i)
+        large_message[i] = static_cast<uint8_t>((i * 37U) ^ (i >> 3U));
+
     if (!vfs_write("/vfs-test/hello", 0U, message, sizeof(message)) ||
         !vfs_read("/vfs-test/hello", 0U, buffer, sizeof(buffer), &read_size) ||
-        read_size != sizeof(message))
+        read_size != sizeof(message) ||
+        !vfs_create("/vfs-test/large") ||
+        !vfs_write("/vfs-test/large", 0U, large_message, sizeof(large_message)) ||
+        !vfs_read("/vfs-test/large", 0U, large_buffer, sizeof(large_buffer), &read_size) ||
+        read_size != sizeof(large_message))
         return false;
+
+    for (unsigned int i = 0U; i < sizeof(large_message); ++i)
+        if (large_buffer[i] != large_message[i])
+            return false;
 
     for (unsigned int i = 0U; i < sizeof(message); ++i)
         if (buffer[i] != message[i])
@@ -388,13 +401,19 @@ extern "C" bool vfs_test()
     vfs_zero_buffer(buffer, sizeof(buffer));
     read_size = 0U;
     if (!vfs_read("/vfs-test/hello", 0U, buffer, sizeof(buffer), &read_size) ||
-        read_size != sizeof(message))
+        read_size != sizeof(message) ||
+        !vfs_read("/vfs-test/large", 0U, large_buffer, sizeof(large_buffer), &read_size) ||
+        read_size != sizeof(large_message))
         return false;
     for (unsigned int i = 0U; i < sizeof(message); ++i)
         if (buffer[i] != message[i])
             return false;
+    for (unsigned int i = 0U; i < sizeof(large_message); ++i)
+        if (large_buffer[i] != large_message[i])
+            return false;
 
-    if (!vfs_unlink("/vfs-test/hello") ||
+    if (!vfs_unlink("/vfs-test/large") ||
+        !vfs_unlink("/vfs-test/hello") ||
         !vfs_unlink("/vfs-test") ||
         vfs_stat("/vfs-test/hello", &stat))
         return false;
