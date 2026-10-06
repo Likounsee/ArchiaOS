@@ -1,254 +1,272 @@
 #include "vfs.hpp"
+#include "openfs_adapter.hpp"
+#include "openfs/crc32c.h"
+#include "openfs/file.h"
+#include "openfs/inode.h"
+#include "openfs/path.h"
+#include "openfs/mount.h"
+#include "../drivers/block.hpp"
 
-static constexpr unsigned int VFS_MAX_NODES = 128;
-static constexpr unsigned int VFS_NAME_SIZE = 32;
-static constexpr unsigned int VFS_FILE_CAPACITY = 4096;
-
-struct VfsNode
-{
-    uint32_t type;
-    uint32_t parent;
-    uint64_t size;
-    char name[VFS_NAME_SIZE];
-    uint8_t data[VFS_FILE_CAPACITY];
-};
-
-static VfsNode nodes[VFS_MAX_NODES] = {};
+static openfs_block_device_t openfs_device{};
+static openfs_mount_t openfs_mount_state{};
 static bool initialized = false;
 
-static bool text_equal(const char* a, const char* b)
+static bool inode_count(uint64_t* count)
 {
-    unsigned int i = 0;
-    while (a[i] && b[i] && a[i] == b[i])
-        ++i;
-    return a[i] == 0 && b[i] == 0;
+    if (!count || openfs_mount_state.superblock.block_size == 0U)
+        return false;
+    const uint64_t blocks = openfs_mount_state.superblock.inode_table_blocks;
+    if (blocks > UINT64_MAX / openfs_mount_state.superblock.block_size)
+        return false;
+    const uint64_t bytes = blocks * static_cast<uint64_t>(openfs_mount_state.superblock.block_size);
+    *count = bytes / OPENFS_INODE_SIZE;
+    return *count != 0U;
 }
 
-static unsigned int text_length(const char* s)
+static bool lookup_inode(const char* path, openfs_inode_t* inode)
 {
-    unsigned int n = 0;
-    while (s && s[n])
-        ++n;
-    return n;
+    if (!initialized || !path || !inode)
+        return false;
+
+    uint64_t number = 0U;
+    if (openfs_path_lookup_follow(
+            &openfs_device, &openfs_mount_state.superblock, path, &number) != OPENFS_PATH_OK)
+        return false;
+
+    uint64_t count = 0U;
+    if (!inode_count(&count))
+        return false;
+
+    return openfs_inode_read(
+        &openfs_device,
+        openfs_mount_state.superblock.inode_table_start,
+        count,
+        number,
+        inode) == OPENFS_INODE_OK;
 }
 
-static unsigned int find_node(const char* path)
+static uint32_t vfs_type_from_mode(uint32_t mode)
 {
-    if (!initialized || !path || path[0] != '/')
-        return 0;
+    if ((mode & OPENFS_INODE_TYPE_MASK) == OPENFS_INODE_MODE_DIRECTORY)
+        return VFS_NODE_DIRECTORY;
+    return VFS_NODE_FILE;
+}
 
-    if (path[1] == 0)
-        return 0;
+static bool decode_directory_entry(
+    const uint8_t* raw,
+    char* name,
+    openfs_dir_entry_t* entry)
+{
+    if (!raw || !name || !entry)
+        return false;
 
-    unsigned int current = 0;
-    unsigned int start = 1;
-
-    while (path[start])
+    bool empty = true;
+    for (unsigned int i = 0U; i < OPENFS_DIR_ENTRY_SIZE; ++i)
     {
-        unsigned int end = start;
-        while (path[end] && path[end] != '/')
-            ++end;
-
-        char component[VFS_NAME_SIZE] = {};
-        const unsigned int length = end - start;
-        if (length == 0 || length >= VFS_NAME_SIZE)
-            return 0;
-
-        for (unsigned int i = 0; i < length; ++i)
-            component[i] = path[start + i];
-
-        unsigned int next = 0;
-        for (unsigned int i = 1; i < VFS_MAX_NODES; ++i)
+        if (raw[i] != 0U)
         {
-            if (nodes[i].type != VFS_NODE_UNUSED &&
-                nodes[i].parent == current &&
-                text_equal(nodes[i].name, component))
-            {
-                next = i;
-                break;
-            }
+            empty = false;
+            break;
         }
-
-        if (next == 0)
-            return 0;
-
-        current = next;
-        start = path[end] ? end + 1 : end;
     }
-
-    return current;
-}
-
-static bool split_parent(const char* path, unsigned int* parent, char* name)
-{
-    if (!path || !parent || !name || path[0] != '/')
+    if (empty)
         return false;
 
-    unsigned int length = text_length(path);
-    if (length < 2 || length >= 256)
+    static const char magic[] = "ODIR1";
+    for (unsigned int i = 0U; i < 5U; ++i)
+        if (raw[i] != static_cast<uint8_t>(magic[i]))
+            return false;
+
+    const uint32_t stored =
+        static_cast<uint32_t>(raw[252U]) |
+        (static_cast<uint32_t>(raw[253U]) << 8U) |
+        (static_cast<uint32_t>(raw[254U]) << 16U) |
+        (static_cast<uint32_t>(raw[255U]) << 24U);
+    if (stored != openfs_crc32c(raw, 252U))
         return false;
 
-    int slash = -1;
-    for (unsigned int i = 1; i < length; ++i)
-        if (path[i] == '/')
-            slash = static_cast<int>(i);
-
-    const unsigned int name_start = slash < 0 ? 1 : static_cast<unsigned int>(slash + 1);
-    const unsigned int name_length = length - name_start;
-    if (name_length == 0 || name_length >= VFS_NAME_SIZE)
+    const unsigned int length = raw[7U];
+    if (length == 0U || length > OPENFS_DIR_NAME_MAX)
         return false;
 
-    for (unsigned int i = 0; i < name_length; ++i)
-        name[i] = path[name_start + i];
-    name[name_length] = 0;
-
-    if (slash < 0)
+    entry->inode_number = 0U;
+    entry->generation = 0U;
+    for (unsigned int k = 0U; k < 8U; ++k)
     {
-        *parent = 0;
-        return true;
+        entry->inode_number |= static_cast<uint64_t>(raw[8U + k]) << (8U * k);
+        entry->generation |= static_cast<uint64_t>(raw[16U + k]) << (8U * k);
     }
+    entry->type = raw[6U];
 
-    char parent_path[256] = {};
-    for (int i = 0; i < slash; ++i)
-        parent_path[i] = path[i];
-    parent_path[slash] = 0;
-    if (parent_path[0] == 0)
-        parent_path[0] = '/';
+    if (entry->inode_number == 0U || entry->generation == 0U ||
+        (entry->type != 1U && entry->type != 2U && entry->type != 3U))
+        return false;
 
-    *parent = find_node(parent_path);
-    return nodes[*parent].type == VFS_NODE_DIRECTORY;
+    for (unsigned int i = 24U + length; i < 252U; ++i)
+        if (raw[i] != 0U)
+            return false;
+
+    for (unsigned int i = 0U; i < length; ++i)
+        name[i] = static_cast<char>(raw[24U + i]);
+    name[length] = 0;
+
+    for (unsigned int i = 0U; i < length; ++i)
+        if (name[i] == '/' || name[i] == 0)
+            return false;
+
+    return true;
 }
 
 extern "C" bool vfs_initialize()
 {
-    for (unsigned int i = 0; i < VFS_MAX_NODES; ++i)
-        nodes[i] = {};
+    if (initialized)
+        return true;
 
-    nodes[0].type = VFS_NODE_DIRECTORY;
-    nodes[0].parent = 0;
-    nodes[0].name[0] = '/';
+    const BlockDevice* disk = block_get(1U);
+    if (!disk)
+        return false;
+
+    if (!openfs_kernel_attach(disk, 0U, 4096U, &openfs_device))
+        return false;
+
+    if (openfs_mount(&openfs_mount_state, &openfs_device) != OPENFS_MOUNT_OK)
+    {
+        openfs_kernel_detach(&openfs_device);
+        return false;
+    }
+
     initialized = true;
     return true;
 }
 
 extern "C" bool vfs_mkdir(const char* path)
 {
-    unsigned int parent = 0;
-    char name[VFS_NAME_SIZE] = {};
-    if (!split_parent(path, &parent, name))
+    if (!initialized || !path)
         return false;
 
-    if (find_node(path) != 0)
-        return false;
-
-    for (unsigned int i = 1; i < VFS_MAX_NODES; ++i)
-    {
-        if (nodes[i].type == VFS_NODE_UNUSED)
-        {
-            nodes[i].type = VFS_NODE_DIRECTORY;
-            nodes[i].parent = parent;
-            for (unsigned int j = 0; j < VFS_NAME_SIZE; ++j)
-                nodes[i].name[j] = name[j];
-            return true;
-        }
-    }
-    return false;
+    uint64_t inode = 0U;
+    return openfs_path_mkdir(
+        &openfs_device, &openfs_mount_state.superblock, path, &inode) == OPENFS_PATH_OK;
 }
 
 extern "C" bool vfs_create(const char* path)
 {
-    unsigned int parent = 0;
-    char name[VFS_NAME_SIZE] = {};
-    if (!split_parent(path, &parent, name))
+    if (!initialized || !path)
         return false;
 
-    if (find_node(path) != 0)
-        return false;
-
-    for (unsigned int i = 1; i < VFS_MAX_NODES; ++i)
-    {
-        if (nodes[i].type == VFS_NODE_UNUSED)
-        {
-            nodes[i].type = VFS_NODE_FILE;
-            nodes[i].parent = parent;
-            nodes[i].size = 0;
-            for (unsigned int j = 0; j < VFS_NAME_SIZE; ++j)
-                nodes[i].name[j] = name[j];
-            return true;
-        }
-    }
-    return false;
+    uint64_t inode = 0U;
+    return openfs_path_create(
+        &openfs_device, &openfs_mount_state.superblock, path, 0100644U, &inode) == OPENFS_PATH_OK;
 }
 
 extern "C" bool vfs_unlink(const char* path)
 {
-    const unsigned int node = find_node(path);
-    if (node == 0 || node >= VFS_MAX_NODES || nodes[node].type == VFS_NODE_UNUSED)
+    if (!initialized || !path || path[0] == 0 || (path[0] == '/' && path[1] == 0))
         return false;
-    if (nodes[node].type == VFS_NODE_DIRECTORY)
-    {
-        for (unsigned int i = 1; i < VFS_MAX_NODES; ++i)
-            if (nodes[i].type != VFS_NODE_UNUSED && nodes[i].parent == node)
-                return false;
-    }
-    nodes[node] = {};
-    return true;
+
+    return openfs_path_unlink(
+        &openfs_device, &openfs_mount_state.superblock, path) == OPENFS_PATH_OK;
 }
 
 extern "C" bool vfs_stat(const char* path, VfsStat* stat)
 {
     if (!stat)
         return false;
-    const unsigned int node = find_node(path);
-    if (node == 0 && (!path || path[0] != '/' || path[1] != 0))
+
+    openfs_inode_t inode{};
+    if (!lookup_inode(path, &inode))
         return false;
-    if (node >= VFS_MAX_NODES || nodes[node].type == VFS_NODE_UNUSED)
-        return false;
-    stat->type = nodes[node].type;
-    stat->parent = nodes[node].parent;
-    stat->size = nodes[node].size;
+
+    stat->type = vfs_type_from_mode(inode.mode);
+    stat->parent = static_cast<uint32_t>(inode.parent_inode);
+    stat->size = inode.size;
     return true;
 }
 
 extern "C" bool vfs_readdir(const char* path, uint32_t index, VfsDirEntry* entry)
 {
-    if (!entry)
+    if (!entry || !initialized)
         return false;
-    const unsigned int node = find_node(path);
-    if (node >= VFS_MAX_NODES || nodes[node].type != VFS_NODE_DIRECTORY)
+
+    openfs_inode_t directory{};
+    if (!lookup_inode(path, &directory) ||
+        (directory.mode & OPENFS_INODE_TYPE_MASK) != OPENFS_INODE_MODE_DIRECTORY ||
+        directory.size % OPENFS_DIR_ENTRY_SIZE != 0U)
         return false;
-    uint32_t seen = 0;
-    for (unsigned int i = 1; i < VFS_MAX_NODES; ++i)
+
+    const uint64_t entries = directory.size / OPENFS_DIR_ENTRY_SIZE;
+    uint32_t visible = 0U;
+
+    for (uint64_t n = 0U; n < entries; ++n)
     {
-        if (nodes[i].type == VFS_NODE_UNUSED || nodes[i].parent != node)
+        if (n > UINT64_MAX / OPENFS_DIR_ENTRY_SIZE)
+            return false;
+
+        uint8_t raw[OPENFS_DIR_ENTRY_SIZE]{};
+        size_t got = 0U;
+        if (openfs_file_read(
+                &openfs_device,
+                &openfs_mount_state.superblock,
+                &directory,
+                n * OPENFS_DIR_ENTRY_SIZE,
+                raw,
+                sizeof(raw),
+                &got) != OPENFS_FILE_OK ||
+            got != sizeof(raw))
+            return false;
+
+        char name[OPENFS_DIR_NAME_MAX + 1U]{};
+        openfs_dir_entry_t dir_entry{};
+        if (!decode_directory_entry(raw, name, &dir_entry))
             continue;
-        if (seen++ != index)
+
+        if (visible++ != index)
             continue;
-        entry->type = nodes[i].type;
-        entry->size = nodes[i].size;
-        for (unsigned int j = 0; j < sizeof(entry->name); ++j)
-            entry->name[j] = nodes[i].name[j];
+
+        entry->type = dir_entry.type == 2U ? VFS_NODE_DIRECTORY : VFS_NODE_FILE;
+        entry->size = 0U;
+
+        openfs_inode_t child{};
+        uint64_t count = 0U;
+        if (!inode_count(&count) ||
+            openfs_inode_read(
+                &openfs_device,
+                openfs_mount_state.superblock.inode_table_start,
+                count,
+                dir_entry.inode_number,
+                &child) != OPENFS_INODE_OK)
+            return false;
+
+        entry->size = child.size;
+
+        unsigned int i = 0U;
+        for (; i + 1U < sizeof(entry->name) && name[i]; ++i)
+            entry->name[i] = name[i];
+        entry->name[i] = 0;
         return true;
     }
+
     return false;
 }
 
 extern "C" bool vfs_write(
     const char* path, uint64_t offset, const void* data, uint64_t size)
 {
-    const unsigned int node = find_node(path);
-    if (node == 0 || nodes[node].type != VFS_NODE_FILE ||
-        !data || offset > VFS_FILE_CAPACITY ||
-        size > VFS_FILE_CAPACITY - offset)
+    if (!initialized || !data || size > static_cast<uint64_t>(SIZE_MAX))
         return false;
 
-    const auto* source = reinterpret_cast<const uint8_t*>(data);
-    for (uint64_t i = 0; i < size; ++i)
-        nodes[node].data[offset + i] = source[i];
+    openfs_inode_t inode{};
+    if (!lookup_inode(path, &inode) ||
+        (inode.mode & OPENFS_INODE_TYPE_MASK) != OPENFS_INODE_MODE_REGULAR)
+        return false;
 
-    if (offset + size > nodes[node].size)
-        nodes[node].size = offset + size;
-    return true;
+    return openfs_file_write(
+        &openfs_device,
+        &openfs_mount_state.superblock,
+        &inode,
+        offset,
+        data,
+        static_cast<size_t>(size)) == OPENFS_FILE_OK;
 }
 
 extern "C" bool vfs_read(
@@ -256,56 +274,74 @@ extern "C" bool vfs_read(
     uint64_t* read_size)
 {
     if (read_size)
-        *read_size = 0;
-
-    const unsigned int node = find_node(path);
-    if (node == 0 || nodes[node].type != VFS_NODE_FILE ||
-        !data || offset > nodes[node].size)
+        *read_size = 0U;
+    if (!initialized || !data || size > static_cast<uint64_t>(SIZE_MAX))
         return false;
 
-    const uint64_t available = nodes[node].size - offset;
-    const uint64_t count = size < available ? size : available;
-    auto* destination = reinterpret_cast<uint8_t*>(data);
-    for (uint64_t i = 0; i < count; ++i)
-        destination[i] = nodes[node].data[offset + i];
+    openfs_inode_t inode{};
+    if (!lookup_inode(path, &inode) ||
+        (inode.mode & OPENFS_INODE_TYPE_MASK) != OPENFS_INODE_MODE_REGULAR)
+        return false;
+
+    size_t got = 0U;
+    if (openfs_file_read(
+            &openfs_device,
+            &openfs_mount_state.superblock,
+            &inode,
+            offset,
+            data,
+            static_cast<size_t>(size),
+            &got) != OPENFS_FILE_OK)
+        return false;
 
     if (read_size)
-        *read_size = count;
+        *read_size = got;
     return true;
 }
 
 extern "C" bool vfs_test()
 {
-    if (!vfs_initialize() ||
-        !vfs_mkdir("/system") ||
-        !vfs_create("/system/hello"))
+    if (!vfs_initialize())
         return false;
 
-    static const char message[] = "ArchiaOS VFS";
-    char buffer[sizeof(message)] = {};
-    uint64_t read_size = 0;
+    if (!vfs_mkdir("/vfs-test") ||
+        !vfs_create("/vfs-test/hello"))
+        return false;
 
-    if (!vfs_write("/system/hello", 0, message, sizeof(message)) ||
-        !vfs_read("/system/hello", 0, buffer, sizeof(buffer), &read_size) ||
+    static const char message[] = "ArchiaOS OpenFS VFS";
+    char buffer[sizeof(message)]{};
+    uint64_t read_size = 0U;
+
+    if (!vfs_write("/vfs-test/hello", 0U, message, sizeof(message)) ||
+        !vfs_read("/vfs-test/hello", 0U, buffer, sizeof(buffer), &read_size) ||
         read_size != sizeof(message))
         return false;
 
-    for (unsigned int i = 0; i < sizeof(message); ++i)
+    for (unsigned int i = 0U; i < sizeof(message); ++i)
         if (buffer[i] != message[i])
             return false;
 
     VfsStat stat{};
     VfsDirEntry entry{};
-    if (!vfs_stat("/system/hello", &stat) ||
-        stat.type != VFS_NODE_FILE || stat.size != sizeof(message) ||
-        !vfs_readdir("/system", 0, &entry) ||
-        entry.type != VFS_NODE_FILE || !text_equal(entry.name, "hello") ||
+    if (!vfs_stat("/vfs-test/hello", &stat) ||
+        stat.type != VFS_NODE_FILE ||
+        stat.size != sizeof(message) ||
+        !vfs_readdir("/vfs-test", 0U, &entry) ||
+        entry.type != VFS_NODE_FILE ||
         entry.size != sizeof(message) ||
-        vfs_readdir("/system", 1, &entry) ||
-        !vfs_unlink("/system/hello") ||
-        vfs_stat("/system/hello", &stat) ||
-        vfs_read("/system/hello", 0, buffer, sizeof(buffer), &read_size))
+        entry.name[0] != 'h' ||
+        entry.name[1] != 'e' ||
+        entry.name[2] != 'l' ||
+        entry.name[3] != 'l' ||
+        entry.name[4] != 'o' ||
+        entry.name[5] != 0 ||
+        vfs_readdir("/vfs-test", 1U, &entry))
         return false;
 
-    return true;
+    if (!vfs_unlink("/vfs-test/hello") ||
+        !vfs_unlink("/vfs-test") ||
+        vfs_stat("/vfs-test/hello", &stat))
+        return false;
+
+    return openfs_sync(&openfs_mount_state) == OPENFS_MOUNT_OK;
 }
