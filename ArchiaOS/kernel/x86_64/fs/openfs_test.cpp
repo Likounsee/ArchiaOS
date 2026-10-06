@@ -7,8 +7,15 @@
 #include "openfs/inode.h"
 #include "../drivers/block.hpp"
 
+static void openfs_test_debug(const char* s)
+{
+    for (int i = 0; s[i] != '\0'; ++i)
+        asm volatile("outb %0,%1" : : "a"(s[i]), "Nd"(static_cast<unsigned short>(0xE9)));
+}
+
 extern "C" uint32_t openfs_kernel_test()
 {
+    openfs_test_debug("OPENFS TEST: START\n");
     const BlockDevice* disk=block_get(1U);
     if(!disk)return false;
 
@@ -19,6 +26,7 @@ extern "C" uint32_t openfs_kernel_test()
         openfs_kernel_attach(disk,disk->sector_count,4096U,&device))
         return 21U;
     if(!openfs_kernel_attach(disk,0U,4096U,&device))return 1U;
+    openfs_test_debug("OPENFS TEST: ATTACH OK\n");
     if(!openfs_kernel_attach(disk,0U,4096U,&second_device))
     {
         openfs_kernel_detach(&device);
@@ -47,11 +55,17 @@ extern "C" uint32_t openfs_kernel_test()
         0x41,0x72,0x63,0x68,0x69,0x61,0x4f,0x53,
         0x4f,0x70,0x65,0x6e,0x46,0x53,0x00,0x01
     };
+    openfs_test_debug("OPENFS TEST: FORMAT START\n");
     if(openfs_format(&device,uuid)!=OPENFS_FORMAT_OK)return 2U;
+    openfs_test_debug("OPENFS TEST: FORMAT OK\n");
 
     openfs_mount_t mount{};
+    openfs_test_debug("OPENFS TEST: MOUNT START\n");
+    openfs_test_debug("OPENFS TEST: REMOUNT START\n");
     if(openfs_mount(&mount,&device)!=OPENFS_MOUNT_OK)return 3U;
+    openfs_test_debug("OPENFS TEST: REMOUNT OK\n");
 
+    openfs_test_debug("OPENFS TEST: MOUNT OK\n");
     uint64_t root=0U;
     if(openfs_path_lookup_follow(&device,&mount.superblock,"/",&root)!=OPENFS_PATH_OK||root!=1U)return 4U;
 
@@ -68,12 +82,17 @@ extern "C" uint32_t openfs_kernel_test()
     static const char message[]="ArchiaOS OpenFS";
     if(openfs_file_write(&device,&mount.superblock,&inode,0U,message,sizeof(message))!=OPENFS_FILE_OK)return 8U;
 
+    openfs_test_debug("OPENFS TEST: SYNC START\n");
     if(openfs_sync(&mount)!=OPENFS_MOUNT_OK)return 9U;
+    openfs_test_debug("OPENFS TEST: SYNC OK\n");
 
+    openfs_test_debug("OPENFS TEST: FSCK START\n");
     uint64_t errors=0U;
     if(openfs_fsck(&device,&mount.superblock,&errors)!=OPENFS_FSCK_OK||errors!=0U)return 10U;
+    openfs_test_debug("OPENFS TEST: FSCK OK\n");
 
     if(openfs_unmount(&mount)!=OPENFS_MOUNT_OK)return 11U;
+    openfs_test_debug("OPENFS TEST: UNMOUNT OK\n");
 
     if(openfs_mount(&mount,&device)!=OPENFS_MOUNT_OK)return 3U;
 
@@ -86,11 +105,13 @@ extern "C" uint32_t openfs_kernel_test()
     if(got!=sizeof(message))return 16U;
     for(size_t i=0U;i<sizeof(message);++i)if(buffer[i]!=message[i])return 17U;
 
+    openfs_test_debug("OPENFS TEST: FINAL UNMOUNT\n");
     if(openfs_unmount(&mount)!=OPENFS_MOUNT_OK)
     {
         openfs_kernel_detach(&device);
         return 11U;
     }
     openfs_kernel_detach(&device);
+    openfs_test_debug("OPENFS TEST: PASS\n");
     return 0U;
 }
