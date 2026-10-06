@@ -13,8 +13,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-
       - name: Install toolchain and firmware
         run: |
           sudo apt-get update
