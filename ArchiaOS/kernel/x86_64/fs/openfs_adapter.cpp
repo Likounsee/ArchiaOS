@@ -1,4 +1,5 @@
 #include "openfs_adapter.hpp"
+#include "openfs/format.h"
 #include "../memory/heap.hpp"
 
 struct OpenFsKernelContext
@@ -54,7 +55,7 @@ extern "C" bool openfs_kernel_attach(
     uint32_t openfs_block_size,
     openfs_block_device_t* out_device)
 {
-    if(!device||!out_device||openfs_block_size<4096U||device->sector_size==0U||
+    if(!device||!out_device||openfs_block_size<OPENFS_MIN_BLOCK_SIZE||openfs_block_size>OPENFS_MAX_BLOCK_SIZE||device->sector_size==0U||
        openfs_block_size%device->sector_size!=0U||first_lba>=device->sector_count)return false;
     const uint32_t spb=openfs_block_size/device->sector_size;
     if(spb==0U||spb>UINT32_MAX)return false;
