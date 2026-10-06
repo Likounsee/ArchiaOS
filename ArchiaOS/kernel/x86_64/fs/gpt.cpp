@@ -55,10 +55,11 @@ extern "C" bool gpt_test() {
     const auto read=[](const BlockDevice* d,uint64_t l,uint32_t n,void* o)->bool{
         const auto* c=static_cast<const Ctx*>(d->context); if(!c||!o||l>=SC||!n||static_cast<uint64_t>(n)>SC-l) return false;
         for(uint64_t i=0;i<static_cast<uint64_t>(n)*SS;++i) static_cast<uint8_t*>(o)[i]=c->p[l*SS+i]; return true; };
+    const auto flush=[](const BlockDevice* d)->bool{return d&&d->context!=nullptr;};
     const auto write=[](const BlockDevice* d,uint64_t l,uint32_t n,const void* in)->bool{
         const auto* c=static_cast<const Ctx*>(d->context); if(!c||!in||l>=SC||!n||static_cast<uint64_t>(n)>SC-l) return false;
         for(uint64_t i=0;i<static_cast<uint64_t>(n)*SS;++i) c->p[l*SS+i]=static_cast<const uint8_t*>(in)[i]; return true; };
-    for(auto& b:disk)b=0; BlockDevice d{0,BLOCK_DEVICE_MEMORY,SS,SC,read,write,&ctx};
+    for(auto& b:disk)b=0; BlockDevice d{0,BLOCK_DEVICE_MEMORY,SS,SC,read,write,flush,&ctx};
     GptHeader h{}; const uint8_t sig[8]={'E','F','I',' ','P','A','R','T'}; for(unsigned int i=0;i<8;++i)h.signature[i]=sig[i];
     h.revision=0x00010000U;h.header_size=HEADER_SIZE;h.current_lba=1;h.backup_lba=SC-1;h.first_usable_lba=34;h.last_usable_lba=SC-34;
     h.partition_entries_lba=2;h.partition_entry_count=MAX_ENTRIES;h.partition_entry_size=ENTRY_SIZE;
