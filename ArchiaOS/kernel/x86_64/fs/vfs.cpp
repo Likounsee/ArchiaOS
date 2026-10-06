@@ -40,8 +40,8 @@ static bool lookup_inode(const char* path, openfs_inode_t* inode)
     return openfs_inode_read(
         &openfs_device,
         openfs_mount_state.superblock.inode_table_start,
-        count,
         number,
+        count,
         inode) == OPENFS_INODE_OK;
 }
 
@@ -232,8 +232,8 @@ extern "C" bool vfs_readdir(const char* path, uint32_t index, VfsDirEntry* entry
             openfs_inode_read(
                 &openfs_device,
                 openfs_mount_state.superblock.inode_table_start,
-                count,
                 dir_entry.inode_number,
+                count,
                 &child) != OPENFS_INODE_OK)
             return false;
 
