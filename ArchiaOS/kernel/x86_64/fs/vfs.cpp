@@ -10,7 +10,6 @@
 static openfs_block_device_t openfs_device{};
 static openfs_mount_t openfs_mount_state{};
 static bool initialized = false;
-static uint32_t vfs_test_stage_value = 0U;
 static void vfs_zero_buffer(char* buffer, unsigned int size) {
     for (unsigned int i = 0U; i < size; ++i)
         buffer[i] = 0;
@@ -155,8 +154,6 @@ extern "C" bool vfs_sync()
     if (!initialized)
         return false;
     const bool ok = openfs_sync(&openfs_mount_state) == OPENFS_MOUNT_OK;
-    if (!ok)
-        vfs_test_stage_value = 13U;
     return ok;
 }
 
@@ -220,21 +217,17 @@ extern "C" bool vfs_stat(const char* path, VfsStat* stat)
 extern "C" bool vfs_readdir(const char* path, uint32_t index, VfsDirEntry* entry)
 {
     if (!entry || !initialized) {
-        vfs_test_stage_value = 70U;
         return false;
     }
 
     openfs_inode_t directory{};
     if (!lookup_inode(path, &directory)) {
-        vfs_test_stage_value = 71U;
         return false;
     }
     if ((directory.mode & OPENFS_INODE_TYPE_MASK) != OPENFS_INODE_MODE_DIRECTORY) {
-        vfs_test_stage_value = 72U;
         return false;
     }
     if (directory.size % OPENFS_DIR_ENTRY_SIZE != 0U) {
-        vfs_test_stage_value = 73U;
         return false;
     }
 
@@ -257,7 +250,6 @@ extern "C" bool vfs_readdir(const char* path, uint32_t index, VfsDirEntry* entry
             sizeof(raw),
             &got);
         if (dir_read != OPENFS_FILE_OK || got != sizeof(raw)) {
-            vfs_test_stage_value = 74U;
             return false;
         }
 
@@ -281,12 +273,10 @@ extern "C" bool vfs_readdir(const char* path, uint32_t index, VfsDirEntry* entry
                 dir_entry.inode_number,
                 count,
                 &child) != OPENFS_INODE_OK) {
-            vfs_test_stage_value = 75U;
             return false;
         }
 
         if (child.generation != dir_entry.generation) {
-            vfs_test_stage_value = 76U;
             return false;
         }
 
@@ -296,7 +286,6 @@ extern "C" bool vfs_readdir(const char* path, uint32_t index, VfsDirEntry* entry
             child_mode == OPENFS_INODE_MODE_SYMLINK ? 3U :
             child_mode == OPENFS_INODE_MODE_REGULAR ? 1U : 0U;
         if (expected_type == 0U || expected_type != dir_entry.type) {
-            vfs_test_stage_value = 77U;
             return false;
         }
 
@@ -362,14 +351,8 @@ extern "C" bool vfs_read(
     return true;
 }
 
-extern "C" uint32_t vfs_test_stage()
-{
-    return vfs_test_stage_value;
-}
-
 extern "C" bool vfs_test()
 {
-    vfs_test_stage_value = 0U;
     if (!vfs_initialize())
     {
         vfs_test_stage_value = 1U;
@@ -404,14 +387,12 @@ extern "C" bool vfs_test()
     for (unsigned int i = 0U; i < sizeof(large_message); ++i)
         if (large_buffer[i] != large_message[i])
         {
-            vfs_test_stage_value = 4U;
             return false;
         }
 
     for (unsigned int i = 0U; i < sizeof(message); ++i)
         if (buffer[i] != message[i])
         {
-            vfs_test_stage_value = 5U;
             return false;
         }
 
@@ -421,7 +402,6 @@ extern "C" bool vfs_test()
         stat.type != VFS_NODE_FILE ||
         stat.size != sizeof(message))
     {
-        vfs_test_stage_value = 61U;
         return false;
     }
 
@@ -433,7 +413,6 @@ extern "C" bool vfs_test()
         {
             if (index != 2U)
             {
-                vfs_test_stage_value = 62U;
                 return false;
             }
             break;
@@ -446,7 +425,6 @@ extern "C" bool vfs_test()
             if (found_hello || entry.type != VFS_NODE_FILE ||
                 entry.size != sizeof(message))
             {
-                vfs_test_stage_value = 63U;
                 return false;
             }
             found_hello = true;
@@ -458,33 +436,28 @@ extern "C" bool vfs_test()
             if (found_large || entry.type != VFS_NODE_FILE ||
                 entry.size != sizeof(large_message))
             {
-                vfs_test_stage_value = 64U;
                 return false;
             }
             found_large = true;
         }
         else
         {
-            vfs_test_stage_value = 65U;
             return false;
         }
     }
 
     if (!found_hello || !found_large)
     {
-        vfs_test_stage_value = 66U;
         return false;
     }
 
     if (!vfs_sync() || !vfs_shutdown())
     {
-        vfs_test_stage_value = 7U;
         return false;
     }
 
     if (!vfs_initialize())
     {
-        vfs_test_stage_value = 8U;
         return false;
     }
 
@@ -495,19 +468,16 @@ extern "C" bool vfs_test()
         !vfs_read("/vfs-test/large", 0U, large_buffer, sizeof(large_buffer), &read_size) ||
         read_size != sizeof(large_message))
     {
-        vfs_test_stage_value = 9U;
         return false;
     }
     for (unsigned int i = 0U; i < sizeof(message); ++i)
         if (buffer[i] != message[i])
         {
-            vfs_test_stage_value = 10U;
             return false;
         }
     for (unsigned int i = 0U; i < sizeof(large_message); ++i)
         if (large_buffer[i] != large_message[i])
         {
-            vfs_test_stage_value = 11U;
             return false;
         }
 
@@ -516,7 +486,6 @@ extern "C" bool vfs_test()
         !vfs_unlink("/vfs-test") ||
         vfs_stat("/vfs-test/hello", &stat))
     {
-        vfs_test_stage_value = 12U;
         return false;
     }
 
