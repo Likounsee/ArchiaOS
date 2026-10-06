@@ -401,32 +401,60 @@ extern "C" bool vfs_test()
     VfsDirEntry entry{};
     if (!vfs_stat("/vfs-test/hello", &stat) ||
         stat.type != VFS_NODE_FILE ||
-        stat.size != sizeof(message) ||
-        !vfs_readdir("/vfs-test", 0U, &entry) ||
-        entry.type != VFS_NODE_FILE ||
-        entry.size != sizeof(message) ||
-        entry.name[0] != 'h' ||
-        entry.name[1] != 'e' ||
-        entry.name[2] != 'l' ||
-        entry.name[3] != 'l' ||
-        entry.name[4] != 'o' ||
-        entry.name[5] != 0 ||
-        !vfs_readdir("/vfs-test", 1U, &entry) ||
-        entry.type != VFS_NODE_FILE ||
-        entry.size != sizeof(large_message) ||
-        entry.name[0] != 'l' ||
-        entry.name[1] != 'a' ||
-        entry.name[2] != 'r' ||
-        entry.name[3] != 'g' ||
-        entry.name[4] != 'e' ||
-        entry.name[5] != 0)
+        stat.size != sizeof(message))
     {
-        vfs_test_stage_value = 66U;
+        vfs_test_stage_value = 61U;
         return false;
     }
-    if (vfs_readdir("/vfs-test", 2U, &entry))
+
+    bool found_hello = false;
+    bool found_large = false;
+    for (uint32_t index = 0U; index < 3U; ++index)
     {
-        vfs_test_stage_value = 67U;
+        if (!vfs_readdir("/vfs-test", index, &entry))
+        {
+            if (index != 2U)
+            {
+                vfs_test_stage_value = 62U;
+                return false;
+            }
+            break;
+        }
+
+        if (entry.name[0] == 'h' && entry.name[1] == 'e' &&
+            entry.name[2] == 'l' && entry.name[3] == 'l' &&
+            entry.name[4] == 'o' && entry.name[5] == 0)
+        {
+            if (found_hello || entry.type != VFS_NODE_FILE ||
+                entry.size != sizeof(message))
+            {
+                vfs_test_stage_value = 63U;
+                return false;
+            }
+            found_hello = true;
+        }
+        else if (entry.name[0] == 'l' && entry.name[1] == 'a' &&
+                 entry.name[2] == 'r' && entry.name[3] == 'g' &&
+                 entry.name[4] == 'e' && entry.name[5] == 0)
+        {
+            if (found_large || entry.type != VFS_NODE_FILE ||
+                entry.size != sizeof(large_message))
+            {
+                vfs_test_stage_value = 64U;
+                return false;
+            }
+            found_large = true;
+        }
+        else
+        {
+            vfs_test_stage_value = 65U;
+            return false;
+        }
+    }
+
+    if (!found_hello || !found_large)
+    {
+        vfs_test_stage_value = 66U;
         return false;
     }
 
