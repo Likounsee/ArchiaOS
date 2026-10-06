@@ -2,6 +2,7 @@
 #include "block.hpp"
 #include "../memory/pmm.hpp"
 #include "../memory/paging.hpp"
+#include "../fs/gpt.hpp"
 
 static constexpr unsigned int STORAGE_MAX_CONTROLLERS = 8;
 static StorageController controllers[STORAGE_MAX_CONTROLLERS] = {};
@@ -572,6 +573,7 @@ extern "C" bool storage_test()
                 !block_flush(device))
                 return false;
 
+            gpt_register_partitions(device);
             verified = true;
             break;
         }
