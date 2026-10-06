@@ -10,6 +10,7 @@
 static openfs_block_device_t openfs_device{};
 static openfs_mount_t openfs_mount_state{};
 static bool initialized = false;
+static uint32_t vfs_test_stage_value = 0U;
 static void vfs_zero_buffer(char* buffer, unsigned int size) {
     for (unsigned int i = 0U; i < size; ++i)
         buffer[i] = 0;
@@ -153,7 +154,10 @@ extern "C" bool vfs_sync()
 {
     if (!initialized)
         return false;
-    return openfs_sync(&openfs_mount_state) == OPENFS_MOUNT_OK;
+    const bool ok = openfs_sync(&openfs_mount_state) == OPENFS_MOUNT_OK;
+    if (!ok)
+        vfs_test_stage_value = 13U;
+    return ok;
 }
 
 extern "C" bool vfs_shutdown()
@@ -340,14 +344,26 @@ extern "C" bool vfs_read(
     return true;
 }
 
+extern "C" uint32_t vfs_test_stage()
+{
+    return vfs_test_stage_value;
+}
+
 extern "C" bool vfs_test()
 {
+    vfs_test_stage_value = 0U;
     if (!vfs_initialize())
+    {
+        vfs_test_stage_value = 1U;
         return false;
+    }
 
     if (!vfs_mkdir("/vfs-test") ||
         !vfs_create("/vfs-test/hello"))
+    {
+        vfs_test_stage_value = 2U;
         return false;
+    }
 
     static const char message[] = "ArchiaOS OpenFS VFS";
     static uint8_t large_message[9000];
@@ -369,11 +385,17 @@ extern "C" bool vfs_test()
 
     for (unsigned int i = 0U; i < sizeof(large_message); ++i)
         if (large_buffer[i] != large_message[i])
+        {
+            vfs_test_stage_value = 4U;
             return false;
+        }
 
     for (unsigned int i = 0U; i < sizeof(message); ++i)
         if (buffer[i] != message[i])
+        {
+            vfs_test_stage_value = 5U;
             return false;
+        }
 
     VfsStat stat{};
     VfsDirEntry entry{};
@@ -399,13 +421,22 @@ extern "C" bool vfs_test()
         entry.name[4] != 'e' ||
         entry.name[5] != 0 ||
         vfs_readdir("/vfs-test", 2U, &entry))
+    {
+        vfs_test_stage_value = 6U;
         return false;
+    }
 
     if (!vfs_sync() || !vfs_shutdown())
+    {
+        vfs_test_stage_value = 7U;
         return false;
+    }
 
     if (!vfs_initialize())
+    {
+        vfs_test_stage_value = 8U;
         return false;
+    }
 
     vfs_zero_buffer(buffer, sizeof(buffer));
     read_size = 0U;
@@ -413,19 +444,31 @@ extern "C" bool vfs_test()
         read_size != sizeof(message) ||
         !vfs_read("/vfs-test/large", 0U, large_buffer, sizeof(large_buffer), &read_size) ||
         read_size != sizeof(large_message))
+    {
+        vfs_test_stage_value = 9U;
         return false;
+    }
     for (unsigned int i = 0U; i < sizeof(message); ++i)
         if (buffer[i] != message[i])
+        {
+            vfs_test_stage_value = 10U;
             return false;
+        }
     for (unsigned int i = 0U; i < sizeof(large_message); ++i)
         if (large_buffer[i] != large_message[i])
+        {
+            vfs_test_stage_value = 11U;
             return false;
+        }
 
     if (!vfs_unlink("/vfs-test/large") ||
         !vfs_unlink("/vfs-test/hello") ||
         !vfs_unlink("/vfs-test") ||
         vfs_stat("/vfs-test/hello", &stat))
+    {
+        vfs_test_stage_value = 12U;
         return false;
+    }
 
     return openfs_sync(&openfs_mount_state) == OPENFS_MOUNT_OK;
 }
