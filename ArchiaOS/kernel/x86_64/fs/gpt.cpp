@@ -105,7 +105,7 @@ extern "C" bool gpt_register_partitions(const BlockDevice* d)
         *ctx={d,parts[i].first_lba,sectors};
 
         BlockDevice partition{
-            0,BLOCK_DEVICE_MEMORY,d->sector_size,sectors,
+            0,BLOCK_DEVICE_PARTITION,d->sector_size,sectors,
             gpt_partition_read,gpt_partition_write,gpt_partition_flush,ctx
         };
         uint32_t id=0;
