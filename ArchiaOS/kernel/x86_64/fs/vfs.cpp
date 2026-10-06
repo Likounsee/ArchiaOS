@@ -389,7 +389,16 @@ extern "C" bool vfs_test()
         entry.name[3] != 'l' ||
         entry.name[4] != 'o' ||
         entry.name[5] != 0 ||
-        vfs_readdir("/vfs-test", 1U, &entry))
+        !vfs_readdir("/vfs-test", 1U, &entry) ||
+        entry.type != VFS_NODE_FILE ||
+        entry.size != sizeof(large_message) ||
+        entry.name[0] != 'l' ||
+        entry.name[1] != 'a' ||
+        entry.name[2] != 'r' ||
+        entry.name[3] != 'g' ||
+        entry.name[4] != 'e' ||
+        entry.name[5] != 0 ||
+        vfs_readdir("/vfs-test", 2U, &entry))
         return false;
 
     if (!vfs_sync() || !vfs_shutdown())
