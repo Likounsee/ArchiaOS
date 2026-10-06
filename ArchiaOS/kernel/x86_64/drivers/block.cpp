@@ -63,7 +63,7 @@ extern "C" bool block_memory_test() {
     uint8_t w[1024]={},r[1024]={};
     for(unsigned int i=0;i<sizeof(w);++i) w[i]=static_cast<uint8_t>(i^0x5A);
     const BlockDevice* p=block_get(id);
-    if(!p||!block_write(p,7,2,w)||!block_read(p,7,2,r)) return false;
+    if(!p||!block_write(p,7,2,w)||!block_read(p,7,2,r)||!block_flush(p)) return false;
     for(unsigned int i=0;i<sizeof(w);++i) if(w[i]!=r[i]) return false;
     return !block_read(p,SECTOR_COUNT-1,2,r)&&block_device_count()==1;
 }
