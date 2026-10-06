@@ -383,14 +383,12 @@ extern "C" bool vfs_test()
 {
     if (!vfs_initialize())
     {
-        vfs_test_stage_value = 1U;
         return false;
     }
 
     if (!vfs_mkdir("/vfs-test") ||
         !vfs_create("/vfs-test/hello"))
     {
-        vfs_test_stage_value = 2U;
         return false;
     }
 
