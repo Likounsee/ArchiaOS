@@ -19,3 +19,4 @@ extern "C" bool storage_initialize();
 extern "C" unsigned int storage_controller_count();
 extern "C" const StorageController* storage_controller_get(unsigned int index);
 extern "C" bool storage_test();
+extern "C" unsigned int storage_real_block_device_count();
