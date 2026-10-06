@@ -22,6 +22,9 @@ static bool memory_write(const BlockDevice* d,uint64_t lba,uint32_t count,const 
     for(uint64_t i=0;i<bytes;++i) storage[off+i]=static_cast<const uint8_t*>(in)[i];
     return true;
 }
+static bool memory_flush(const BlockDevice* d) {
+    return d && d->context == &context;
+}
 extern "C" bool block_initialize() {
     for(auto& d:devices) d={};
     initialized=true;
@@ -47,10 +50,15 @@ extern "C" bool block_write(const BlockDevice* d,uint64_t lba,uint32_t count,con
     if(!d||!in||!d->sector_size||lba>=d->sector_count||!count||static_cast<uint64_t>(count)>d->sector_count-lba) return false;
     return d->write(d,lba,count,in);
 }
+extern "C" bool block_flush(const BlockDevice* d) {
+    if (!d || !d->flush)
+        return false;
+    return d->flush(d);
+}
 extern "C" bool block_memory_test() {
     if(!block_initialize()) return false;
     for(auto& b:storage) b=0;
-    BlockDevice d{0,BLOCK_DEVICE_MEMORY,SECTOR_SIZE,SECTOR_COUNT,memory_read,memory_write,&context};
+    BlockDevice d{0,BLOCK_DEVICE_MEMORY,SECTOR_SIZE,SECTOR_COUNT,memory_read,memory_write,memory_flush,&context};
     uint32_t id=0; if(!block_register(&d,&id)||id!=1) return false;
     uint8_t w[1024]={},r[1024]={};
     for(unsigned int i=0;i<sizeof(w);++i) w[i]=static_cast<uint8_t>(i^0x5A);
