@@ -219,14 +219,24 @@ extern "C" bool vfs_stat(const char* path, VfsStat* stat)
 
 extern "C" bool vfs_readdir(const char* path, uint32_t index, VfsDirEntry* entry)
 {
-    if (!entry || !initialized)
+    if (!entry || !initialized) {
+        vfs_test_stage_value = 70U;
         return false;
+    }
 
     openfs_inode_t directory{};
-    if (!lookup_inode(path, &directory) ||
-        (directory.mode & OPENFS_INODE_TYPE_MASK) != OPENFS_INODE_MODE_DIRECTORY ||
-        directory.size % OPENFS_DIR_ENTRY_SIZE != 0U)
+    if (!lookup_inode(path, &directory)) {
+        vfs_test_stage_value = 71U;
         return false;
+    }
+    if ((directory.mode & OPENFS_INODE_TYPE_MASK) != OPENFS_INODE_MODE_DIRECTORY) {
+        vfs_test_stage_value = 72U;
+        return false;
+    }
+    if (directory.size % OPENFS_DIR_ENTRY_SIZE != 0U) {
+        vfs_test_stage_value = 73U;
+        return false;
+    }
 
     const uint64_t entries = directory.size / OPENFS_DIR_ENTRY_SIZE;
     uint32_t visible = 0U;
@@ -238,16 +248,18 @@ extern "C" bool vfs_readdir(const char* path, uint32_t index, VfsDirEntry* entry
 
         uint8_t raw[OPENFS_DIR_ENTRY_SIZE]{};
         size_t got = 0U;
-        if (openfs_file_read(
-                &openfs_device,
-                &openfs_mount_state.superblock,
-                &directory,
-                n * OPENFS_DIR_ENTRY_SIZE,
-                raw,
-                sizeof(raw),
-                &got) != OPENFS_FILE_OK ||
-            got != sizeof(raw))
+        const openfs_file_result_t dir_read = openfs_file_read(
+            &openfs_device,
+            &openfs_mount_state.superblock,
+            &directory,
+            n * OPENFS_DIR_ENTRY_SIZE,
+            raw,
+            sizeof(raw),
+            &got);
+        if (dir_read != OPENFS_FILE_OK || got != sizeof(raw)) {
+            vfs_test_stage_value = 74U;
             return false;
+        }
 
         char name[OPENFS_DIR_NAME_MAX + 1U]{};
         openfs_dir_entry_t dir_entry{};
@@ -268,19 +280,25 @@ extern "C" bool vfs_readdir(const char* path, uint32_t index, VfsDirEntry* entry
                 openfs_mount_state.superblock.inode_table_start,
                 dir_entry.inode_number,
                 count,
-                &child) != OPENFS_INODE_OK)
+                &child) != OPENFS_INODE_OK) {
+            vfs_test_stage_value = 75U;
             return false;
+        }
 
-        if (child.generation != dir_entry.generation)
+        if (child.generation != dir_entry.generation) {
+            vfs_test_stage_value = 76U;
             return false;
+        }
 
         const uint32_t child_mode = child.mode & OPENFS_INODE_TYPE_MASK;
         const uint8_t expected_type =
             child_mode == OPENFS_INODE_MODE_DIRECTORY ? 2U :
             child_mode == OPENFS_INODE_MODE_SYMLINK ? 3U :
             child_mode == OPENFS_INODE_MODE_REGULAR ? 1U : 0U;
-        if (expected_type == 0U || expected_type != dir_entry.type)
+        if (expected_type == 0U || expected_type != dir_entry.type) {
+            vfs_test_stage_value = 77U;
             return false;
+        }
 
         entry->size = child.size;
 
