@@ -6,6 +6,7 @@
 #include "openfs/path.h"
 #include "openfs/mount.h"
 #include "../drivers/block.hpp"
+#include "gpt.hpp"
 
 static openfs_block_device_t openfs_device{};
 static openfs_mount_t openfs_mount_state{};
@@ -128,10 +129,18 @@ extern "C" bool vfs_initialize()
         return true;
 
     const unsigned int device_count = block_device_count();
+    bool has_gpt_partition = false;
 
-    /* Prefer an explicitly discovered GPT partition over a whole disk.
-       A raw disk is only considered as a compatibility fallback for
-       existing non-partitioned test media. */
+    for (unsigned int index = 1U; index <= device_count; ++index)
+    {
+        const BlockDevice* disk = block_get(index);
+        if (disk && disk->type == BLOCK_DEVICE_PARTITION)
+            has_gpt_partition = true;
+    }
+
+    /* A discovered GPT layout is authoritative: only the explicit
+       ArchiaOS/OpenFS system partition may become the VFS root.
+       Raw-disk fallback is retained only for non-partitioned test media. */
     for (unsigned int pass = 0U; pass < 2U; ++pass)
     {
         for (unsigned int index = 1U; index <= device_count; ++index)
@@ -141,9 +150,16 @@ extern "C" bool vfs_initialize()
                 continue;
 
             const bool is_partition = disk->type == BLOCK_DEVICE_PARTITION;
-            if ((pass == 0U && !is_partition) ||
-                (pass == 1U && is_partition))
-                continue;
+            if (pass == 0U)
+            {
+                if (!is_partition || !gpt_partition_is_archiaos_system(disk))
+                    continue;
+            }
+            else
+            {
+                if (is_partition || has_gpt_partition)
+                    continue;
+            }
 
             if (!openfs_kernel_attach(disk, 0U, 4096U, &openfs_device))
                 continue;
