@@ -585,6 +585,8 @@ extern "C" bool storage_test()
             storage_debug(registered ? "STORAGE: GPT OK DEVICE\n" :
                                       "STORAGE: GPT NO DEVICE\n");
             verified = true;
+            if (registered)
+                break;
         }
         if (!verified)
             return false;
