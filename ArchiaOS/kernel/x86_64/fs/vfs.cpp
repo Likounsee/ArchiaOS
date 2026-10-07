@@ -138,6 +138,7 @@ extern "C" bool vfs_initialize()
         return true;
 
     const unsigned int device_count = block_device_count();
+    vfs_test_debug("VFS INIT: DEVICES ");
     bool has_gpt_partition = false;
 
     for (unsigned int index = 1U; index <= device_count; ++index)
@@ -146,6 +147,8 @@ extern "C" bool vfs_initialize()
         if (disk && disk->type == BLOCK_DEVICE_PARTITION)
             has_gpt_partition = true;
     }
+
+    vfs_test_debug(has_gpt_partition ? "VFS INIT: GPT PARTITION\n" : "VFS INIT: NO GPT PARTITION\n");
 
     /* A discovered GPT layout is authoritative: only the explicit
        ArchiaOS/OpenFS system partition may become the VFS root.
@@ -171,7 +174,11 @@ extern "C" bool vfs_initialize()
             }
 
             if (!openfs_kernel_attach(disk, 0U, 4096U, &openfs_device))
+            {
+                vfs_test_debug("VFS INIT: ATTACH FAIL\n");
                 continue;
+            }
+            vfs_test_debug("VFS INIT: ATTACH OK\n");
 
             if (openfs_mount(&openfs_mount_state, &openfs_device) == OPENFS_MOUNT_OK)
             {
@@ -179,6 +186,7 @@ extern "C" bool vfs_initialize()
                 return true;
             }
 
+            vfs_test_debug("VFS INIT: MOUNT FAIL\n");
             openfs_kernel_detach(&openfs_device);
         }
     }
