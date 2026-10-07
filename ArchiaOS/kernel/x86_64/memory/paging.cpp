@@ -396,7 +396,7 @@ extern "C" bool paging_unmap_4k(u64 virtualAddress)
         ((virtualAddress >> 48) != 0 && (virtualAddress >> 48) != 0xFFFFULL))
         return false;
 
-    u64* entry = find_4k_entry(virtualAddress, false, false, false);
+    u64* entry = find_4k_entry(virtualAddress, false, false, true);
     if (entry == nullptr || (*entry & NOVOS_PAGE_PRESENT) == 0)
         return false;
 
@@ -407,7 +407,7 @@ extern "C" bool paging_unmap_4k(u64 virtualAddress)
 
 extern "C" u64 paging_get_4k_entry(u64 virtualAddress)
 {
-    u64* entry = find_4k_entry(virtualAddress, false, false);
+    u64* entry = find_4k_entry(virtualAddress, false, false, false);
     return entry ? *entry : 0;
 }
 
