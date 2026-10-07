@@ -405,6 +405,11 @@ extern "C" bool process_handle_syscall(ExceptionFrame* frame)
                 frame->rax = static_cast<uint64_t>(-1);
             break;
         }
+        case 6:
+            frame->rax = ipc_destroy(
+                static_cast<int>(frame->rbx),
+                current_process->pid) ? 0 : static_cast<uint64_t>(-1);
+            break;
         default:
             frame->rax = static_cast<uint64_t>(-1);
             break;
@@ -569,6 +574,33 @@ extern "C" bool process_run_ring3_test()
         valid_syscall_frame.rax != process.pid ||
         valid_syscall_frame.rip != process.entry + 7ULL ||
         process_syscall_count() != syscall_before + 1ULL)
+        return false;
+
+    ExceptionFrame create_endpoint_frame{};
+    create_endpoint_frame.cs = 0x1B;
+    create_endpoint_frame.rip = process.entry + 7ULL;
+    create_endpoint_frame.rax = 3;
+    if (!process_handle_syscall(&create_endpoint_frame) ||
+        create_endpoint_frame.rax >= 32ULL)
+        return false;
+
+    const uint64_t endpoint = create_endpoint_frame.rax;
+    ExceptionFrame destroy_endpoint_frame{};
+    destroy_endpoint_frame.cs = 0x1B;
+    destroy_endpoint_frame.rip = process.entry + 7ULL;
+    destroy_endpoint_frame.rax = 6;
+    destroy_endpoint_frame.rbx = endpoint;
+    if (!process_handle_syscall(&destroy_endpoint_frame) ||
+        destroy_endpoint_frame.rax != 0)
+        return false;
+
+    ExceptionFrame destroyed_endpoint_frame{};
+    destroyed_endpoint_frame.cs = 0x1B;
+    destroyed_endpoint_frame.rip = process.entry + 7ULL;
+    destroyed_endpoint_frame.rax = 6;
+    destroyed_endpoint_frame.rbx = endpoint;
+    if (!process_handle_syscall(&destroyed_endpoint_frame) ||
+        destroyed_endpoint_frame.rax != static_cast<uint64_t>(-1))
         return false;
 
     asm volatile("sti" : : : "memory");
