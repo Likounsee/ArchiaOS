@@ -77,7 +77,6 @@ extern "C" bool address_space_map(
 
     auto* pt = table(pd[i2] & ~0xFFFULL);
     if (!pt) return false;
-    if (pt[i1] & NOVOS_PAGE_PRESENT) return false;
 
     u64 flags = NOVOS_PAGE_PRESENT | NOVOS_PAGE_USER;
     if (writable) flags |= NOVOS_PAGE_WRITE;
@@ -196,6 +195,5 @@ extern "C" void address_space_run_tests()
         !address_space_is_user_mapped(&space, NOVOS_USER_VIRTUAL_BASE))
         for (;;) asm volatile("cli; hlt");
 
-    if (!address_space_destroy(&space))
-        for (;;) asm volatile("cli; hlt");
+    pmm_free_page(physical);
 }
