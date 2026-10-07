@@ -181,6 +181,10 @@ extern "C" bool vfs_initialize()
             }
             vfs_test_debug("VFS INIT: ATTACH OK\n");
 
+            uint8_t probe[8] = {}; const bool probe_ok = openfs_device.read(openfs_device.context, 0U, 1U, probe) == OPENFS_IO_OK;
+            vfs_test_debug("VFS INIT: PROBE=");
+            for(unsigned int pi=0;pi<8U && probe_ok;++pi){ const char hx[]="0123456789ABCDEF"; asm volatile("outb %0,%1" : : "a"(hx[(probe[pi]>>4)&15U]), "Nd"(static_cast<unsigned short>(0xE9))); asm volatile("outb %0,%1" : : "a"(hx[probe[pi]&15U]), "Nd"(static_cast<unsigned short>(0xE9))); }
+            asm volatile("outb %0,%1" : : "a"(static_cast<char>(10)), "Nd"(static_cast<unsigned short>(0xE9)));
             const openfs_format_result_t sr = openfs_read_superblock(&openfs_device, &openfs_mount_state.superblock);
             vfs_test_debug("VFS INIT: SUPER=");
             const char sd[]="0123456789ABCDEF"; const unsigned int sv=static_cast<unsigned int>(sr);
