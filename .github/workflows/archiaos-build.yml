@@ -136,13 +136,13 @@ jobs:
           while True:
               inode_count = (inode_table * BS) // 256
               ib = (inode_count + bits - 1) // bits
-              next_inode_table = metadata - bb - ib - journal - data
+              next_inode_table = metadata - 1 - bb - ib - journal - data
               if next_inode_table == inode_table:
                   break
               inode_table = next_inode_table
 
           ib = (inode_count + bits - 1) // bits
-          expected_used = 3 + bb + ib + inode_table + journal + data
+          expected_used = 4 + bb + ib + inode_table + journal + data
           if expected_used != BLOCKS:
               raise RuntimeError(f"OpenFS layout mismatch: used={expected_used} blocks={BLOCKS}")
           ib_start = 3 + bb
