@@ -151,17 +151,16 @@ extern "C" ExceptionFrame* scheduler_timer_tick(
         return current_frame;
 
     const unsigned int old = cpu.current_task;
-    unsigned int candidate = (old + 1) % SCHEDULER_MAX_TASKS;
+    unsigned int candidate = old;
 
-    for (unsigned int i = 0; i < SCHEDULER_MAX_TASKS; ++i)
+    for (unsigned int offset = 1; offset < SCHEDULER_MAX_TASKS; ++offset)
     {
-        const unsigned int id = (candidate + i) % SCHEDULER_MAX_TASKS;
-        if (id != old && task_ready(tasks[cpu_index][id]))
+        const unsigned int id = (old + offset) % SCHEDULER_MAX_TASKS;
+        if (task_ready(tasks[cpu_index][id]))
         {
             candidate = id;
             break;
         }
-        candidate = old;
     }
 
     if (candidate == old)
