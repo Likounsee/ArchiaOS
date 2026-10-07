@@ -66,6 +66,14 @@ extern "C" u64 vmm_alloc_pages(
         {
             if (!valid_range(cursor, pages))
                 return 0;
+
+            for (u64 page = 0; page < pages; ++page)
+            {
+                const u64 va = cursor + page * NOVOS_PAGE_SIZE;
+                if (paging_translate(va) != 0 || paging_get_4k_entry(va) != 0)
+                    return 0;
+            }
+
             for (unsigned int i = 0; i < VMM_MAX_REGIONS; ++i)
             {
                 if (regions[i].used) continue;
