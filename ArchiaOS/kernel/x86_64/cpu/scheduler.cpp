@@ -42,7 +42,7 @@ extern "C" bool scheduler_initialize(unsigned int cpu_count)
 
     for (unsigned int cpu = 0; cpu < cpu_count; ++cpu)
     {
-        cpus[cpu] = SchedulerCpu{cpu, 0, 1, 1, 0};
+        cpus[cpu] = SchedulerCpu{cpu, 0, 1, 2, 0};
         for (unsigned int task = 0; task < SCHEDULER_MAX_TASKS; ++task)
             tasks[cpu][task] = SchedulerTask{
                 task, cpu, SCHEDULER_TASK_UNUSED, SCHEDULER_QUANTUM_TICKS,
@@ -172,6 +172,8 @@ extern "C" ExceptionFrame* scheduler_timer_tick(
 
     cpu.current_task = candidate;
     cpu.next_task = old;
+    if (current.state == SCHEDULER_TASK_RUNNING)
+        current.state = SCHEDULER_TASK_READY;
     SchedulerTask& next = tasks[cpu_index][candidate];
     next.state = SCHEDULER_TASK_RUNNING;
     next.remaining_quantum = SCHEDULER_QUANTUM_TICKS;
