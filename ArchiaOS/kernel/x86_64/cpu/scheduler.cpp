@@ -196,6 +196,11 @@ extern "C" unsigned int scheduler_current_task(unsigned int cpu_index)
     return cpu_index < scheduler_cpu_count ? cpus[cpu_index].current_task : 0;
 }
 
+extern "C" unsigned int scheduler_task_count(unsigned int cpu_index)
+{
+    return cpu_index < scheduler_cpu_count ? cpus[cpu_index].task_count : 0;
+}
+
 extern "C" unsigned long long scheduler_switch_count(unsigned int cpu_index)
 {
     return cpu_index < scheduler_cpu_count ? cpus[cpu_index].switches : 0;
@@ -255,14 +260,21 @@ extern "C" bool scheduler_run_test()
     for (unsigned int i = 0; i < SCHEDULER_QUANTUM_TICKS; ++i)
         scheduler_timer_tick(0, &test_frame);
 
-    if (scheduler_current_task(0) != 1 || scheduler_switch_count(0) != 1)
+    if (scheduler_current_task(0) != 1 ||
+        scheduler_switch_count(0) != 1 ||
+        scheduler_task_count(0) != 2 ||
+        tasks[0][0].state != SCHEDULER_TASK_READY ||
+        tasks[0][1].state != SCHEDULER_TASK_RUNNING)
         return false;
 
     for (unsigned int i = 0; i < SCHEDULER_QUANTUM_TICKS; ++i)
         scheduler_timer_tick(0, &test_frame);
 
     const bool ok = scheduler_current_task(0) == 0 &&
-                    scheduler_switch_count(0) == 2;
+                    scheduler_switch_count(0) == 2 &&
+                    scheduler_task_count(0) == 2 &&
+                    tasks[0][0].state == SCHEDULER_TASK_RUNNING &&
+                    tasks[0][1].state == SCHEDULER_TASK_READY;
     scheduler_ready_flag = false;
     return ok;
 }
