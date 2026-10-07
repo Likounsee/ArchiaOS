@@ -308,15 +308,19 @@ extern "C" bool scheduler_run_test()
     for (unsigned int i = 0; i < SCHEDULER_QUANTUM_TICKS; ++i)
         scheduler_timer_tick(0, &test_frame);
 
+    tasks[0][2].state = SCHEDULER_TASK_STOPPED;
+    if (cpus[0].task_count > 0)
+        --cpus[0].task_count;
+
     unsigned int reused_id = 0;
     const bool reused = scheduler_create_kernel_thread(
         scheduler_task1_entry, nullptr, 0, &reused_id);
     ok = ok &&
          scheduler_current_task(0) == 0 &&
          reused &&
-         reused_id == 1 &&
-         scheduler_task_count(0) == 3 &&
-         tasks[0][1].state == SCHEDULER_TASK_READY;
+         reused_id == 2 &&
+         scheduler_task_count(0) == 2 &&
+         tasks[0][2].state == SCHEDULER_TASK_READY;
 
     scheduler_ready_flag = false;
     return ok;
