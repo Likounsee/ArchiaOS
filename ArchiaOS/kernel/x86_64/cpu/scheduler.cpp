@@ -166,6 +166,12 @@ extern "C" ExceptionFrame* scheduler_timer_tick(
 
     if (candidate == old)
     {
+        if (current.state == SCHEDULER_TASK_STOPPED)
+        {
+            for (;;)
+                asm volatile("cli; hlt");
+        }
+
         current.remaining_quantum = SCHEDULER_QUANTUM_TICKS;
         return current_frame;
     }
