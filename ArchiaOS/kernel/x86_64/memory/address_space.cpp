@@ -190,6 +190,11 @@ extern "C" void address_space_run_tests()
     if (!address_space_create(&space))
         for (;;) asm volatile("cli; hlt");
 
+    if (address_space_map(
+            &space, NOVOS_USER_VIRTUAL_BASE, NOVOS_PMM_MAX_PHYSICAL_ADDRESS,
+            true, false))
+        for (;;) asm volatile("cli; hlt");
+
     const u64 physical = pmm_alloc_page();
     if (!physical ||
         !address_space_map(&space, NOVOS_USER_VIRTUAL_BASE, physical, true, false) ||
