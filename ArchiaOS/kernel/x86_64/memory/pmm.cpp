@@ -225,7 +225,7 @@ extern "C" bool pmm_initialize(BootInfo* bootInfo)
 
 extern "C" u64 pmm_alloc_page()
 {
-    const u64 firstGeneralFrame = 0x01000000ULL / NOVOS_PAGE_SIZE;
+    const u64 firstGeneralFrame = 0x100000ULL / NOVOS_PAGE_SIZE;
     for (u64 word_index = firstGeneralFrame / 64ULL;
          word_index < pmm_bitmap_words;
          ++word_index)
@@ -315,7 +315,7 @@ extern "C" u64 pmm_alloc_contiguous(u64 pageCount)
         return 0;
     }
 
-    const u64 firstGeneralFrame = 0x100000ULL / NOVOS_PAGE_SIZE;
+    const u64 firstGeneralFrame = 0x200000ULL / NOVOS_PAGE_SIZE;
     u64 runStart = firstGeneralFrame;
     u64 runLength = 0;
 
