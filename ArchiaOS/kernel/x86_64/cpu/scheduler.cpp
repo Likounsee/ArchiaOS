@@ -284,16 +284,21 @@ extern "C" bool scheduler_run_test()
 
     tasks[0][1].state = SCHEDULER_TASK_STOPPED;
     tasks[0][1].remaining_quantum = 0;
-    --cpus[0].task_count;
+    tasks[0][2] = SchedulerTask{
+        2, 0, SCHEDULER_TASK_READY, SCHEDULER_QUANTUM_TICKS,
+        nullptr, nullptr, nullptr, 0
+    };
+    cpus[0].task_count = 2;
     for (unsigned int i = 0; i < SCHEDULER_QUANTUM_TICKS; ++i)
         scheduler_timer_tick(0, &test_frame);
 
     ok = ok &&
-         scheduler_current_task(0) == 0 &&
-         scheduler_switch_count(0) == 2 &&
-         scheduler_task_count(0) == 1 &&
-         tasks[0][0].state == SCHEDULER_TASK_RUNNING &&
-         tasks[0][1].state == SCHEDULER_TASK_STOPPED;
+         scheduler_current_task(0) == 2 &&
+         scheduler_switch_count(0) == 3 &&
+         scheduler_task_count(0) == 2 &&
+         tasks[0][0].state == SCHEDULER_TASK_READY &&
+         tasks[0][1].state == SCHEDULER_TASK_STOPPED &&
+         tasks[0][2].state == SCHEDULER_TASK_RUNNING;
 
     scheduler_ready_flag = false;
     return ok;
