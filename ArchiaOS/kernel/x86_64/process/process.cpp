@@ -486,6 +486,11 @@ extern "C" bool process_run_ring3_test()
     if (!process_activate(&process))
         return false;
 
+    if (process_unregister(&process) || process_destroy(&process) ||
+        process_find(process.pid) != &process ||
+        process_current_pid() != process.pid)
+        return false;
+
     asm volatile("sti" : : : "memory");
     ring3_enter(process.entry, process.user_stack_top);
 }
