@@ -188,7 +188,11 @@ extern "C" bool vfs_initialize()
                 return true;
             }
 
-            vfs_test_debug("VFS INIT: MOUNT FAIL\n");
+            vfs_test_debug("VFS INIT: MOUNT FAIL CODE=");
+            const unsigned int mr=static_cast<unsigned int>(mount_result);
+            const char md[]="0123456789ABCDEF";
+            for(int sh=4;sh>=0;sh-=4) asm volatile("outb %0,%1" : : "a"(md[(mr>>sh)&15U]), "Nd"(static_cast<unsigned short>(0xE9)));
+            asm volatile("outb %0,%1" : : "a"(static_cast<char>(10)), "Nd"(static_cast<unsigned short>(0xE9)));
             openfs_kernel_detach(&openfs_device);
         }
     }
