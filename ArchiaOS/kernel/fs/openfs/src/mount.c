@@ -83,7 +83,7 @@ openfs_mount_result_t openfs_mount(openfs_mount_t *mount,openfs_block_device_t *
     memset(mount,0,sizeof(*mount));
     openfs_superblock_t primary,backup;
     openfs_format_result_t pr=read_at(device,0U,&primary);
-    openfs_format_result_t br=read_at(device,device->block_count-1U,&backup); openfs_debug_reason=30U+(uint32_t)pr*10U+(uint32_t)br;
+    openfs_format_result_t br=read_at(device,device->block_count-1U,&backup); const uint32_t validation_reason=openfs_debug_reason; openfs_debug_reason=100U+validation_reason+(uint32_t)pr*10U+(uint32_t)br;
     if(pr!=OPENFS_FORMAT_OK&&br!=OPENFS_FORMAT_OK){
         return (pr==OPENFS_FORMAT_IO_ERROR||br==OPENFS_FORMAT_IO_ERROR)?OPENFS_MOUNT_IO_ERROR:OPENFS_MOUNT_CORRUPT;
     }
