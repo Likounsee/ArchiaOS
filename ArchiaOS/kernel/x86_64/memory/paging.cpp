@@ -160,7 +160,7 @@ static u64 allocate_table_page()
     return physical;
 }
 
-static u64* find_4k_entry(u64 virtualAddress, bool user, bool split)
+static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split_huge)
 {
     if (pml4 == nullptr ||
         ((virtualAddress >> 48) != 0 && (virtualAddress >> 48) != 0xFFFFULL))
@@ -169,7 +169,7 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool split)
     u64& pml4e = pml4[(virtualAddress >> 39) & 0x1FF];
     if ((pml4e & NOVOS_PAGE_PRESENT) == 0)
     {
-        if (!split) return nullptr;
+        if (!create) return nullptr;
         const u64 table = allocate_table_page();
         if (!table) return nullptr;
         pml4e = table | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE |
@@ -182,7 +182,7 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool split)
     u64& pdpte = table3[(virtualAddress >> 30) & 0x1FF];
     if ((pdpte & NOVOS_PAGE_PRESENT) == 0)
     {
-        if (!split) return nullptr;
+        if (!create) return nullptr;
         const u64 table = allocate_table_page();
         if (!table) return nullptr;
         pdpte = table | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE |
@@ -191,14 +191,14 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool split)
     else if (user)
         pdpte |= NOVOS_PAGE_USER;
 
-    if (split && (pdpte & NOVOS_PAGE_HUGE) != 0)
+    if (split_huge && (pdpte & NOVOS_PAGE_HUGE) != 0)
         if (!split_1g_pdpte(&pdpte)) return nullptr;
 
     auto* table2 = table_pointer(pdpte & ~0xFFFULL);
     u64& pde = table2[(virtualAddress >> 21) & 0x1FF];
     if ((pde & NOVOS_PAGE_PRESENT) == 0)
     {
-        if (!split) return nullptr;
+        if (!create) return nullptr;
         const u64 table = allocate_table_page();
         if (!table) return nullptr;
         pde = table | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE |
@@ -207,7 +207,7 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool split)
     else if (user)
         pde |= NOVOS_PAGE_USER;
 
-    if (split && !split_2m_pde(&pde))
+    if (split_huge && !split_2m_pde(&pde))
         return nullptr;
 
     auto* pt = table_pointer(pde & ~0xFFFULL);
@@ -376,7 +376,7 @@ extern "C" bool paging_map_4k(
         physicalAddress >= mapped_physical_limit)
         return false;
 
-    u64* entry = find_4k_entry(virtualAddress, flags.user, true);
+    u64* entry = find_4k_entry(virtualAddress, flags.user, true, true);
     if (entry == nullptr)
         return false;
 
@@ -396,7 +396,7 @@ extern "C" bool paging_unmap_4k(u64 virtualAddress)
         ((virtualAddress >> 48) != 0 && (virtualAddress >> 48) != 0xFFFFULL))
         return false;
 
-    u64* entry = find_4k_entry(virtualAddress, false, false);
+    u64* entry = find_4k_entry(virtualAddress, false, false, false);
     if (entry == nullptr || (*entry & NOVOS_PAGE_PRESENT) == 0)
         return false;
 
