@@ -531,6 +531,9 @@ extern "C" bool process_run_ring3_test()
     IpcMessage cleanup_message{};
     if (cleanup_endpoint < 0 ||
         !process_destroy(&cleanup_process) ||
+        cleanup_process.state != PROCESS_EXITED ||
+        cleanup_process.pid != 0 ||
+        process_register(&cleanup_process) ||
         ipc_receive(cleanup_endpoint, cleanup_process.pid, &cleanup_message))
         return false;
 
