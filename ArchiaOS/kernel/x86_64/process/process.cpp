@@ -566,6 +566,11 @@ extern "C" bool process_run_ring3_test()
     if (process_handle_syscall(&invalid_syscall_frame))
         return false;
 
+    process.state = PROCESS_READY;
+    if (process_handle_syscall(&invalid_syscall_frame))
+        return false;
+    process.state = PROCESS_RUNNING;
+
     ExceptionFrame overflow_syscall_frame{};
     overflow_syscall_frame.cs = 0x1B;
     overflow_syscall_frame.rip = UINT64_MAX - 1ULL;
