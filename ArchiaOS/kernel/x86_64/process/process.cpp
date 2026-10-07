@@ -149,7 +149,9 @@ extern "C" bool process_create_elf(
             ph.vaddr < NOVOS_USER_VIRTUAL_BASE ||
             ph.vaddr >= NOVOS_USER_VIRTUAL_TOP ||
             ph.memsz > NOVOS_USER_VIRTUAL_TOP - ph.vaddr ||
-            (ph.align != 0 && (ph.align & (ph.align - 1)) != 0))
+            (ph.align != 0 && (ph.align & (ph.align - 1)) != 0) ||
+            (ph.align > 1 &&
+             ((ph.vaddr ^ ph.offset) & (ph.align - 1)) != 0))
         {
             address_space_destroy(&space);
             return false;
@@ -428,6 +430,18 @@ extern "C" bool process_run_ring3_test()
     if (process_create_elf(&invalid_wx, image, sizeof(image)))
         return false;
     put32(image + 68, 5);
+
+    static Process invalid_alignment{};
+    put64(image + 72, 0);
+    put64(image + 96, 0);
+    put64(image + 104, 1);
+    put64(image + 112, 0x200);
+    if (process_create_elf(&invalid_alignment, image, sizeof(image)))
+        return false;
+    put64(image + 72, 0x100);
+    put64(image + 96, 30);
+    put64(image + 104, 30);
+    put64(image + 112, 0x1000);
 
     static Process process{};
     if (!process_create_elf(&process, image, sizeof(image)))
