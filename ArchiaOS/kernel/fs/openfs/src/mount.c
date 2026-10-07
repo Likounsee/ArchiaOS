@@ -82,7 +82,7 @@ openfs_mount_result_t openfs_mount(openfs_mount_t *mount,openfs_block_device_t *
     memset(mount,0,sizeof(*mount));
     openfs_superblock_t primary,backup;
     openfs_format_result_t pr=read_at(device,0U,&primary);
-    openfs_format_result_t br=read_at(device,device->block_count-1U,&backup);
+    openfs_format_result_t br=read_at(device,device->block_count-1U,&backup); openfs_debug_reason=30U+(uint32_t)pr*10U+(uint32_t)br;
     if(pr!=OPENFS_FORMAT_OK&&br!=OPENFS_FORMAT_OK){
         return (pr==OPENFS_FORMAT_IO_ERROR||br==OPENFS_FORMAT_IO_ERROR)?OPENFS_MOUNT_IO_ERROR:OPENFS_MOUNT_CORRUPT;
     }
@@ -95,11 +95,11 @@ openfs_mount_result_t openfs_mount(openfs_mount_t *mount,openfs_block_device_t *
     mount->device=device;
     if(openfs_validate_superblock(device,&mount->superblock)!=OPENFS_FORMAT_OK){memset(mount,0,sizeof(*mount));return OPENFS_MOUNT_CORRUPT;}
     openfs_journal_result_t jr=openfs_journal_open(&mount->journal,device,&mount->superblock);
-    if(jr!=OPENFS_JOURNAL_OK)return jr==OPENFS_JOURNAL_IO_ERROR?OPENFS_MOUNT_IO_ERROR:OPENFS_MOUNT_CORRUPT;
+    if(jr!=OPENFS_JOURNAL_OK){openfs_debug_reason=32U+(uint32_t)jr;return jr==OPENFS_JOURNAL_IO_ERROR?OPENFS_MOUNT_IO_ERROR:OPENFS_MOUNT_CORRUPT;}
     jr=openfs_journal_replay(device,&mount->superblock,replay_block,mount);
-    if(jr!=OPENFS_JOURNAL_OK)return jr==OPENFS_JOURNAL_IO_ERROR?OPENFS_MOUNT_IO_ERROR:OPENFS_MOUNT_CORRUPT;
-    if(device->flush(device->context)!=OPENFS_IO_OK)return OPENFS_MOUNT_IO_ERROR;
-    openfs_journal_result_t checkpoint_result=openfs_journal_checkpoint(&mount->journal,device);if(checkpoint_result!=OPENFS_JOURNAL_OK)return checkpoint_result==OPENFS_JOURNAL_CORRUPT?OPENFS_MOUNT_CORRUPT:OPENFS_MOUNT_IO_ERROR;
+    if(jr!=OPENFS_JOURNAL_OK){openfs_debug_reason=40U+(uint32_t)jr;return jr==OPENFS_JOURNAL_IO_ERROR?OPENFS_MOUNT_IO_ERROR:OPENFS_MOUNT_CORRUPT;}
+    if(device->flush(device->context)!=OPENFS_IO_OK){openfs_debug_reason=50U;return OPENFS_MOUNT_IO_ERROR;}
+    openfs_journal_result_t checkpoint_result=openfs_journal_checkpoint(&mount->journal,device);if(checkpoint_result!=OPENFS_JOURNAL_OK){openfs_debug_reason=60U+(uint32_t)checkpoint_result;return checkpoint_result==OPENFS_JOURNAL_CORRUPT?OPENFS_MOUNT_CORRUPT:OPENFS_MOUNT_IO_ERROR;}
     mount->mounted=1;
     return OPENFS_MOUNT_OK;
 }
