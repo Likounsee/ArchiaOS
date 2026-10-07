@@ -23,6 +23,8 @@ static bool valid_range(u64 base, u64 pages)
 static bool overlaps(u64 a, u64 pages, const VmmRegion& b)
 {
     if (!b.used) return false;
+    if (pages > (UINT64_MAX / NOVOS_PAGE_SIZE))
+        return false;
     const u64 bytes = pages * NOVOS_PAGE_SIZE;
     return a < b.base + b.pages * NOVOS_PAGE_SIZE &&
            b.base < a + bytes;
@@ -41,6 +43,8 @@ extern "C" u64 vmm_alloc_pages(
     u64 pages, bool user, bool writable, bool executable)
 {
     if (!initialized || pages == 0 || (writable && executable))
+        return 0;
+    if (pages > (NOVOS_KERNEL_HEAP_SIZE / NOVOS_PAGE_SIZE))
         return 0;
 
     u64 cursor = NOVOS_KERNEL_HEAP_BASE;
@@ -168,6 +172,9 @@ extern "C" void vmm_run_tests()
 {
     const u64 before = vmm_allocated_pages();
     if (vmm_alloc_pages(1, false, true, true) != 0)
+        for (;;) asm volatile("cli; hlt");
+    if (vmm_alloc_pages(UINT64_MAX, false, true, false) != 0 ||
+        vmm_allocated_pages() != before)
         for (;;) asm volatile("cli; hlt");
     const u64 base = vmm_alloc_pages(2, false, true, false);
     if (base == 0 || !vmm_is_mapped(base) || !vmm_is_mapped(base + NOVOS_PAGE_SIZE))
