@@ -323,6 +323,9 @@ extern "C" bool process_activate(Process* process)
         return false;
     if (!address_space_activate(&process->address_space))
         return false;
+    if (current_process && current_process != process &&
+        current_process->state == PROCESS_RUNNING)
+        current_process->state = PROCESS_READY;
     current_process = process;
     process->state = PROCESS_RUNNING;
     return true;
@@ -559,6 +562,19 @@ extern "C" bool process_run_ring3_test()
         return false;
 
     if (!process_activate(&process))
+        return false;
+
+    static Process next_process{};
+    if (!process_create_elf(&next_process, image, sizeof(image)) ||
+        !process_register(&next_process) ||
+        !process_activate(&next_process) ||
+        process.state != PROCESS_READY ||
+        next_process.state != PROCESS_RUNNING ||
+        process_current_pid() != next_process.pid ||
+        !process_activate(&process) ||
+        process.state != PROCESS_RUNNING ||
+        next_process.state != PROCESS_READY ||
+        !process_destroy(&next_process))
         return false;
 
     if (process_unregister(&process) || process_destroy(&process) ||
