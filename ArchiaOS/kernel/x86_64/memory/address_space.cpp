@@ -59,7 +59,6 @@ extern "C" bool address_space_map(
     const unsigned int i2 = (virtual_address >> 21) & 0x1FF;
     const unsigned int i1 = (virtual_address >> 12) & 0x1FF;
 
-    bool created_pml4 = false;
     bool created_pdpt = false;
     bool created_pd = false;
     bool created_pt = false;
@@ -86,11 +85,6 @@ extern "C" bool address_space_map(
             pml4[i4] = 0;
             pmm_free_page(pdpt_physical);
         }
-        if (created_pml4)
-        {
-            pml4[i4] = 0;
-            pmm_free_page(space->pml4_physical);
-        }
     };
 
     if (pml4[i4] & NOVOS_PAGE_HUGE)
@@ -102,7 +96,7 @@ extern "C" bool address_space_map(
         if (!page)
             return false;
         pml4[i4] = page | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE | NOVOS_PAGE_USER;
-        created_pml4 = true;
+        created_pdpt = true;
     }
 
     pdpt_physical = pml4[i4] & ~0xFFFULL;
@@ -128,7 +122,7 @@ extern "C" bool address_space_map(
             return false;
         }
         pdpt[i3] = page | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE | NOVOS_PAGE_USER;
-        created_pdpt = true;
+        created_pd = true;
     }
 
     pd_physical = pdpt[i3] & ~0xFFFULL;
@@ -148,18 +142,6 @@ extern "C" bool address_space_map(
     if (!(pd[i2] & NOVOS_PAGE_PRESENT))
     {
         const u64 page = new_table();
-        if (!page)
-        {
-            rollback_tables();
-            return false;
-        }
-        pd[i2] = page | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE | NOVOS_PAGE_USER;
-        created_pd = true;
-    }
-
-    if (!(pd[i2] & NOVOS_PAGE_PRESENT))
-    {
-        const page = new_table();
         if (!page)
         {
             rollback_tables();
