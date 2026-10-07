@@ -28,6 +28,8 @@ static bool signature_ok(const uint8_t* s) {
     static constexpr uint8_t e[8]={'E','F','I',' ','P','A','R','T'};
     for(unsigned int i=0;i<8;++i) if(s[i]!=e[i]) return false; return true;
 }
+static uint8_t gpt_entry_buffer[16384]{};
+static GptPartition gpt_partition_buffer[128]{};
 extern "C" bool gpt_read_partitions(const BlockDevice* d,GptPartition* out,uint32_t cap,uint32_t* count) {
     if(!d||!out||!count||!cap||d->sector_size<512) return false;
     *count=0; uint8_t sector[512]={};
@@ -69,8 +71,6 @@ struct GptBlockContext
 };
 
 static GptBlockContext gpt_contexts[16]{};
-static uint8_t gpt_entry_buffer[16384]{};
-static GptPartition gpt_partition_buffer[128]{};
 
 static bool gpt_partition_read(const BlockDevice* d,uint64_t lba,uint32_t count,void* out)
 {
