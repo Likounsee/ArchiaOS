@@ -112,7 +112,8 @@ static bool map_stack(AddressSpace* space, uint64_t* top)
 extern "C" bool process_create_elf(
     Process* process, const uint8_t* image, uint64_t image_size)
 {
-    if (!process || !image || image_size < sizeof(Elf64Header))
+    if (!process || !image || image_size < sizeof(Elf64Header) ||
+        process->pid != 0 || process->address_space.pml4_physical != 0)
         return false;
 
     const auto* header = reinterpret_cast<const Elf64Header*>(image);
@@ -236,6 +237,7 @@ extern "C" bool process_create_elf(
 extern "C" bool process_register(Process* process)
 {
     if (!process || !process->pid ||
+        !process->address_space.pml4_physical ||
         (process->state != PROCESS_READY && process->state != PROCESS_RUNNING))
         return false;
     for (unsigned int i = 0; i < PROCESS_MAX; ++i)
@@ -294,7 +296,8 @@ extern "C" bool process_destroy(Process* process)
 
 extern "C" bool process_activate(Process* process)
 {
-    if (!process || !process->pid || !process->address_space.pml4_physical)
+    if (!process || !process->pid || !process->address_space.pml4_physical ||
+        process_find(process->pid) != process)
         return false;
     if (!address_space_activate(&process->address_space))
         return false;
@@ -448,6 +451,8 @@ extern "C" bool process_run_ring3_test()
     static Process process{};
     if (!process_create_elf(&process, image, sizeof(image)))
         return false;
+    if (process_create_elf(&process, image, sizeof(image)))
+        return false;
     if (!process_register(&process) || process_find(process.pid) != &process)
         return false;
 
@@ -462,7 +467,8 @@ extern "C" bool process_run_ring3_test()
 
     if (!process_unregister(&process))
         return false;
-    if (process_find(process.pid) != &process)
+    if (process_find(process.pid) != &process ||
+        process_activate(&process))
         return false;
     if (!process_register(&process))
         return false;
