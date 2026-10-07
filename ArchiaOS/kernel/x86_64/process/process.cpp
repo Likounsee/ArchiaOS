@@ -145,6 +145,7 @@ extern "C" bool process_create_elf(
             continue;
         if (ph.memsz == 0 || ph.memsz < ph.filesz ||
             !range_ok(ph.offset, ph.filesz, image_size) ||
+            (ph.flags & 6U) == 6U ||
             ph.vaddr < NOVOS_USER_VIRTUAL_BASE ||
             ph.vaddr >= NOVOS_USER_VIRTUAL_TOP ||
             ph.memsz > NOVOS_USER_VIRTUAL_TOP - ph.vaddr ||
@@ -417,6 +418,12 @@ extern "C" bool process_run_ring3_test()
     };
     for (unsigned int i = 0; i < sizeof(user_code); ++i)
         image[0x100 + i] = user_code[i];
+
+    static Process invalid_wx{};
+    put32(image + 68, 7);
+    if (process_create_elf(&invalid_wx, image, sizeof(image)))
+        return false;
+    put32(image + 68, 5);
 
     static Process process{};
     if (!process_create_elf(&process, image, sizeof(image)))
