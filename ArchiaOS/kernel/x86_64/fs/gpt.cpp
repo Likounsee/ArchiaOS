@@ -24,6 +24,15 @@ static void gpt_debug(const char* s)
                          "Nd"(static_cast<unsigned short>(0xE9)));
 }
 
+static void gpt_debug_hex(uint64_t value)
+{
+    static const char digits[]="0123456789ABCDEF";
+    gpt_debug("GPT VALUE 0x");
+    for(int shift=60; shift>=0; shift-=4)
+        asm volatile("outb %0,%1" : : "a"(digits[(value>>shift)&0xFU]), "Nd"(static_cast<unsigned short>(0xE9)));
+    gpt_debug("\\n");
+}
+
 static bool signature_ok(const uint8_t* s) {
     static constexpr uint8_t e[8]={'E','F','I',' ','P','A','R','T'};
     for(unsigned int i=0;i<8;++i) if(s[i]!=e[i]) return false; return true;
@@ -38,7 +47,7 @@ extern "C" bool gpt_read_partitions(const BlockDevice* d,GptPartition* out,uint3
     if(!signature_ok(h->signature)) { gpt_debug("GPT FAIL SIGNATURE\\n"); return false; }
     if(h->revision!=0x00010000U) { gpt_debug("GPT FAIL REVISION\\n"); return false; }
     if(h->header_size<HEADER_SIZE || h->header_size>d->sector_size) { gpt_debug("GPT FAIL HEADER SIZE\\n"); return false; }
-    if(h->current_lba!=1) { gpt_debug("GPT FAIL CURRENT LBA\\n"); return false; }
+    if(h->current_lba!=1) { gpt_debug("GPT FAIL CURRENT LBA\\n"); gpt_debug_hex(h->current_lba); return false; }
     if(!h->partition_entry_count) { gpt_debug("GPT FAIL ENTRY COUNT\\n"); return false; }
     if(h->partition_entry_size<ENTRY_SIZE || h->partition_entry_size>d->sector_size) { gpt_debug("GPT FAIL ENTRY SIZE\\n"); return false; }
     if(h->partition_entries_lba>=d->sector_count) { gpt_debug("GPT FAIL ENTRY LBA\\n"); return false; }
