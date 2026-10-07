@@ -50,6 +50,24 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
         for (;;) asm volatile ("cli; hlt");
     }
 
+    const u64 free_before_overflow = pmm_free_page_count();
+    if (pmm_alloc_page_above(UINT64_MAX) != 0 ||
+        pmm_free_page_count() != free_before_overflow)
+    {
+        debug_str("PMM TEST FAIL: ABOVE OVERFLOW GUARD\n");
+        for (;;) asm volatile ("cli; hlt");
+    }
+
+    u64 above_page = pmm_alloc_page_above(0x00200000ULL);
+    if (above_page == 0 ||
+        (above_page & (NOVOS_PAGE_SIZE - 1ULL)) != 0 ||
+        above_page < 0x00200000ULL)
+    {
+        debug_str("PMM TEST FAIL: ABOVE ALLOCATION\n");
+        for (;;) asm volatile ("cli; hlt");
+    }
+    pmm_free_page(above_page);
+
     u64 page_a = pmm_alloc_page();
     u64 page_b = pmm_alloc_page();
 
