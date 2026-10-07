@@ -466,7 +466,7 @@ static bool ahci_attach_controller(const StorageController& controller)
             continue;
 
         storage_debug("AHCI PORT PREPARE\n");
-        if (!ahci_prepare_port(controller.mmio_base, port_number, slots)
+        if (!ahci_prepare_port(controller.mmio_base, port_number, slots))
             continue;
         auto& port = ahci_ports[port_number];
         storage_debug("AHCI PORT READY\n");
