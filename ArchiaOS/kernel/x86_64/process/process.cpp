@@ -92,8 +92,13 @@ static bool map_stack(AddressSpace* space, uint64_t* top)
     for (uint64_t va = stack_base; va < stack_top; va += NOVOS_PAGE_SIZE)
     {
         const uint64_t physical = pmm_alloc_page_above(0x01000000ULL);
-        if (!physical || !address_space_map(space, va, physical, true, false))
+        if (!physical)
             return false;
+        if (!address_space_map(space, va, physical, true, false))
+        {
+            pmm_free_page(physical);
+            return false;
+        }
 
         auto* page = reinterpret_cast<uint8_t*>(paging_physical_to_virtual(physical));
         for (unsigned int i = 0; i < 4096; ++i)
@@ -154,10 +159,16 @@ extern "C" bool process_create_elf(
         for (uint64_t va = base; va < end; va += NOVOS_PAGE_SIZE)
         {
             const uint64_t physical = pmm_alloc_page_above(0x01000000ULL);
-            if (!physical || !address_space_map(
+            if (!physical)
+            {
+                address_space_destroy(&space);
+                return false;
+            }
+            if (!address_space_map(
                     &space, va, physical,
                     (ph.flags & 2U) != 0, (ph.flags & 1U) != 0))
             {
+                pmm_free_page(physical);
                 address_space_destroy(&space);
                 return false;
             }
