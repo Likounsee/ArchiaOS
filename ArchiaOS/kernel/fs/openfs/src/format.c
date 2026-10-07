@@ -59,7 +59,7 @@ static void encode(const openfs_superblock_t*sb,uint8_t*b){
     put32(b+OPENFS_CHECKSUM_OFFSET,0U);put32(b+OPENFS_CHECKSUM_OFFSET,openfs_crc32c(b,OPENFS_CHECKSUM_OFFSET));
 }
 
-static openfs_format_result_t decode(const uint8_t*b,openfs_superblock_t*sb){
+static openfs_format_result_t decode(const uint8_t*b,openfs_superblock_t*sb){ openfs_debug_reason=99U;
     if(memcmp(b,"OPENFS\0\0",8U)!=0||get32(b+24U)!=OPENFS_SUPERBLOCK_SIZE){ openfs_debug_reason=(memcmp(b,"OPENFS\0\0",8U)!=0)?1U:2U; return OPENFS_FORMAT_CORRUPT; }
     uint32_t stored=get32(b+OPENFS_CHECKSUM_OFFSET);uint8_t copy[OPENFS_SUPERBLOCK_SIZE];memcpy(copy,b,sizeof(copy));put32(copy+OPENFS_CHECKSUM_OFFSET,0U);
     const uint32_t calculated=openfs_crc32c(copy,OPENFS_CHECKSUM_OFFSET); if(stored!=calculated){ openfs_debug_stored=stored; openfs_debug_calculated=calculated; return OPENFS_FORMAT_CORRUPT; }
