@@ -324,7 +324,9 @@ extern "C" bool process_handle_syscall(ExceptionFrame* frame)
         return false;
 
     if (frame->rip > UINT64_MAX - 2ULL ||
-        !address_space_is_user_mapped(&current_process->address_space, frame->rip))
+        !address_space_is_user_mapped(&current_process->address_space, frame->rip) ||
+        !address_space_is_user_mapped(
+            &current_process->address_space, frame->rip + 1ULL))
         return false;
 
     __atomic_fetch_add(&syscall_count, 1ULL, __ATOMIC_RELAXED);
@@ -432,8 +434,8 @@ extern "C" bool process_run_ring3_test()
     put32(image + 68, 5);
 
     static Process invalid_alignment{};
-    put64(image + 72, 0);
-    put64(image + 96, 0);
+    put64(image + 72, 0x400101);
+    put64(image + 96, 1);
     put64(image + 104, 1);
     put64(image + 112, 0x200);
     if (process_create_elf(&invalid_alignment, image, sizeof(image)))
