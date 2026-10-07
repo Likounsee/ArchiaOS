@@ -216,7 +216,7 @@ extern "C" bool process_create_elf(
 
     if (header->entry < NOVOS_USER_VIRTUAL_BASE ||
         header->entry >= NOVOS_USER_VIRTUAL_TOP ||
-        !address_space_is_user_mapped(&space, header->entry))
+        !address_space_is_user_executable(&space, header->entry))
     {
         address_space_destroy(&space);
         return false;
