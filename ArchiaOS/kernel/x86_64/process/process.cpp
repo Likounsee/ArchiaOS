@@ -358,6 +358,17 @@ extern "C" bool process_handle_syscall(ExceptionFrame* frame)
             &current_process->address_space, frame->rip + 1ULL))
         return false;
 
+    const u64 instruction_physical = paging_translate(frame->rip);
+    const u64 instruction_virtual =
+        paging_physical_to_virtual(instruction_physical);
+    if (!instruction_physical || !instruction_virtual)
+        return false;
+
+    const auto* instruction =
+        reinterpret_cast<const uint8_t*>(instruction_virtual);
+    if (instruction[0] != 0xCD || instruction[1] != 0x80)
+        return false;
+
     __atomic_fetch_add(&syscall_count, 1ULL, __ATOMIC_RELAXED);
 
     switch (frame->rax)
@@ -541,15 +552,22 @@ extern "C" bool process_run_ring3_test()
     if (process_handle_syscall(&overflow_syscall_frame))
         return false;
 
+    ExceptionFrame non_syscall_instruction{};
+    non_syscall_instruction.cs = 0x1B;
+    non_syscall_instruction.rip = process.entry;
+    non_syscall_instruction.rax = 1;
+    if (process_handle_syscall(&non_syscall_instruction))
+        return false;
+
     ExceptionFrame valid_syscall_frame{};
     valid_syscall_frame.cs = 0x1B;
-    valid_syscall_frame.rip = process.entry;
+    valid_syscall_frame.rip = process.entry + 5ULL;
     valid_syscall_frame.rax = 1;
     const unsigned long long syscall_before =
         process_syscall_count();
     if (!process_handle_syscall(&valid_syscall_frame) ||
         valid_syscall_frame.rax != process.pid ||
-        valid_syscall_frame.rip != process.entry + 2ULL ||
+        valid_syscall_frame.rip != process.entry + 7ULL ||
         process_syscall_count() != syscall_before + 1ULL)
         return false;
 
