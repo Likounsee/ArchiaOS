@@ -167,7 +167,10 @@ extern "C" bool address_space_activate(AddressSpace* space)
 extern "C" bool address_space_is_user_mapped(
     const AddressSpace* space, u64 virtual_address)
 {
-    if (!space || !space->pml4_physical) return false;
+    if (!space || !space->pml4_physical ||
+        virtual_address < NOVOS_USER_VIRTUAL_BASE ||
+        virtual_address >= NOVOS_USER_VIRTUAL_TOP)
+        return false;
     auto* pml4 = table(space->pml4_physical);
     if (!pml4) return false;
     const u64 e4 = pml4[(virtual_address >> 39) & 0x1FF];
@@ -205,6 +208,8 @@ extern "C" void address_space_run_tests()
 
     if (address_space_map(
             &space, NOVOS_USER_VIRTUAL_BASE, physical, true, false))
+        for (;;) asm volatile("cli; hlt");
+    if (address_space_is_user_mapped(&space, NOVOS_USER_VIRTUAL_TOP))
         for (;;) asm volatile("cli; hlt");
     pmm_free_page(physical);
 }
