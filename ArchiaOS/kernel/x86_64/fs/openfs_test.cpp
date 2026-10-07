@@ -24,7 +24,11 @@ static bool openfs_test_window_read(const BlockDevice* device, uint64_t lba,
         return false;
     const uint64_t bytes = static_cast<uint64_t>(count) * device->sector_size;
     const uint64_t offset = lba * device->sector_size;
-    for (uint64_t i = 0U; i < bytes; ++i)
+    uint64_t i = 0U;
+    for (; i + sizeof(uint64_t) <= bytes; i += sizeof(uint64_t))
+        *reinterpret_cast<uint64_t*>(static_cast<uint8_t*>(out) + i) =
+            *reinterpret_cast<const uint64_t*>(window->storage + offset + i);
+    for (; i < bytes; ++i)
         static_cast<uint8_t*>(out)[i] = window->storage[offset + i];
     return true;
 }
@@ -41,7 +45,11 @@ static bool openfs_test_window_write(const BlockDevice* device, uint64_t lba,
         return false;
     const uint64_t bytes = static_cast<uint64_t>(count) * device->sector_size;
     const uint64_t offset = lba * device->sector_size;
-    for (uint64_t i = 0U; i < bytes; ++i)
+    uint64_t i = 0U;
+    for (; i + sizeof(uint64_t) <= bytes; i += sizeof(uint64_t))
+        *reinterpret_cast<uint64_t*>(window->storage + offset + i) =
+            *reinterpret_cast<const uint64_t*>(static_cast<const uint8_t*>(input) + i);
+    for (; i < bytes; ++i)
         window->storage[offset + i] = static_cast<const uint8_t*>(input)[i];
     return true;
 }
@@ -69,7 +77,7 @@ extern "C" uint32_t openfs_kernel_test()
     const BlockDevice* disk = block_get(1U);
     if (!disk)
         return 22U;
-    static uint8_t openfs_test_storage[256U * 4096U]{};
+    static uint8_t openfs_test_storage[4096U * 4096U]{};
 
     openfs_block_device_t device{};
     openfs_block_device_t second_device{};
@@ -84,7 +92,7 @@ extern "C" uint32_t openfs_kernel_test()
         0,
         BLOCK_DEVICE_MEMORY,
         512U,
-        2048U,
+        32768U,
         openfs_test_window_read,
         openfs_test_window_write,
         openfs_test_window_flush,
