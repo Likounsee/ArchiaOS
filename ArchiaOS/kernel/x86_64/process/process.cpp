@@ -143,7 +143,7 @@ extern "C" bool process_create_elf(
         const auto& ph = phdrs[i];
         if (ph.type != 1)
             continue;
-        if (ph.memsz < ph.filesz || ph.filesz == 0 ||
+        if (ph.memsz == 0 || ph.memsz < ph.filesz ||
             !range_ok(ph.offset, ph.filesz, image_size) ||
             ph.vaddr < NOVOS_USER_VIRTUAL_BASE ||
             ph.vaddr >= NOVOS_USER_VIRTUAL_TOP ||
