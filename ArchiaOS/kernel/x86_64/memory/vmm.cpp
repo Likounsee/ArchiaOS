@@ -184,6 +184,16 @@ extern "C" void vmm_run_tests()
     if (vmm_alloc_pages(UINT64_MAX, false, true, false) != 0 ||
         vmm_allocated_pages() != before)
         for (;;) asm volatile("cli; hlt");
+    const u64 occupiedPhysical = pmm_alloc_page();
+    if (occupiedPhysical == 0 ||
+        !paging_map_4k(NOVOS_KERNEL_HEAP_BASE, occupiedPhysical,
+                       PagingFlags{true, false, false, false, false}) ||
+        vmm_alloc_pages(1, false, true, false) != 0)
+        for (;;) asm volatile("cli; hlt");
+    if (!paging_unmap_4k(NOVOS_KERNEL_HEAP_BASE))
+        for (;;) asm volatile("cli; hlt");
+    pmm_free_page(occupiedPhysical);
+
     const u64 base = vmm_alloc_pages(2, false, true, false);
     if (base == 0 || !vmm_is_mapped(base) || !vmm_is_mapped(base + NOVOS_PAGE_SIZE))
         for (;;) asm volatile("cli; hlt");
