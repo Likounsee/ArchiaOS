@@ -321,6 +321,10 @@ extern "C" bool process_handle_syscall(ExceptionFrame* frame)
     if (!frame || !current_process || (frame->cs & 3ULL) != 3ULL)
         return false;
 
+    if (frame->rip > UINT64_MAX - 2ULL ||
+        !address_space_is_user_mapped(&current_process->address_space, frame->rip))
+        return false;
+
     __atomic_fetch_add(&syscall_count, 1ULL, __ATOMIC_RELAXED);
 
     switch (frame->rax)
