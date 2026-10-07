@@ -66,6 +66,9 @@ extern "C" bool address_space_map(
     u64 pdpt_physical = 0;
     u64 pd_physical = 0;
     u64 pt_physical = 0;
+    u64* pdpt = nullptr;
+    u64* pd = nullptr;
+    u64* pt = nullptr;
 
     auto rollback_tables = [&]() {
         if (created_pt)
@@ -103,7 +106,7 @@ extern "C" bool address_space_map(
     }
 
     pdpt_physical = pml4[i4] & ~0xFFFULL;
-    auto* pdpt = table(pdpt_physical);
+    pdpt = table(pdpt_physical);
     if (!pdpt)
     {
         rollback_tables();
@@ -129,7 +132,7 @@ extern "C" bool address_space_map(
     }
 
     pd_physical = pdpt[i3] & ~0xFFFULL;
-    auto* pd = table(pd_physical);
+    pd = table(pd_physical);
     if (!pd)
     {
         rollback_tables();
@@ -154,8 +157,20 @@ extern "C" bool address_space_map(
         created_pd = true;
     }
 
+    if (!(pd[i2] & NOVOS_PAGE_PRESENT))
+    {
+        const page = new_table();
+        if (!page)
+        {
+            rollback_tables();
+            return false;
+        }
+        pd[i2] = page | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE | NOVOS_PAGE_USER;
+        created_pt = true;
+    }
+
     pt_physical = pd[i2] & ~0xFFFULL;
-    auto* pt = table(pt_physical);
+    pt = table(pt_physical);
     if (!pt)
     {
         rollback_tables();
