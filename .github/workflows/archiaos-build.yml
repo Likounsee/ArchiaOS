@@ -222,8 +222,8 @@ jobs:
               -smp 2 \
               -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
               -drive if=pflash,format=raw,file="ArchiaOS/build/OVMF_VARS_${cpu}.fd" \
-              -drive format=raw,file=fat:rw:ArchiaOS/build/esp \
               -drive format=raw,file=ArchiaOS/build/storage-test.img \
+              -drive format=raw,file=fat:rw:ArchiaOS/build/esp \
               -display none -serial none -monitor none \
               -debugcon stdio -global isa-debugcon.iobase=0xe9 \
               -no-reboot -no-shutdown > "qemu-${cpu}.log" 2>&1
