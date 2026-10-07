@@ -305,6 +305,8 @@ extern "C" bool process_destroy(Process* process)
     if (!address_space_destroy(&process->address_space))
         return false;
 
+    ipc_destroy_owner(process->pid);
+
     process_table[table_slot] = nullptr;
     --process_table_count;
     process->state = PROCESS_EXITED;
