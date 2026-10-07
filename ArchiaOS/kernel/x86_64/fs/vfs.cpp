@@ -196,7 +196,7 @@ extern "C" bool vfs_initialize()
     return false;
 }
 
-static void vfs_debug_hex(unsigned int value)
+[[maybe_unused]] static void vfs_debug_hex(unsigned int value)
 {
     static const char digits[]="0123456789ABCDEF";
     for (const char* p="VFS VALUE 0x"; *p; ++p) asm volatile("outb %0,%1" : : "a"(*p), "Nd"(static_cast<unsigned short>(0xE9)));
