@@ -7,6 +7,8 @@
 #include "openfs/mount.h"
 #include "../drivers/block.hpp"
 #include "gpt.hpp"
+extern "C" volatile uint32_t openfs_debug_stored;
+extern "C" volatile uint32_t openfs_debug_calculated;
 
 static openfs_block_device_t openfs_device{};
 static openfs_mount_t openfs_mount_state{};
