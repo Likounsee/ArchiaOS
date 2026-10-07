@@ -295,15 +295,12 @@ extern "C" void address_space_run_tests()
             &space, NOVOS_USER_VIRTUAL_BASE, physical, true, false))
         for (;;) asm volatile("cli; hlt");
 
-    const u64 executable_physical = pmm_alloc_page();
-    if (!executable_physical ||
-        address_space_map(
+    if (address_space_map(
             &space, NOVOS_USER_VIRTUAL_BASE + NOVOS_PAGE_SIZE,
-            executable_physical, true, true) ||
+            physical, true, true) ||
         address_space_is_user_mapped(
             &space, NOVOS_USER_VIRTUAL_BASE + NOVOS_PAGE_SIZE))
         for (;;) asm volatile("cli; hlt");
-    pmm_free_page(executable_physical);
 
     if (address_space_is_user_mapped(&space, NOVOS_USER_VIRTUAL_TOP))
         for (;;) asm volatile("cli; hlt");
