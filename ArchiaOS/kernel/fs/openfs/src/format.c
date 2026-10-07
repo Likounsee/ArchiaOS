@@ -72,6 +72,7 @@ static openfs_format_result_t decode(const uint8_t*b,openfs_superblock_t*sb){
 
 openfs_format_result_t openfs_validate_superblock(const openfs_block_device_t*d,const openfs_superblock_t*sb){
     if(!openfs_block_device_is_valid(d)||sb==NULL)return OPENFS_FORMAT_INVALID_ARGUMENT;
+    openfs_debug_reason = (sb->version_major!=OPENFS_FORMAT_VERSION_MAJOR||sb->version_minor>OPENFS_FORMAT_VERSION_MINOR)?10U:(sb->block_size!=d->block_size)?13U:(sb->total_blocks!=d->block_count)?15U:(sb->metadata_start!=2U||sb->metadata_blocks!=sb->total_blocks-3U||sb->block_bitmap_start!=3U||sb->block_bitmap_blocks==0U||sb->inode_bitmap_blocks==0U||sb->inode_table_blocks==0U)?16U:(sb->block_bitmap_start+sb->block_bitmap_blocks!=sb->inode_bitmap_start)?17U:(sb->inode_bitmap_start+sb->inode_bitmap_blocks!=sb->inode_table_start)?18U:(sb->inode_table_start+sb->inode_table_blocks!=sb->journal_start)?19U:(sb->journal_start+sb->journal_blocks!=sb->data_start)?20U:(sb->data_start+sb->data_blocks!=sb->total_blocks-1U)?21U:(sb->journal_blocks<8U||sb->data_blocks<8U||sb->journal_start==0U||sb->data_start==0U)?22U:(sb->metadata_start+sb->metadata_blocks!=sb->total_blocks-1U)?23U:0U;
     if(sb->version_major!=OPENFS_FORMAT_VERSION_MAJOR||sb->version_minor>OPENFS_FORMAT_VERSION_MINOR)return OPENFS_FORMAT_CORRUPT;
     if((sb->feature_flags&~OPENFS_FEATURE_EXTENT_TREE)!=0U)return OPENFS_FORMAT_CORRUPT;
     if((sb->feature_flags&OPENFS_FEATURE_EXTENT_TREE)!=0U&&sb->version_minor<3U)return OPENFS_FORMAT_CORRUPT;
