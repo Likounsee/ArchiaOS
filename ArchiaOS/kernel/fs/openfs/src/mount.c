@@ -6,6 +6,7 @@
 #include "openfs/journal.h"
 
 #define OPENFS_CHECKSUM_OFFSET 4088U
+extern volatile uint32_t openfs_debug_reason;
 
 static uint16_t get16(const uint8_t *p){return (uint16_t)p[0]|((uint16_t)p[1]<<8U);}
 static uint32_t get32(const uint8_t *p){return (uint32_t)p[0]|((uint32_t)p[1]<<8U)|((uint32_t)p[2]<<16U)|((uint32_t)p[3]<<24U);}
