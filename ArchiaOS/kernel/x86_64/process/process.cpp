@@ -462,6 +462,12 @@ extern "C" bool process_run_ring3_test()
         return false;
     put32(image + 68, 5);
 
+    static Process non_executable_entry{};
+    put32(image + 68, 4);
+    if (process_create_elf(&non_executable_entry, image, sizeof(image)))
+        return false;
+    put32(image + 68, 5);
+
     static Process invalid_alignment{};
     put64(image + 72, 0x400101);
     put64(image + 96, 1);
