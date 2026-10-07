@@ -16,6 +16,14 @@ static uint32_t crc32(const uint8_t* p,uint32_t n) {
     for(uint32_t i=0;i<n;++i){ c^=p[i]; for(unsigned int b=0;b<8;++b) c=(c>>1)^((c&1U)?0xEDB88320U:0); }
     return c^0xFFFFFFFFU;
 }
+static void gpt_debug(const char* s)
+{
+    for (int i = 0; s[i] != '\0'; ++i)
+        asm volatile("outb %0,%1"
+                     : : "a"(s[i]),
+                         "Nd"(static_cast<unsigned short>(0xE9)));
+}
+
 static bool signature_ok(const uint8_t* s) {
     static constexpr uint8_t e[8]={'E','F','I',' ','P','A','R','T'};
     for(unsigned int i=0;i<8;++i) if(s[i]!=e[i]) return false; return true;
@@ -23,20 +31,20 @@ static bool signature_ok(const uint8_t* s) {
 extern "C" bool gpt_read_partitions(const BlockDevice* d,GptPartition* out,uint32_t cap,uint32_t* count) {
     if(!d||!out||!count||!cap||d->sector_size<512) return false;
     *count=0; uint8_t sector[512]={};
-    if(!block_read(d,1,1,sector)) return false;
+    if(!block_read(d,1,1,sector)) { gpt_debug("GPT READ HEADER FAIL\\n"); return false; }
     const auto* h=reinterpret_cast<const GptHeader*>(sector);
     if(!signature_ok(h->signature)||h->revision!=0x00010000U||h->header_size<HEADER_SIZE||h->header_size>d->sector_size||
        h->current_lba!=1||!h->partition_entry_count||h->partition_entry_size<ENTRY_SIZE||
        h->partition_entry_size>d->sector_size||h->partition_entries_lba>=d->sector_count) return false;
     uint8_t copy[512]={}; for(unsigned int i=0;i<512;++i) copy[i]=sector[i];
     reinterpret_cast<GptHeader*>(copy)->header_crc32=0;
-    if(crc32(copy,h->header_size)!=h->header_crc32) return false;
+    if(crc32(copy,h->header_size)!=h->header_crc32) { gpt_debug("GPT HEADER CRC FAIL\\n"); return false; }
     const uint64_t bytes=static_cast<uint64_t>(h->partition_entry_count)*h->partition_entry_size;
     const uint64_t sectors=(bytes+d->sector_size-1)/d->sector_size;
-    if(!sectors||sectors>d->sector_count-h->partition_entries_lba||bytes>16384) return false;
+    if(!sectors||sectors>d->sector_count-h->partition_entries_lba||bytes>16384) { gpt_debug("GPT ENTRY RANGE FAIL\\n"); return false; }
     uint8_t entries[16384]={};
     if(!block_read(d,h->partition_entries_lba,static_cast<uint32_t>(sectors),entries)||
-       crc32(entries,static_cast<uint32_t>(bytes))!=h->partition_entries_crc32) return false;
+       crc32(entries,static_cast<uint32_t>(bytes))!=h->partition_entries_crc32) { gpt_debug("GPT ENTRY CRC FAIL\\n"); return false; }
     const uint32_t scan=h->partition_entry_count<MAX_ENTRIES?h->partition_entry_count:MAX_ENTRIES;
     for(uint32_t i=0;i<scan&&*count<cap;++i) {
         const auto* e=reinterpret_cast<const GptEntry*>(entries+static_cast<uint64_t>(i)*h->partition_entry_size);
