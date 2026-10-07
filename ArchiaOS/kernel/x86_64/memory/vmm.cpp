@@ -115,10 +115,19 @@ extern "C" bool vmm_free_pages(u64 base, u64 pages)
         for (u64 page = 0; page < pages; ++page)
         {
             const u64 va = base + page * NOVOS_PAGE_SIZE;
+            if (paging_translate(va) == 0 ||
+                paging_get_4k_entry(va) == 0)
+                return false;
+        }
+
+        for (u64 page = 0; page < pages; ++page)
+        {
+            const u64 va = base + page * NOVOS_PAGE_SIZE;
             const u64 pa = paging_translate(va);
-            if (pa) pmm_free_page(pa & ~0xFFFULL);
             if (!paging_unmap_4k(va))
                 return false;
+            if (pa)
+                pmm_free_page(pa & ~0xFFFULL);
         }
         regions[i].used = false;
         allocated_pages -= pages;
