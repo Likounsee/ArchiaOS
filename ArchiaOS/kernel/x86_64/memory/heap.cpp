@@ -7,6 +7,7 @@ struct HeapBlock
 {
     u64 base;
     u64 size;
+    u64 requested_size;
     bool used;
 };
 
@@ -31,7 +32,7 @@ extern "C" void* kmalloc(u64 size)
     {
         if (!block.used)
         {
-            block = {base, pages * NOVOS_PAGE_SIZE, true};
+            block = {base, pages * NOVOS_PAGE_SIZE, size, true};
             used_bytes += size;
             return reinterpret_cast<void*>(base);
         }
@@ -52,7 +53,7 @@ extern "C" void kfree(void* pointer)
             if (vmm_free_pages(base, pages))
             {
                 block.used = false;
-                if (used_bytes >= block.size) used_bytes -= block.size;
+                if (used_bytes >= block.requested_size) used_bytes -= block.requested_size;
                 else used_bytes = 0;
             }
             return;
@@ -76,8 +77,12 @@ extern "C" void heap_run_tests()
     if (reinterpret_cast<volatile unsigned char*>(a)[0] != 0x11 ||
         reinterpret_cast<volatile unsigned char*>(b)[8192] != 0x22)
         for (;;) asm volatile("cli; hlt");
-    kfree(a);
+    if (heap_used_bytes() != 8194)
+        for (;;) asm volatile("cli; hlt");
     kfree(b);
+    if (heap_used_bytes() != 1)
+        for (;;) asm volatile("cli; hlt");
+    kfree(a);
     if (heap_used_bytes() != 0)
         for (;;) asm volatile("cli; hlt");
 }
