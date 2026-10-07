@@ -249,8 +249,10 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         halt();
     }
     debug_str("STORAGE: CONTROLLER DISCOVERY OK\n");
+    debug_str("STORAGE: BEFORE REAL COUNT\n");
     if (storage_real_block_device_count() > 0)
         debug_str("STORAGE: REAL BLOCK DEVICE OK\n");
+    debug_str("STORAGE: BEFORE VFS\n");
     else
         debug_str("STORAGE: NO REAL BLOCK DEVICE\n");
     if (!vfs_test())
