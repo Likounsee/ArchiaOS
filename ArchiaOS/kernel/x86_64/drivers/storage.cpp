@@ -437,15 +437,18 @@ static bool ahci_attach_controller(const StorageController& controller)
     if (!virtual_base)
         return false;
 
+    storage_debug("AHCI ATTACH MMIO OK\n");
     auto* hba = reinterpret_cast<volatile uint8_t*>(virtual_base);
     auto* ghc = ahci_reg(hba, AHCI_GHC);
     *ghc |= (1U << 31);
 
+    storage_debug("AHCI ATTACH HBA OK\n");
     const uint32_t cap = *ahci_reg(hba, AHCI_CAP);
     const uint32_t slots = ((cap >> 8) & 0x1FU) + 1U;
     const uint32_t ports = (cap & 0x1FU) + 1U;
     const uint32_t pi = *ahci_reg(hba, AHCI_PI);
 
+    storage_debug("AHCI ATTACH CAP OK\n");
     for (uint32_t port_number = 0;
          port_number < ports && port_number < 32; ++port_number)
     {
@@ -462,9 +465,11 @@ static bool ahci_attach_controller(const StorageController& controller)
         if (*ahci_reg(port_regs, AHCI_PxSIG) != AHCI_SIG_SATA)
             continue;
 
-        if (!ahci_prepare_port(controller.mmio_base, port_number, slots))
+        storage_debug("AHCI PORT PREPARE\n");
+        if (!ahci_prepare_port(controller.mmio_base, port_number, slots)
             continue;
         auto& port = ahci_ports[port_number];
+        storage_debug("AHCI PORT READY\n");
         if (!ahci_identify(port))
             continue;
 
