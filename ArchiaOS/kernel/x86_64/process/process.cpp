@@ -49,6 +49,37 @@ static bool range_ok(uint64_t offset, uint64_t size, uint64_t limit)
     return offset <= limit && size <= limit - offset;
 }
 
+static bool process_pid_in_use(uint32_t pid)
+{
+    if (!pid)
+        return true;
+    for (unsigned int i = 0; i < PROCESS_MAX; ++i)
+        if (process_table[i] && process_table[i]->pid == pid)
+            return true;
+    return false;
+}
+
+static bool allocate_process_pid(uint32_t* pid)
+{
+    if (!pid)
+        return false;
+
+    for (uint64_t attempts = 0; attempts < UINT32_MAX; ++attempts)
+    {
+        const uint32_t candidate = next_pid ? next_pid : 1U;
+        next_pid = candidate + 1U;
+        if (!next_pid)
+            next_pid = 1U;
+
+        if (!process_pid_in_use(candidate))
+        {
+            *pid = candidate;
+            return true;
+        }
+    }
+    return false;
+}
+
 static bool map_stack(AddressSpace* space, uint64_t* top)
 {
     if (!space || !top)
@@ -173,7 +204,14 @@ extern "C" bool process_create_elf(
         return false;
     }
 
-    process->pid = next_pid++;
+    uint32_t pid = 0;
+    if (!allocate_process_pid(&pid))
+    {
+        address_space_destroy(&space);
+        return false;
+    }
+
+    process->pid = pid;
     process->state = PROCESS_READY;
     process->address_space = space;
     process->entry = header->entry;
@@ -189,6 +227,8 @@ extern "C" bool process_register(Process* process)
     {
         if (process_table[i] == process)
             return true;
+        if (process_table[i] && process_table[i]->pid == process->pid)
+            return false;
         if (!process_table[i])
         {
             process_table[i] = process;
