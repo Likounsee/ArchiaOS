@@ -100,7 +100,8 @@ extern "C" bool gpt_register_partitions(const BlockDevice* d)
     if(!d)return false;
     GptPartition parts[128]{};
     uint32_t count=0;
-    if(!gpt_read_partitions(d,parts,128,&count))return false;
+    if(!gpt_read_partitions(d,parts,128,&count)) { gpt_debug("GPT REGISTER READ FAIL\\n"); return false; }
+    if(count == 0U) { gpt_debug("GPT REGISTER ZERO PARTITIONS\\n"); return false; }
 
     bool registered=false;
     for(uint32_t i=0;i<count&&i<16;++i)
