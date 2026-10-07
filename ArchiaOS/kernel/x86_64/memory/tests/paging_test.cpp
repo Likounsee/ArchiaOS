@@ -309,6 +309,9 @@ ro_write_fault_recovered:
     if (!paging_unmap_4k(testPage))
         fail("PAGING TEST FAIL: 4K UNMAP\n");
 
+    if (paging_unmap_4k(testPage))
+        fail("PAGING TEST FAIL: REPEAT UNMAP\n");
+
     if (paging_get_4k_entry(testPage) != 0)
         fail("PAGING TEST FAIL: 4K UNMAP STATE\n");
 
