@@ -123,32 +123,3 @@ openfs_format_result_t openfs_format(openfs_block_device_t*d,const uint8_t uuid[
     int ok=d->write(d->context,0U,1U,buf)==OPENFS_IO_OK&&d->write(d->context,d->block_count-1U,1U,buf)==OPENFS_IO_OK; if(ok)ok=d->flush(d->context)==OPENFS_IO_OK; free(buf);
     return ok?OPENFS_FORMAT_OK:OPENFS_FORMAT_IO_ERROR;
 }
-openfs_format_result_t openfs_read_superblock(openfs_block_device_t*d,openfs_superblock_t*out){
-    if(!openfs_block_device_is_valid(d)||out==NULL)return OPENFS_FORMAT_INVALID_ARGUMENT;
-    if(d->block_size<OPENFS_SUPERBLOCK_SIZE||d->block_size>OPENFS_MAX_BLOCK_SIZE)return OPENFS_FORMAT_UNSUPPORTED_DEVICE;
-    uint8_t*b=malloc(d->block_size);if(b==NULL)return OPENFS_FORMAT_IO_ERROR;
-    if(d->read(d->context,0U,1U,b)!=OPENFS_IO_OK){free(b);return OPENFS_FORMAT_IO_ERROR;}
-    openfs_format_result_t r=decode(b,out);free(b);return r==OPENFS_FORMAT_OK?openfs_validate_superblock(d,out):r;
-}
-
-openfs_format_result_t openfs_format(openfs_block_device_t*d,const uint8_t uuid[16]){
-    if(!openfs_block_device_is_valid(d)||uuid==NULL)return OPENFS_FORMAT_INVALID_ARGUMENT;
-    if(d->block_size<OPENFS_SUPERBLOCK_SIZE||d->block_size>OPENFS_MAX_BLOCK_SIZE||!pow2(d->block_size)||d->block_count<64U)return OPENFS_FORMAT_UNSUPPORTED_DEVICE;
-    uint64_t bb=0U,ib=0U,it=0U,jb=0U;if(!calculate_layout(d->block_count,d->block_size,&bb,&ib,&it,&jb))return OPENFS_FORMAT_TOO_SMALL;
-    uint64_t metadata=d->block_count-3U;if(bb+ib>metadata||it>metadata-bb-ib||jb>metadata-bb-ib-it)return OPENFS_FORMAT_TOO_SMALL;
-    uint64_t data=metadata-1U-bb-ib-it-jb;if(data<8U)return OPENFS_FORMAT_TOO_SMALL;
-    openfs_superblock_t sb;memset(&sb,0,sizeof(sb));sb.version_major=OPENFS_FORMAT_VERSION_MAJOR;sb.version_minor=OPENFS_FORMAT_VERSION_MINOR;sb.feature_flags=OPENFS_FEATURE_EXTENT_TREE;sb.block_size=d->block_size;sb.total_blocks=d->block_count;
-    sb.metadata_start=2U;sb.metadata_blocks=metadata;sb.block_bitmap_start=3U;sb.block_bitmap_blocks=bb;sb.inode_bitmap_start=3U+bb;sb.inode_bitmap_blocks=ib;sb.inode_table_start=sb.inode_bitmap_start+ib;sb.inode_table_blocks=it;sb.journal_start=sb.inode_table_start+it;sb.journal_blocks=jb;sb.data_start=sb.journal_start+jb;sb.data_blocks=data;sb.root_inode=1U;sb.generation=1U;memcpy(sb.uuid,uuid,16U);
-    if(openfs_validate_superblock(d,&sb)!=OPENFS_FORMAT_OK)return OPENFS_FORMAT_CORRUPT;
-    uint8_t*zero=calloc(1U,d->block_size);if(zero==NULL)return OPENFS_FORMAT_IO_ERROR;
-    for(uint64_t b=2U;b<d->block_count-1U;b++){if(d->write(d->context,b,1U,zero)!=OPENFS_IO_OK){free(zero);return OPENFS_FORMAT_IO_ERROR;}}free(zero);
-    for(uint64_t b=0U;b<sb.data_start;b++){if(openfs_bitmap_set(d,sb.block_bitmap_start,sb.block_bitmap_blocks,b,1)!=OPENFS_BITMAP_OK)return OPENFS_FORMAT_IO_ERROR;}
-    if(openfs_bitmap_set(d,sb.block_bitmap_start,sb.block_bitmap_blocks,d->block_count-1U,1)!=OPENFS_BITMAP_OK)return OPENFS_FORMAT_IO_ERROR;
-    if(openfs_bitmap_set(d,sb.inode_bitmap_start,sb.inode_bitmap_blocks,0U,1)!=OPENFS_BITMAP_OK)return OPENFS_FORMAT_IO_ERROR;
-    openfs_inode_t root;memset(&root,0,sizeof(root));root.inode_number=1U;root.generation=1U;root.parent_inode=1U;root.link_count=1U;root.mode=OPENFS_INODE_MODE_DIRECTORY|0755U;uint64_t now=openfs_time_now_ns();if(now!=UINT64_MAX){root.atime_ns=now;root.mtime_ns=now;root.ctime_ns=now;}
-    uint64_t inode_count=(sb.inode_table_blocks*(uint64_t)sb.block_size)/OPENFS_INODE_SIZE;
-    if(openfs_inode_write(d,sb.inode_table_start,inode_count,&root)!=OPENFS_INODE_OK)return OPENFS_FORMAT_IO_ERROR;
-    uint8_t*buf=calloc(1U,d->block_size);if(buf==NULL)return OPENFS_FORMAT_IO_ERROR;encode(&sb,buf);
-    int ok=d->write(d->context,0U,1U,buf)==OPENFS_IO_OK&&d->write(d->context,d->block_count-1U,1U,buf)==OPENFS_IO_OK; if(ok)ok=d->flush(d->context)==OPENFS_IO_OK; free(buf);
-    return ok?OPENFS_FORMAT_OK:OPENFS_FORMAT_IO_ERROR;
-}
