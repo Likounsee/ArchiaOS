@@ -193,6 +193,8 @@ extern "C" bool vfs_initialize()
                 return true;
             }
 
+            vfs_test_debug("VFS INIT: CRC ");
+            const char hx[]="0123456789ABCDEF"; for(int sh=28;sh>=0;sh-=4) asm volatile("outb %0,%1"::"a"(hx[(openfs_debug_stored>>sh)&15U]),"Nd"(static_cast<unsigned short>(0xE9))); asm volatile("outb %0,%1"::"a"((char)32),"Nd"(static_cast<unsigned short>(0xE9))); for(int sh=28;sh>=0;sh-=4) asm volatile("outb %0,%1"::"a"(hx[(openfs_debug_calculated>>sh)&15U]),"Nd"(static_cast<unsigned short>(0xE9))); asm volatile("outb %0,%1"::"a"((char)10),"Nd"(static_cast<unsigned short>(0xE9)));
             vfs_test_debug("VFS INIT: MOUNT FAIL CODE=");
             const unsigned int mr=static_cast<unsigned int>(mount_result);
             const char md[]="0123456789ABCDEF";
