@@ -27,7 +27,7 @@ static int calculate_layout(uint64_t total,uint32_t bs,uint64_t*bb,uint64_t*ib,u
     uint64_t bits=(uint64_t)bs*8U;
     if(ceildiv(total,bits,bb)||*bb==0U)return 0;
     uint64_t journal=total/16U;if(journal<8U)journal=8U;
-    uint64_t data=total/4U;if(data<8U)data=8U;
+    uint64_t data=total/4U;if(data>0U)--data;if(data<8U)data=8U;
     uint64_t metadata=total-3U;
     if(*bb+1U>metadata||journal>metadata-*bb-1U||data>metadata-*bb-1U-journal)return 0;
     uint64_t inode_table=metadata-*bb-journal-data-1U;
