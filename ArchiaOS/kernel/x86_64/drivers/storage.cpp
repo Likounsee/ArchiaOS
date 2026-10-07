@@ -493,6 +493,7 @@ static bool add_controller(StorageControllerType type,const PciDevice* pci,uint6
 
 extern "C" bool storage_initialize()
 {
+    storage_debug("STORAGE INIT START\n");
     controller_count=0;
     real_block_device_count=0;
     for (unsigned int i=0;i<STORAGE_MAX_CONTROLLERS;++i)
@@ -502,6 +503,8 @@ extern "C" bool storage_initialize()
 
     if (!pci_device_count() && !pci_initialize())
         return false;
+
+    storage_debug("STORAGE INIT PCI OK\n");
 
     for (unsigned int i=0;i<pci_device_count();++i)
     {
@@ -523,9 +526,16 @@ extern "C" bool storage_initialize()
         }
     }
 
+    storage_debug("STORAGE INIT CONTROLLERS OK\n");
     for (unsigned int i=0;i<controller_count;++i)
         if (controllers[i].type==STORAGE_CONTROLLER_AHCI)
-            ahci_attach_controller(controllers[i]);
+        {
+            storage_debug("STORAGE INIT AHCI ATTACH\n");
+            if (!ahci_attach_controller(controllers[i]))
+                storage_debug("STORAGE INIT AHCI ATTACH FAIL\n");
+            else
+                storage_debug("STORAGE INIT AHCI ATTACH OK\n");
+        }
 
     return true;
 }
