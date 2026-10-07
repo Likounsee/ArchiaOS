@@ -103,6 +103,20 @@ extern "C" bool ipc_receive(
     return true;
 }
 
+extern "C" void ipc_destroy_owner(uint32_t owner_pid)
+{
+    if (!owner_pid)
+        return;
+
+    const uint64_t flags = ipc_enter_critical();
+    for (unsigned int i = 0; i < IPC_MAX_ENDPOINTS; ++i)
+    {
+        if (endpoints[i].used && endpoints[i].owner_pid == owner_pid)
+            endpoints[i] = {};
+    }
+    ipc_leave_critical(flags);
+}
+
 extern "C" bool ipc_test()
 {
     const int endpoint = ipc_create(0);
