@@ -46,6 +46,7 @@ extern "C" bool address_space_map(
     if (!space || !space->pml4_physical ||
         (virtual_address & 0xFFFULL) ||
         (physical_address & 0xFFFULL) ||
+        physical_address >= NOVOS_PMM_MAX_PHYSICAL_ADDRESS ||
         virtual_address < NOVOS_USER_VIRTUAL_BASE ||
         virtual_address >= NOVOS_USER_VIRTUAL_TOP)
         return false;
