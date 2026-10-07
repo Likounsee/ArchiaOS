@@ -41,9 +41,9 @@ static uint8_t gpt_entry_buffer[16384]{};
 static GptPartition gpt_partition_buffer[128]{};
 extern "C" bool gpt_read_partitions(const BlockDevice* d,GptPartition* out,uint32_t cap,uint32_t* count) {
     if(!d||!out||!count||!cap||d->sector_size<512) return false;
-    *count=0; uint8_t sector[512]={};
-    if(!block_read(d,1,1,sector)) { gpt_debug("GPT READ HEADER FAIL\\n"); return false; }
-    const auto* h=reinterpret_cast<const GptHeader*>(sector);
+    *count=0; uint8_t sector[1024]={};
+    if(d->sector_size != 512U || !block_read(d,0,2,sector)) { gpt_debug("GPT READ HEADER FAIL\\n"); return false; }
+    const auto* h=reinterpret_cast<const GptHeader*>(sector + 512U);
     if(!signature_ok(h->signature)) { gpt_debug("GPT FAIL SIGNATURE\\n"); return false; }
     if(h->revision!=0x00010000U) { gpt_debug("GPT FAIL REVISION\\n"); return false; }
     if(h->header_size<HEADER_SIZE || h->header_size>d->sector_size) { gpt_debug("GPT FAIL HEADER SIZE\\n"); return false; }
@@ -51,7 +51,7 @@ extern "C" bool gpt_read_partitions(const BlockDevice* d,GptPartition* out,uint3
     if(!h->partition_entry_count) { gpt_debug("GPT FAIL ENTRY COUNT\\n"); return false; }
     if(h->partition_entry_size<ENTRY_SIZE || h->partition_entry_size>d->sector_size) { gpt_debug("GPT FAIL ENTRY SIZE\\n"); return false; }
     if(h->partition_entries_lba>=d->sector_count) { gpt_debug("GPT FAIL ENTRY LBA\\n"); return false; }
-    uint8_t copy[512]={}; for(unsigned int i=0;i<512;++i) copy[i]=sector[i];
+    uint8_t copy[512]={}; for(unsigned int i=0;i<512;++i) copy[i]=sector[512U+i];
     reinterpret_cast<GptHeader*>(copy)->header_crc32=0;
     if(crc32(copy,h->header_size)!=h->header_crc32) { gpt_debug("GPT HEADER CRC FAIL\\n"); return false; }
     const uint64_t bytes=static_cast<uint64_t>(h->partition_entry_count)*h->partition_entry_size;
