@@ -13,4 +13,5 @@ extern "C" bool address_space_map(AddressSpace* space, u64 virtual_address, u64 
 extern "C" bool address_space_activate(AddressSpace* space);
 extern "C" bool address_space_destroy(AddressSpace* space);
 extern "C" bool address_space_is_user_mapped(const AddressSpace* space, u64 virtual_address);
+extern "C" bool address_space_is_user_executable(const AddressSpace* space, u64 virtual_address);
 extern "C" void address_space_run_tests();
