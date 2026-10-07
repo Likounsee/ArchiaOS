@@ -40,7 +40,7 @@ extern "C" bool vmm_initialize()
 extern "C" u64 vmm_alloc_pages(
     u64 pages, bool user, bool writable, bool executable)
 {
-    if (!initialized || pages == 0)
+    if (!initialized || pages == 0 || (writable && executable))
         return 0;
 
     u64 cursor = NOVOS_KERNEL_HEAP_BASE;
@@ -72,7 +72,13 @@ extern "C" u64 vmm_alloc_pages(
                     if (physical == 0)
                     {
                         for (u64 j = 0; j < mapped; ++j)
-                            paging_unmap_4k(cursor + j * NOVOS_PAGE_SIZE);
+                        {
+                            const u64 va = cursor + j * NOVOS_PAGE_SIZE;
+                            const u64 pa = paging_translate(va);
+                            paging_unmap_4k(va);
+                            if (pa)
+                                pmm_free_page(pa & ~0xFFFULL);
+                        }
                         return 0;
                     }
                     if (!paging_map_4k(cursor + mapped * NOVOS_PAGE_SIZE,
@@ -152,6 +158,8 @@ extern "C" u64 vmm_allocated_pages()
 extern "C" void vmm_run_tests()
 {
     const u64 before = vmm_allocated_pages();
+    if (vmm_alloc_pages(1, false, true, true) != 0)
+        for (;;) asm volatile("cli; hlt");
     const u64 base = vmm_alloc_pages(2, false, true, false);
     if (base == 0 || !vmm_is_mapped(base) || !vmm_is_mapped(base + NOVOS_PAGE_SIZE))
         for (;;) asm volatile("cli; hlt");
