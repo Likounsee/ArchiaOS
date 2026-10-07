@@ -282,7 +282,8 @@ extern "C" bool process_unregister(Process* process)
 
 extern "C" bool process_destroy(Process* process)
 {
-    if (!process || process == current_process)
+    if (!process || process == current_process || !process->pid ||
+        process_find(process->pid) != process)
         return false;
     if (!address_space_destroy(&process->address_space))
         return false;
@@ -457,7 +458,7 @@ extern "C" bool process_run_ring3_test()
         return false;
 
     Process duplicate = process;
-    if (process_register(&duplicate))
+    if (process_register(&duplicate) || process_destroy(&duplicate))
         return false;
 
     Process invalid_state = process;
