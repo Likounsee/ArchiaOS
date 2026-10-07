@@ -352,8 +352,9 @@ extern "C" bool process_handle_syscall(ExceptionFrame* frame)
         return false;
 
     if (frame->rip > UINT64_MAX - 2ULL ||
-        !address_space_is_user_mapped(&current_process->address_space, frame->rip) ||
-        !address_space_is_user_mapped(
+        !address_space_is_user_executable(
+            &current_process->address_space, frame->rip) ||
+        !address_space_is_user_executable(
             &current_process->address_space, frame->rip + 1ULL))
         return false;
 
