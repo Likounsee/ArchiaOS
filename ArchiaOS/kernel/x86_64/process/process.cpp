@@ -529,6 +529,30 @@ extern "C" bool process_run_ring3_test()
         process_registered_count() != 1)
         return false;
 
+    ExceptionFrame invalid_syscall_frame{};
+    invalid_syscall_frame.cs = 0x1B;
+    invalid_syscall_frame.rip = process.user_stack_top - NOVOS_PAGE_SIZE;
+    if (process_handle_syscall(&invalid_syscall_frame))
+        return false;
+
+    ExceptionFrame overflow_syscall_frame{};
+    overflow_syscall_frame.cs = 0x1B;
+    overflow_syscall_frame.rip = UINT64_MAX - 1ULL;
+    if (process_handle_syscall(&overflow_syscall_frame))
+        return false;
+
+    ExceptionFrame valid_syscall_frame{};
+    valid_syscall_frame.cs = 0x1B;
+    valid_syscall_frame.rip = process.entry;
+    valid_syscall_frame.rax = 1;
+    const unsigned long long syscall_before =
+        process_syscall_count();
+    if (!process_handle_syscall(&valid_syscall_frame) ||
+        valid_syscall_frame.rax != process.pid ||
+        valid_syscall_frame.rip != process.entry + 2ULL ||
+        process_syscall_count() != syscall_before + 1ULL)
+        return false;
+
     asm volatile("sti" : : : "memory");
     ring3_enter(process.entry, process.user_stack_top);
 }
