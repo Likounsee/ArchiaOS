@@ -350,7 +350,9 @@ extern "C" unsigned long long process_syscall_count()
 
 extern "C" bool process_handle_syscall(ExceptionFrame* frame)
 {
-    if (!frame || !current_process || (frame->cs & 3ULL) != 3ULL)
+    if (!frame || !current_process ||
+        current_process->state != PROCESS_RUNNING ||
+        (frame->cs & 3ULL) != 3ULL)
         return false;
 
     if (frame->rip > UINT64_MAX - 2ULL ||
