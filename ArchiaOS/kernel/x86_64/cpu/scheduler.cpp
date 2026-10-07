@@ -119,7 +119,10 @@ extern "C" bool scheduler_create_kernel_thread(
     for (unsigned int id = 2; id < SCHEDULER_MAX_TASKS; ++id)
     {
         SchedulerTask& task = tasks[cpu_index][id];
-        if (task.state != SCHEDULER_TASK_UNUSED)
+        if (task.state != SCHEDULER_TASK_UNUSED &&
+            task.state != SCHEDULER_TASK_STOPPED)
+            continue;
+        if (id == cpus[cpu_index].current_task)
             continue;
 
         task = SchedulerTask{
@@ -301,6 +304,19 @@ extern "C" bool scheduler_run_test()
          tasks[0][0].state == SCHEDULER_TASK_READY &&
          tasks[0][1].state == SCHEDULER_TASK_STOPPED &&
          tasks[0][2].state == SCHEDULER_TASK_RUNNING;
+
+    for (unsigned int i = 0; i < SCHEDULER_QUANTUM_TICKS; ++i)
+        scheduler_timer_tick(0, &test_frame);
+
+    unsigned int reused_id = 0;
+    const bool reused = scheduler_create_kernel_thread(
+        scheduler_task1_entry, nullptr, 0, &reused_id);
+    ok = ok &&
+         scheduler_current_task(0) == 0 &&
+         reused &&
+         reused_id == 1 &&
+         scheduler_task_count(0) == 3 &&
+         tasks[0][1].state == SCHEDULER_TASK_READY;
 
     scheduler_ready_flag = false;
     return ok;
