@@ -1,5 +1,4 @@
 #include "gpt.hpp"
-#include "../memory/heap.hpp"
 
 static constexpr uint32_t HEADER_SIZE=92, ENTRY_SIZE=128, MAX_ENTRIES=128;
 struct GptHeader {
@@ -47,10 +46,9 @@ extern "C" bool gpt_read_partitions(const BlockDevice* d,GptPartition* out,uint3
     const uint64_t bytes=static_cast<uint64_t>(h->partition_entry_count)*h->partition_entry_size;
     const uint64_t sectors=(bytes+d->sector_size-1)/d->sector_size;
     if(!sectors||sectors>d->sector_count-h->partition_entries_lba||bytes>16384) { gpt_debug("GPT ENTRY RANGE FAIL\\n"); return false; }
-    auto* entries=static_cast<uint8_t*>(kmalloc(static_cast<u64>(bytes)));
-    if(!entries) { gpt_debug("GPT ENTRY ALLOC FAIL\\n"); return false; }
+    uint8_t* entries=gpt_entry_buffer;
     if(!block_read(d,h->partition_entries_lba,static_cast<uint32_t>(sectors),entries)||
-       crc32(entries,static_cast<uint32_t>(bytes))!=h->partition_entries_crc32) { kfree(entries); gpt_debug("GPT ENTRY CRC FAIL\\n"); return false; }
+       crc32(entries,static_cast<uint32_t>(bytes))!=h->partition_entries_crc32) { gpt_debug("GPT ENTRY CRC FAIL\\n"); return false; }
     const uint32_t scan=h->partition_entry_count<MAX_ENTRIES?h->partition_entry_count:MAX_ENTRIES;
     for(uint32_t i=0;i<scan&&*count<cap;++i) {
         const auto* e=reinterpret_cast<const GptEntry*>(entries+static_cast<uint64_t>(i)*h->partition_entry_size);
@@ -60,7 +58,6 @@ extern "C" bool gpt_read_partitions(const BlockDevice* d,GptPartition* out,uint3
         auto& p=out[*count]; p.index=i+1;p.first_lba=e->first_lba;p.last_lba=e->last_lba;p.attributes=e->attributes;
         for(unsigned int b=0;b<16;++b){p.type_guid[b]=e->type_guid[b];p.unique_guid[b]=e->unique_guid[b];} ++*count;
     }
-    kfree(entries);
     return true;
 }
 struct GptBlockContext
@@ -72,6 +69,8 @@ struct GptBlockContext
 };
 
 static GptBlockContext gpt_contexts[16]{};
+static uint8_t gpt_entry_buffer[16384]{};
+static GptPartition gpt_partition_buffer[128]{};
 
 static bool gpt_partition_read(const BlockDevice* d,uint64_t lba,uint32_t count,void* out)
 {
@@ -105,12 +104,11 @@ static bool gpt_partition_flush(const BlockDevice* d)
 extern "C" bool gpt_register_partitions(const BlockDevice* d)
 {
     if(!d)return false;
-    auto* parts=static_cast<GptPartition*>(kmalloc(sizeof(GptPartition)*128U));
-    if(!parts) return false;
+    GptPartition* parts=gpt_partition_buffer;
     for(unsigned int i=0U;i<128U;++i) parts[i]={};
     uint32_t count=0;
-    if(!gpt_read_partitions(d,parts,128,&count)) { kfree(parts); gpt_debug("GPT REGISTER READ FAIL\\n"); return false; }
-    if(count == 0U) { kfree(parts); gpt_debug("GPT REGISTER ZERO PARTITIONS\\n"); return false; }
+    if(!gpt_read_partitions(d,parts,128,&count)) { gpt_debug("GPT REGISTER READ FAIL\\n"); return false; }
+    if(count == 0U) { gpt_debug("GPT REGISTER ZERO PARTITIONS\\n"); return false; }
 
     bool registered=false;
     for(uint32_t i=0;i<count&&i<16;++i)
