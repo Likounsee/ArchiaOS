@@ -48,6 +48,7 @@ extern "C" unsigned int scheduler_current_cpu_index();
 extern "C" bool scheduler_set_local_cpu_index(unsigned int cpu_index);
 extern "C" ExceptionFrame* scheduler_timer_tick(unsigned int cpu_index, ExceptionFrame* current_frame);
 extern "C" unsigned int scheduler_current_task(unsigned int cpu_index);
+extern "C" unsigned int scheduler_task_count(unsigned int cpu_index);
 extern "C" unsigned long long scheduler_switch_count(unsigned int cpu_index);
 extern "C" bool scheduler_run_test();
 extern "C" unsigned long long scheduler_task1_counter_get(unsigned int cpu_index);
