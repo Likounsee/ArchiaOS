@@ -526,9 +526,10 @@ extern "C" bool process_run_ring3_test()
         !process_register(&cleanup_process))
         return false;
     const int cleanup_endpoint = ipc_create(cleanup_process.pid);
+    IpcMessage cleanup_message{};
     if (cleanup_endpoint < 0 ||
         !process_destroy(&cleanup_process) ||
-        ipc_receive(cleanup_endpoint, cleanup_process.pid, nullptr))
+        ipc_receive(cleanup_endpoint, cleanup_process.pid, &cleanup_message))
         return false;
 
     Process duplicate = process;
