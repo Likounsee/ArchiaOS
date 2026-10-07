@@ -5,8 +5,6 @@
 
 struct ExceptionFrame;
 
-struct ExceptionFrame;
-
 struct Process
 {
     uint32_t pid;
