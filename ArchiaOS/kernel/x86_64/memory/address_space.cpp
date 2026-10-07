@@ -59,27 +59,114 @@ extern "C" bool address_space_map(
     const unsigned int i2 = (virtual_address >> 21) & 0x1FF;
     const unsigned int i1 = (virtual_address >> 12) & 0x1FF;
 
-    auto ensure = [](u64& entry) -> bool {
-        if (entry & NOVOS_PAGE_PRESENT) return true;
-        const u64 page = new_table();
-        if (!page) return false;
-        entry = page | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE | NOVOS_PAGE_USER;
-        return true;
+    bool created_pml4 = false;
+    bool created_pdpt = false;
+    bool created_pd = false;
+    bool created_pt = false;
+    u64 pdpt_physical = 0;
+    u64 pd_physical = 0;
+    u64 pt_physical = 0;
+
+    auto rollback_tables = [&]() {
+        if (created_pt)
+        {
+            pd[i2] = 0;
+            pmm_free_page(pt_physical);
+        }
+        if (created_pd)
+        {
+            pdpt[i3] = 0;
+            pmm_free_page(pd_physical);
+        }
+        if (created_pdpt)
+        {
+            pml4[i4] = 0;
+            pmm_free_page(pdpt_physical);
+        }
+        if (created_pml4)
+        {
+            pml4[i4] = 0;
+            pmm_free_page(space->pml4_physical);
+        }
     };
 
-    if (!ensure(pml4[i4])) return false;
-    auto* pdpt = table(pml4[i4] & ~0xFFFULL);
-    if (!ensure(pdpt[i3])) return false;
-    if (pdpt[i3] & NOVOS_PAGE_HUGE) return false;
-
-    auto* pd = table(pdpt[i3] & ~0xFFFULL);
-    if (!ensure(pd[i2])) return false;
-    if (pd[i2] & NOVOS_PAGE_HUGE) return false;
-
-    auto* pt = table(pd[i2] & ~0xFFFULL);
-    if (!pt) return false;
-    if (pt[i1] & NOVOS_PAGE_PRESENT)
+    if (pml4[i4] & NOVOS_PAGE_HUGE)
         return false;
+
+    if (!(pml4[i4] & NOVOS_PAGE_PRESENT))
+    {
+        const u64 page = new_table();
+        if (!page)
+            return false;
+        pml4[i4] = page | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE | NOVOS_PAGE_USER;
+        created_pml4 = true;
+    }
+
+    pdpt_physical = pml4[i4] & ~0xFFFULL;
+    auto* pdpt = table(pdpt_physical);
+    if (!pdpt)
+    {
+        rollback_tables();
+        return false;
+    }
+
+    if (pdpt[i3] & NOVOS_PAGE_HUGE)
+    {
+        rollback_tables();
+        return false;
+    }
+
+    if (!(pdpt[i3] & NOVOS_PAGE_PRESENT))
+    {
+        const u64 page = new_table();
+        if (!page)
+        {
+            rollback_tables();
+            return false;
+        }
+        pdpt[i3] = page | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE | NOVOS_PAGE_USER;
+        created_pdpt = true;
+    }
+
+    pd_physical = pdpt[i3] & ~0xFFFULL;
+    auto* pd = table(pd_physical);
+    if (!pd)
+    {
+        rollback_tables();
+        return false;
+    }
+
+    if (pd[i2] & NOVOS_PAGE_HUGE)
+    {
+        rollback_tables();
+        return false;
+    }
+
+    if (!(pd[i2] & NOVOS_PAGE_PRESENT))
+    {
+        const u64 page = new_table();
+        if (!page)
+        {
+            rollback_tables();
+            return false;
+        }
+        pd[i2] = page | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE | NOVOS_PAGE_USER;
+        created_pd = true;
+    }
+
+    pt_physical = pd[i2] & ~0xFFFULL;
+    auto* pt = table(pt_physical);
+    if (!pt)
+    {
+        rollback_tables();
+        return false;
+    }
+
+    if (pt[i1] & NOVOS_PAGE_PRESENT)
+    {
+        rollback_tables();
+        return false;
+    }
 
     u64 flags = NOVOS_PAGE_PRESENT | NOVOS_PAGE_USER;
     if (writable) flags |= NOVOS_PAGE_WRITE;
