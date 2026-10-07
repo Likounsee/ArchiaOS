@@ -12,6 +12,16 @@ static openfs_block_device_t openfs_device{};
 static openfs_mount_t openfs_mount_state{};
 static bool initialized = false;
 
+static void vfs_debug_hex(unsigned int value)
+{
+    static const char digits[]="0123456789ABCDEF";
+    vfs_test_debug("VFS VALUE 0x");
+    for (int shift=28; shift>=0; shift-=4)
+        asm volatile("outb %0,%1" : : "a"(digits[(value>>shift)&0xFU]), "Nd"(static_cast<unsigned short>(0xE9)));
+    vfs_test_debug("\\n");
+}
+
+
 static void vfs_test_debug(const char* s)
 {
     for (int i = 0; s[i] != '\0'; ++i)
@@ -180,7 +190,8 @@ extern "C" bool vfs_initialize()
             }
             vfs_test_debug("VFS INIT: ATTACH OK\n");
 
-            if (openfs_mount(&openfs_mount_state, &openfs_device) == OPENFS_MOUNT_OK)
+            const openfs_mount_result_t mount_result = openfs_mount(&openfs_mount_state, &openfs_device);
+            if (mount_result == OPENFS_MOUNT_OK)
             {
                 initialized = true;
                 return true;
