@@ -9,6 +9,7 @@
 #include "gpt.hpp"
 extern "C" volatile uint32_t openfs_debug_stored;
 extern "C" volatile uint32_t openfs_debug_calculated;
+extern "C" volatile uint32_t openfs_debug_reason;
 
 static openfs_block_device_t openfs_device{};
 static openfs_mount_t openfs_mount_state{};
@@ -198,6 +199,7 @@ extern "C" bool vfs_initialize()
             vfs_test_debug("VFS INIT: CRC ");
             const char hx[]="0123456789ABCDEF"; for(int sh=28;sh>=0;sh-=4) asm volatile("outb %0,%1"::"a"(hx[(openfs_debug_stored>>sh)&15U]),"Nd"(static_cast<unsigned short>(0xE9))); asm volatile("outb %0,%1"::"a"((char)32),"Nd"(static_cast<unsigned short>(0xE9))); for(int sh=28;sh>=0;sh-=4) asm volatile("outb %0,%1"::"a"(hx[(openfs_debug_calculated>>sh)&15U]),"Nd"(static_cast<unsigned short>(0xE9))); asm volatile("outb %0,%1"::"a"((char)10),"Nd"(static_cast<unsigned short>(0xE9)));
             vfs_test_debug("VFS INIT: MOUNT FAIL CODE=");
+            vfs_test_debug("VFS INIT: REASON="); for(int sh=4;sh>=0;sh-=4) asm volatile("outb %0,%1"::"a"(hx[(openfs_debug_reason>>sh)&15U]),"Nd"(static_cast<unsigned short>(0xE9))); asm volatile("outb %0,%1"::"a"((char)10),"Nd"(static_cast<unsigned short>(0xE9)));
             const unsigned int mr=static_cast<unsigned int>(mount_result);
             const char md[]="0123456789ABCDEF";
             for(int sh=4;sh>=0;sh-=4) asm volatile("outb %0,%1" : : "a"(md[(mr>>sh)&15U]), "Nd"(static_cast<unsigned short>(0xE9)));
