@@ -10,6 +10,7 @@ static Process* current_process = nullptr;
 static uint32_t next_pid = 1;
 static constexpr unsigned int PROCESS_MAX = 64;
 static Process* process_table[PROCESS_MAX] = {};
+static unsigned int process_table_count = 0;
 /* Initial process state is kept kernel-owned until the first user transition. */
 static volatile unsigned long long syscall_count = 0;
 static volatile bool ipc_user_ok = false;
@@ -251,6 +252,7 @@ extern "C" bool process_register(Process* process)
         if (!process_table[i])
         {
             process_table[i] = process;
+            ++process_table_count;
             return true;
         }
     }
@@ -276,6 +278,7 @@ extern "C" bool process_unregister(Process* process)
         if (process_table[i] == process)
         {
             process_table[i] = nullptr;
+            --process_table_count;
             return true;
         }
     }
@@ -303,6 +306,7 @@ extern "C" bool process_destroy(Process* process)
         return false;
 
     process_table[table_slot] = nullptr;
+    --process_table_count;
     process->state = PROCESS_EXITED;
     process->pid = 0;
     process->entry = 0;
@@ -320,6 +324,11 @@ extern "C" bool process_activate(Process* process)
     current_process = process;
     process->state = PROCESS_RUNNING;
     return true;
+}
+
+extern "C" unsigned int process_registered_count()
+{
+    return process_table_count;
 }
 
 extern "C" uint32_t process_current_pid()
@@ -483,7 +492,8 @@ extern "C" bool process_run_ring3_test()
 
     if (process_create_elf(&process, image, sizeof(image)))
         return false;
-    if (!process_register(&process) || process_find(process.pid) != &process)
+    if (!process_register(&process) || process_find(process.pid) != &process ||
+        process_registered_count() != 1)
         return false;
 
     Process duplicate = process;
@@ -495,12 +505,12 @@ extern "C" bool process_run_ring3_test()
     if (process_register(&invalid_state))
         return false;
 
-    if (!process_unregister(&process))
+    if (!process_unregister(&process) || process_registered_count() != 0)
         return false;
     if (process_find(process.pid) != &process ||
         process_activate(&process))
         return false;
-    if (!process_register(&process))
+    if (!process_register(&process) || process_registered_count() != 1)
         return false;
 
     if (!process_activate(&process))
@@ -508,7 +518,8 @@ extern "C" bool process_run_ring3_test()
 
     if (process_unregister(&process) || process_destroy(&process) ||
         process_find(process.pid) != &process ||
-        process_current_pid() != process.pid)
+        process_current_pid() != process.pid ||
+        process_registered_count() != 1)
         return false;
 
     asm volatile("sti" : : : "memory");
