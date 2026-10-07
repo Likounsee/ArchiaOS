@@ -64,7 +64,8 @@ static bool allocate_process_pid(uint32_t* pid)
     if (!pid)
         return false;
 
-    for (uint64_t attempts = 0; attempts < UINT32_MAX; ++attempts)
+    /* At most PROCESS_MAX PIDs can be resident, so this bound guarantees a free candidate. */
+    for (uint64_t attempts = 0; attempts <= PROCESS_MAX; ++attempts)
     {
         const uint32_t candidate = next_pid ? next_pid : 1U;
         next_pid = candidate + 1U;
@@ -448,6 +449,14 @@ extern "C" bool process_run_ring3_test()
     put64(image + 96, 30);
     put64(image + 104, 30);
     put64(image + 112, 0x1000);
+
+    static Process wrap_process{};
+    next_pid = UINT32_MAX;
+    if (!process_create_elf(&wrap_process, image, sizeof(image)) ||
+        wrap_process.pid != UINT32_MAX ||
+        !process_register(&wrap_process) ||
+        !process_destroy(&wrap_process))
+        return false;
 
     static Process process{};
     if (!process_create_elf(&process, image, sizeof(image)))
