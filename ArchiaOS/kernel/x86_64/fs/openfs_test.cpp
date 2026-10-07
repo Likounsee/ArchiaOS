@@ -9,7 +9,7 @@
 
 struct OpenFsTestWindow
 {
-    const BlockDevice* base;
+    uint8_t* storage;
 };
 
 static bool openfs_test_window_read(const BlockDevice* device, uint64_t lba,
@@ -20,7 +20,13 @@ static bool openfs_test_window_read(const BlockDevice* device, uint64_t lba,
         static_cast<uint64_t>(count) > device->sector_count - lba)
         return false;
     const auto* window = static_cast<const OpenFsTestWindow*>(device->context);
-    return window->base && block_read(window->base, lba, count, out);
+    if (!window->storage)
+        return false;
+    const uint64_t bytes = static_cast<uint64_t>(count) * device->sector_size;
+    const uint64_t offset = lba * device->sector_size;
+    for (uint64_t i = 0U; i < bytes; ++i)
+        static_cast<uint8_t*>(out)[i] = window->storage[offset + i];
+    return true;
 }
 
 static bool openfs_test_window_write(const BlockDevice* device, uint64_t lba,
@@ -31,7 +37,13 @@ static bool openfs_test_window_write(const BlockDevice* device, uint64_t lba,
         static_cast<uint64_t>(count) > device->sector_count - lba)
         return false;
     const auto* window = static_cast<const OpenFsTestWindow*>(device->context);
-    return window->base && block_write(window->base, lba, count, input);
+    if (!window->storage)
+        return false;
+    const uint64_t bytes = static_cast<uint64_t>(count) * device->sector_size;
+    const uint64_t offset = lba * device->sector_size;
+    for (uint64_t i = 0U; i < bytes; ++i)
+        window->storage[offset + i] = static_cast<const uint8_t*>(input)[i];
+    return true;
 }
 
 static bool openfs_test_window_flush(const BlockDevice* device)
@@ -39,7 +51,7 @@ static bool openfs_test_window_flush(const BlockDevice* device)
     if (!device || !device->context)
         return false;
     const auto* window = static_cast<const OpenFsTestWindow*>(device->context);
-    return window->base && block_flush(window->base);
+    return window->storage != nullptr;
 }
 
 static void openfs_test_debug(const char* s)
@@ -57,6 +69,7 @@ extern "C" uint32_t openfs_kernel_test()
     const BlockDevice* disk = block_get(1U);
     if (!disk)
         return 22U;
+    static uint8_t openfs_test_storage[64U * 4096U]{};
 
     openfs_block_device_t device{};
     openfs_block_device_t second_device{};
@@ -66,11 +79,11 @@ extern "C" uint32_t openfs_kernel_test()
         openfs_kernel_attach(disk, disk->sector_count, 4096U, &device))
         return 21U;
 
-    OpenFsTestWindow window{disk};
+    OpenFsTestWindow window{openfs_test_storage};
     BlockDevice test_disk{
         0,
         BLOCK_DEVICE_MEMORY,
-        disk->sector_size,
+        512U,
         512U,
         openfs_test_window_read,
         openfs_test_window_write,
