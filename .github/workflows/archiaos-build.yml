@@ -130,7 +130,7 @@ jobs:
           bits = BS * 8
           bb = (BLOCKS + bits - 1) // bits
           journal = max(BLOCKS // 16, 8)
-          data = max(BLOCKS // 4 - 1, 8)
+          data = max(BLOCKS // 4 - 2, 8)
           metadata = BLOCKS - 3
           inode_table = metadata - bb - 1 - journal - data
           while True:
