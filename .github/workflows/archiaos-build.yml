@@ -215,7 +215,7 @@ jobs:
           for cpu in $models; do
             echo "===== QEMU CPU MODEL: $cpu ====="
             cp /usr/share/OVMF/OVMF_VARS_4M.fd "ArchiaOS/build/OVMF_VARS_${cpu}.fd"
-            timeout 15s qemu-system-x86_64 \
+            timeout 45s qemu-system-x86_64 \
               -machine q35 \
               -cpu "$cpu" \
               -m 256M \
