@@ -580,11 +580,11 @@ extern "C" bool storage_test()
                 !block_flush(device))
                 return false;
 
-            const bool partitions_registered = gpt_register_partitions(device);
-            for (const char* text = partitions_registered ? "STORAGE: GPT PARTITIONS REGISTERED\n" : "STORAGE: GPT PARTITIONS REGISTER FAILED\n"; *text; ++text)
-                asm volatile("outb %0,%1" : : "a"(*text), "Nd"(static_cast<unsigned short>(0xE9)));
+            storage_debug("STORAGE: GPT TRY\n");
+            const bool registered = gpt_register_partitions(device);
+            storage_debug(registered ? "STORAGE: GPT OK DEVICE\n" :
+                                      "STORAGE: GPT NO DEVICE\n");
             verified = true;
-            break;
         }
         if (!verified)
             return false;
