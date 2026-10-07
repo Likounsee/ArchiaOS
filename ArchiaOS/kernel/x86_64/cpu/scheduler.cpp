@@ -302,15 +302,8 @@ extern "C" bool scheduler_run_test()
          tasks[0][1].state == SCHEDULER_TASK_STOPPED &&
          tasks[0][2].state == SCHEDULER_TASK_RUNNING;
 
-    unsigned int saved_count = cpus[0].task_count;
-    cpus[0].task_count = SCHEDULER_MAX_TASKS;
-    unsigned int rejected_id = 0;
-    const capacity_guard_ok = !scheduler_create_kernel_thread(
-        kernel_thread_test_entry0, nullptr, 0, &rejected_id);
-    cpus[0].task_count = saved_count;
-
     scheduler_ready_flag = false;
-    return ok && capacity_guard_ok;
+    return ok;
 }
 
 static void kernel_thread_test_entry0(void*)
@@ -383,7 +376,14 @@ extern "C" bool scheduler_kernel_thread_test()
 
     kernel_thread_exit_id[cpu] = exit_id;
 
-    return scheduler_task_count(cpu) == 5;
+    const unsigned int saved_count = cpus[cpu].task_count;
+    cpus[cpu].task_count = SCHEDULER_MAX_TASKS;
+    unsigned int rejected_id = 0;
+    const bool capacity_guard_ok = !scheduler_create_kernel_thread(
+        kernel_thread_test_entry0, nullptr, cpu, &rejected_id);
+    cpus[cpu].task_count = saved_count;
+
+    return scheduler_task_count(cpu) == 5 && capacity_guard_ok;
 }
 
 extern "C" bool scheduler_kernel_thread_exited(unsigned int cpu_index)
