@@ -131,6 +131,8 @@ extern "C" void paging_run_tests()
     if (cpu != nullptr && cpu->features.one_gib_pages)
     {
         const u64 splitVirtual = 0x0000000041234000ULL;
+        if (paging_get_4k_entry(splitVirtual) != 0)
+            fail("PAGING TEST FAIL: 1G LEAF AS 4K\n");
         const u64 splitPhysical = pmm_alloc_page();
 
         if (splitPhysical == 0)
