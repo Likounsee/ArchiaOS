@@ -11,6 +11,15 @@
 static openfs_block_device_t openfs_device{};
 static openfs_mount_t openfs_mount_state{};
 static bool initialized = false;
+
+static void vfs_test_debug(const char* s)
+{
+    for (int i = 0; s[i] != '\0'; ++i)
+        asm volatile("outb %0,%1"
+                     : : "a"(s[i]),
+                         "Nd"(static_cast<unsigned short>(0xE9)));
+}
+
 static void vfs_zero_buffer(char* buffer, unsigned int size) {
     for (unsigned int i = 0U; i < size; ++i)
         buffer[i] = 0;
@@ -381,17 +390,20 @@ extern "C" bool vfs_read(
 
 extern "C" bool vfs_test()
 {
+    vfs_test_debug("VFS TEST: START\n");
     if (!vfs_initialize())
     {
         return false;
     }
 
+    vfs_test_debug("VFS TEST: INIT OK\n");
     if (!vfs_mkdir("/vfs-test") ||
         !vfs_create("/vfs-test/hello"))
     {
         return false;
     }
 
+    vfs_test_debug("VFS TEST: CREATE OK\n");
     static const char message[] = "ArchiaOS OpenFS VFS";
     static uint8_t large_message[9000];
     static uint8_t large_buffer[9000];
@@ -416,12 +428,14 @@ extern "C" bool vfs_test()
             return false;
         }
 
+    vfs_test_debug("VFS TEST: PERSISTED IO OK\n");
     for (unsigned int i = 0U; i < sizeof(message); ++i)
         if (buffer[i] != message[i])
         {
             return false;
         }
 
+    vfs_test_debug("VFS TEST: IO OK\n");
     VfsStat stat{};
     VfsDirEntry entry{};
     if (!vfs_stat("/vfs-test/hello", &stat) ||
@@ -431,6 +445,7 @@ extern "C" bool vfs_test()
         return false;
     }
 
+    vfs_test_debug("VFS TEST: STAT OK\n");
     bool found_hello = false;
     bool found_large = false;
     for (uint32_t index = 0U; index < 3U; ++index)
@@ -472,21 +487,25 @@ extern "C" bool vfs_test()
         }
     }
 
+    vfs_test_debug("VFS TEST: READDIR OK\n");
     if (!found_hello || !found_large)
     {
         return false;
     }
 
+    vfs_test_debug("VFS TEST: PRE-SHUTDOWN OK\n");
     if (!vfs_sync() || !vfs_shutdown())
     {
         return false;
     }
 
+    vfs_test_debug("VFS TEST: SHUTDOWN OK\n");
     if (!vfs_initialize())
     {
         return false;
     }
 
+    vfs_test_debug("VFS TEST: REINIT OK\n");
     vfs_zero_buffer(buffer, sizeof(buffer));
     read_size = 0U;
     if (!vfs_read("/vfs-test/hello", 0U, buffer, sizeof(buffer), &read_size) ||
@@ -507,6 +526,7 @@ extern "C" bool vfs_test()
             return false;
         }
 
+    vfs_test_debug("VFS TEST: PERSISTENCE VERIFIED\n");
     if (!vfs_unlink("/vfs-test/large") ||
         !vfs_unlink("/vfs-test/hello") ||
         !vfs_unlink("/vfs-test") ||
@@ -515,5 +535,8 @@ extern "C" bool vfs_test()
         return false;
     }
 
-    return openfs_sync(&openfs_mount_state) == OPENFS_MOUNT_OK;
+    vfs_test_debug("VFS TEST: UNLINK OK\n");
+    const bool result = openfs_sync(&openfs_mount_state) == OPENFS_MOUNT_OK;
+    vfs_test_debug(result ? "VFS TEST: PASS\n" : "VFS TEST: FINAL SYNC FAIL\n");
+    return result;
 }
