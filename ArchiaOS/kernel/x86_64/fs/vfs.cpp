@@ -12,15 +12,6 @@ static openfs_block_device_t openfs_device{};
 static openfs_mount_t openfs_mount_state{};
 static bool initialized = false;
 
-static void vfs_debug_hex(unsigned int value)
-{
-    static const char digits[]="0123456789ABCDEF";
-    vfs_test_debug("VFS VALUE 0x");
-    for (int shift=28; shift>=0; shift-=4)
-        asm volatile("outb %0,%1" : : "a"(digits[(value>>shift)&0xFU]), "Nd"(static_cast<unsigned short>(0xE9)));
-    vfs_test_debug("\\n");
-}
-
 
 static void vfs_test_debug(const char* s)
 {
@@ -203,6 +194,15 @@ extern "C" bool vfs_initialize()
     }
 
     return false;
+}
+
+static void vfs_debug_hex(unsigned int value)
+{
+    static const char digits[]="0123456789ABCDEF";
+    vfs_test_debug("VFS VALUE 0x");
+    for (int shift=28; shift>=0; shift-=4)
+        asm volatile("outb %0,%1" : : "a"(digits[(value>>shift)&0xFU]), "Nd"(static_cast<unsigned short>(0xE9)));
+    vfs_test_debug("\\n");
 }
 
 extern "C" bool vfs_sync()
