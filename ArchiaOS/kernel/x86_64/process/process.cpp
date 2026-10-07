@@ -373,6 +373,10 @@ extern "C" bool process_handle_syscall(ExceptionFrame* frame)
     if (instruction[0] != 0xCD || instruction[1] != 0x80)
         return false;
 
+    if ((frame->rax == 4 || frame->rax == 5 || frame->rax == 6) &&
+        frame->rbx >= 32ULL)
+        return false;
+
     __atomic_fetch_add(&syscall_count, 1ULL, __ATOMIC_RELAXED);
 
     switch (frame->rax)
@@ -624,6 +628,16 @@ extern "C" bool process_run_ring3_test()
     destroyed_endpoint_frame.rbx = endpoint;
     if (!process_handle_syscall(&destroyed_endpoint_frame) ||
         destroyed_endpoint_frame.rax != static_cast<uint64_t>(-1))
+        return false;
+
+    ExceptionFrame invalid_endpoint_frame{};
+    invalid_endpoint_frame.cs = 0x1B;
+    invalid_endpoint_frame.rip = process.entry + 7ULL;
+    invalid_endpoint_frame.rax = 6;
+    invalid_endpoint_frame.rbx = 32ULL;
+    const unsigned long long rejected_syscalls = process_syscall_count();
+    if (process_handle_syscall(&invalid_endpoint_frame) ||
+        process_syscall_count() != rejected_syscalls)
         return false;
 
     asm volatile("sti" : : : "memory");
