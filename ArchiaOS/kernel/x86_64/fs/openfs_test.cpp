@@ -69,7 +69,7 @@ extern "C" uint32_t openfs_kernel_test()
     const BlockDevice* disk = block_get(1U);
     if (!disk)
         return 22U;
-    static uint8_t openfs_test_storage[4096U * 4096U]{};
+    static uint8_t openfs_test_storage[256U * 4096U]{};
 
     openfs_block_device_t device{};
     openfs_block_device_t second_device{};
@@ -84,7 +84,7 @@ extern "C" uint32_t openfs_kernel_test()
         0,
         BLOCK_DEVICE_MEMORY,
         512U,
-        32768U,
+        2048U,
         openfs_test_window_read,
         openfs_test_window_write,
         openfs_test_window_flush,
