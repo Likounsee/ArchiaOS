@@ -29,6 +29,7 @@ extern "C" Process* process_find(uint32_t pid);
 extern "C" bool process_unregister(Process* process);
 extern "C" bool process_destroy(Process* process);
 extern "C" bool process_activate(Process* process);
+extern "C" unsigned int process_registered_count();
 extern "C" uint32_t process_current_pid();
 extern "C" unsigned long long process_syscall_count();
 extern "C" bool process_handle_syscall(ExceptionFrame* frame);
