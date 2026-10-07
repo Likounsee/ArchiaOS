@@ -202,7 +202,7 @@ static void vfs_debug_hex(unsigned int value)
     for (const char* p="VFS VALUE 0x"; *p; ++p) asm volatile("outb %0,%1" : : "a"(*p), "Nd"(static_cast<unsigned short>(0xE9)));
     for (int shift=28; shift>=0; shift-=4)
         asm volatile("outb %0,%1" : : "a"(digits[(value>>shift)&0xFU]), "Nd"(static_cast<unsigned short>(0xE9)));
-    asm volatile("outb %0,%1" : : "a"((char)'\\n'), "Nd"(static_cast<unsigned short>(0xE9)));
+    asm volatile("outb %0,%1" : : "a"(static_cast<char>(10)), "Nd"(static_cast<unsigned short>(0xE9)));
 }
 
 extern "C" bool vfs_sync()
