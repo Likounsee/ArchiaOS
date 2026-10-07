@@ -37,6 +37,14 @@ static constexpr uint8_t ATA_FIS_REG_H2D = 0x27;
 static constexpr uint8_t ATA_CMD_IDENTIFY = 0xEC;
 static constexpr uint8_t ATA_CMD_READ_DMA_EXT = 0x25;
 static constexpr uint8_t ATA_CMD_WRITE_DMA_EXT = 0x35;
+static void storage_debug(const char* s)
+{
+    for (int i = 0; s[i] != '\0'; ++i)
+        asm volatile("outb %0,%1"
+                     : : "a"(s[i]),
+                         "Nd"(static_cast<unsigned short>(0xE9)));
+}
+
 static constexpr uint32_t AHCI_TIMEOUT = 1000000U;
 static constexpr uint32_t AHCI_MAX_SECTORS_PER_COMMAND = 16U;
 static constexpr uint32_t AHCI_SECTOR_SIZE = 512U;
