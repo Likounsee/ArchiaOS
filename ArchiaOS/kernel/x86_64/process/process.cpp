@@ -284,16 +284,29 @@ extern "C" bool process_unregister(Process* process)
 
 extern "C" bool process_destroy(Process* process)
 {
-    if (!process || process == current_process || !process->pid ||
-        process_find(process->pid) != process)
+    if (!process || process == current_process || !process->pid)
         return false;
+
+    unsigned int table_slot = PROCESS_MAX;
+    for (unsigned int i = 0; i < PROCESS_MAX; ++i)
+    {
+        if (process_table[i] == process)
+        {
+            table_slot = i;
+            break;
+        }
+    }
+    if (table_slot == PROCESS_MAX)
+        return false;
+
     if (!address_space_destroy(&process->address_space))
         return false;
+
+    process_table[table_slot] = nullptr;
     process->state = PROCESS_EXITED;
     process->pid = 0;
     process->entry = 0;
     process->user_stack_top = 0;
-    process_unregister(process);
     return true;
 }
 
