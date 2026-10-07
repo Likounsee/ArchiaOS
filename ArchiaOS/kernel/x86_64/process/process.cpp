@@ -409,8 +409,14 @@ extern "C" bool process_run_ring3_test()
     static Process process{};
     if (!process_create_elf(&process, image, sizeof(image)))
         return false;
-    if (!process_register(&process) || process_find(process.pid) != &process ||
-        !process_activate(&process))
+    if (!process_register(&process) || process_find(process.pid) != &process)
+        return false;
+
+    Process duplicate = process;
+    if (process_register(&duplicate))
+        return false;
+
+    if (!process_activate(&process))
         return false;
 
     asm volatile("sti" : : : "memory");
