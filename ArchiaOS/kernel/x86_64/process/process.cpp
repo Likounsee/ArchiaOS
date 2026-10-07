@@ -114,6 +114,7 @@ extern "C" bool process_create_elf(
     Process* process, const uint8_t* image, uint64_t image_size)
 {
     if (!process || !image || image_size < sizeof(Elf64Header) ||
+        process->state != PROCESS_UNUSED ||
         process->pid != 0 || process->address_space.pml4_physical != 0)
         return false;
 
@@ -461,6 +462,12 @@ extern "C" bool process_run_ring3_test()
     static Process process{};
     if (!process_create_elf(&process, image, sizeof(image)))
         return false;
+
+    Process busy_state{};
+    busy_state.state = PROCESS_READY;
+    if (process_create_elf(&busy_state, image, sizeof(image)))
+        return false;
+
     if (process_create_elf(&process, image, sizeof(image)))
         return false;
     if (!process_register(&process) || process_find(process.pid) != &process)
