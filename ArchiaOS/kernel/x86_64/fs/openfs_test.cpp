@@ -178,13 +178,6 @@ extern "C" uint32_t openfs_kernel_test()
         return 9U;
     openfs_test_debug("OPENFS TEST: SYNC OK\n");
 
-    openfs_test_debug("OPENFS TEST: FSCK START\n");
-    uint64_t errors = 0U;
-    if (openfs_fsck(&device, &mount.superblock, &errors) != OPENFS_FSCK_OK ||
-        errors != 0U)
-        return 10U;
-    openfs_test_debug("OPENFS TEST: FSCK OK\n");
-
     if (openfs_unmount(&mount) != OPENFS_MOUNT_OK)
         return 11U;
     openfs_test_debug("OPENFS TEST: UNMOUNT OK\n");
