@@ -113,6 +113,9 @@ extern "C" bool scheduler_create_kernel_thread(
     if (!entry || cpu_index >= scheduler_cpu_count)
         return false;
 
+    if (cpus[cpu_index].task_count >= SCHEDULER_MAX_TASKS)
+        return false;
+
     for (unsigned int id = 2; id < SCHEDULER_MAX_TASKS; ++id)
     {
         SchedulerTask& task = tasks[cpu_index][id];
@@ -372,6 +375,29 @@ extern "C" bool scheduler_kernel_thread_test()
         return false;
 
     kernel_thread_exit_id[cpu] = exit_id;
+
+    if (scheduler_task_count(cpu) != 5)
+        return false;
+
+    unsigned int extra_ids[SCHEDULER_MAX_TASKS] = {};
+    for (unsigned int i = 0; i < SCHEDULER_MAX_TASKS - 5; ++i)
+    {
+        if (!scheduler_create_kernel_thread(
+                kernel_thread_test_entry0, nullptr, cpu, &extra_ids[i]))
+            return false;
+    }
+
+    if (scheduler_task_count(cpu) != SCHEDULER_MAX_TASKS)
+        return false;
+
+    unsigned int rejected_id = 0;
+    if (scheduler_create_kernel_thread(
+            kernel_thread_test_entry0, nullptr, cpu, &rejected_id))
+        return false;
+
+    if (scheduler_task_count(cpu) != SCHEDULER_MAX_TASKS)
+        return false;
+
     return true;
 }
 
