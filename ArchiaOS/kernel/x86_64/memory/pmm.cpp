@@ -288,7 +288,8 @@ extern "C" u64 pmm_alloc_page_below(u64 exclusiveLimit)
 
 extern "C" u64 pmm_alloc_page_above(u64 inclusiveBase)
 {
-    if (pmm_max_frames == 0)
+    if (pmm_max_frames == 0 ||
+        inclusiveBase > UINT64_MAX - (NOVOS_PAGE_SIZE - 1ULL))
         return 0;
 
     u64 frame = (inclusiveBase + NOVOS_PAGE_SIZE - 1ULL) / NOVOS_PAGE_SIZE;
@@ -310,6 +311,7 @@ extern "C" u64 pmm_alloc_page_above(u64 inclusiveBase)
 extern "C" u64 pmm_alloc_contiguous(u64 pageCount)
 {
     if (pageCount == 0 ||
+        pmm_max_frames <= 1ULL ||
         pageCount > pmm_max_frames - 1ULL)
     {
         return 0;
