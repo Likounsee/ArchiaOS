@@ -9,6 +9,7 @@
 #define OPENFS_CHECKSUM_OFFSET 4088U
 volatile uint32_t openfs_debug_stored=0U;
 volatile uint32_t openfs_debug_calculated=0U;
+volatile uint32_t openfs_debug_reason=0U;
 
 static uint16_t get16(const uint8_t*p){return (uint16_t)p[0]|((uint16_t)p[1]<<8U);}
 static uint32_t get32(const uint8_t*p){return (uint32_t)p[0]|((uint32_t)p[1]<<8U)|((uint32_t)p[2]<<16U)|((uint32_t)p[3]<<24U);}
@@ -59,7 +60,7 @@ static void encode(const openfs_superblock_t*sb,uint8_t*b){
 }
 
 static openfs_format_result_t decode(const uint8_t*b,openfs_superblock_t*sb){
-    if(memcmp(b,"OPENFS\0\0",8U)!=0||get32(b+24U)!=OPENFS_SUPERBLOCK_SIZE)return OPENFS_FORMAT_CORRUPT;
+    if(memcmp(b,"OPENFS\0\0",8U)!=0||get32(b+24U)!=OPENFS_SUPERBLOCK_SIZE){ openfs_debug_reason=(memcmp(b,"OPENFS\0\0",8U)!=0)?1U:2U; return OPENFS_FORMAT_CORRUPT; }
     uint32_t stored=get32(b+OPENFS_CHECKSUM_OFFSET);uint8_t copy[OPENFS_SUPERBLOCK_SIZE];memcpy(copy,b,sizeof(copy));put32(copy+OPENFS_CHECKSUM_OFFSET,0U);
     const uint32_t calculated=openfs_crc32c(copy,OPENFS_CHECKSUM_OFFSET); if(stored!=calculated){ openfs_debug_stored=stored; openfs_debug_calculated=calculated; return OPENFS_FORMAT_CORRUPT; }
     sb->version_major=get16(b+8U);sb->version_minor=get16(b+10U);sb->feature_flags=get64(b+12U);sb->block_size=get32(b+20U);sb->total_blocks=get64(b+28U);
