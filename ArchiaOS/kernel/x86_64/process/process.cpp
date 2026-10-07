@@ -521,6 +521,16 @@ extern "C" bool process_run_ring3_test()
         process_registered_count() != 1)
         return false;
 
+    static Process cleanup_process{};
+    if (!process_create_elf(&cleanup_process, image, sizeof(image)) ||
+        !process_register(&cleanup_process))
+        return false;
+    const int cleanup_endpoint = ipc_create(cleanup_process.pid);
+    if (cleanup_endpoint < 0 ||
+        !process_destroy(&cleanup_process) ||
+        ipc_receive(cleanup_endpoint, cleanup_process.pid, nullptr))
+        return false;
+
     Process duplicate = process;
     if (process_register(&duplicate) || process_destroy(&duplicate))
         return false;
