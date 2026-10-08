@@ -12,7 +12,7 @@ The current bootstrap security stage activates only protections that are safe wi
 - EFER.NXE — enabled when CPUID reports NX support.
 - CR4.UMIP — enabled when CPUID reports UMIP support.
 
-SMEP and SMAP are detected but intentionally remain deferred.
+SMEP and SMAP are enabled when supported; the bootstrap and user address-space layout keep kernel mappings supervisor-only while user mappings are explicitly marked U/S=1.
 
 ## Why SMEP/SMAP are deferred
 
@@ -68,4 +68,4 @@ The mapping path uses INVLPG after changing a leaf.
 
 The page-fault path now decodes CR2 and the architectural error-code bits. A controlled kernel test deliberately unmapped a PMM-owned page, accessed it, verified the #PF, and redirected only that armed test to a recovery label. This proves the exception path is live without leaving the kernel in a fault loop.
 
-SMEP/SMAP are still deferred until user address spaces exist.
+SMEP/SMAP are enabled when the detected CPU supports them. Their activation is now paired with the implemented user address-space and permission model.
