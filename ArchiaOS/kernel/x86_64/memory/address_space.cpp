@@ -16,10 +16,12 @@ static inline void zero_table(u64 physical)
 
 static u64 new_table()
 {
+    address_space_test_marker('1');
     const u64 physical = pmm_alloc_page_above(0x01000000ULL);
     if (!physical)
         return 0;
 
+    address_space_test_marker('2');
     if (paging_physical_to_virtual(physical) == 0)
     {
         pmm_free_page(physical);
@@ -27,6 +29,7 @@ static u64 new_table()
     }
 
     zero_table(physical);
+    address_space_test_marker('3');
     return physical;
 }
 
