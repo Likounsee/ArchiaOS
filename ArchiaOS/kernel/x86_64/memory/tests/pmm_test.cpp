@@ -101,8 +101,26 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
         for (;;) asm volatile ("cli; hlt");
     }
 
+    const u64 free_before_double_free = pmm_free_page_count();
     pmm_free_page(page_a);
     pmm_free_page(page_b);
+
+    if (pmm_free_page_count() != free_before_double_free)
+    {
+        debug_str("PMM TEST FAIL: DOUBLE FREE
+");
+        for (;;) asm volatile ("cli; hlt");
+    }
+
+    pmm_free_page(page_a);
+    pmm_free_page(page_b);
+
+    if (pmm_free_page_count() != free_before_double_free)
+    {
+        debug_str("PMM TEST FAIL: REPEATED FREE
+");
+        for (;;) asm volatile ("cli; hlt");
+    }
 
     const u64 free_before_contiguous = pmm_free_page_count();
     const u64 contiguous = pmm_alloc_contiguous(4);
