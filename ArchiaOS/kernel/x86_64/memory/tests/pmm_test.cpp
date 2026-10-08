@@ -49,6 +49,22 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
         }
     }
 
+    u64 boot_pml4 = 0;
+    asm volatile("mov %%cr3, %0" : "=r"(boot_pml4));
+    boot_pml4 &= ~(PAGE_SIZE - 1ULL);
+    if (boot_pml4 == 0)
+    {
+        debug_str("PMM TEST FAIL: BOOT CR3\n");
+        for (;;) asm volatile ("cli; hlt");
+    }
+    const u64 free_before_boot_pml4 = pmm_free_page_count();
+    pmm_free_page(boot_pml4);
+    if (pmm_free_page_count() != free_before_boot_pml4)
+    {
+        debug_str("PMM TEST FAIL: BOOT PML4 FREED\n");
+        for (;;) asm volatile ("cli; hlt");
+    }
+
     if (bootInfo->kernel_image_base != 0)
     {
         const u64 reserved_page =
