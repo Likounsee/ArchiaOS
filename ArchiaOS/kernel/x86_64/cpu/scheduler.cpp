@@ -164,6 +164,12 @@ extern "C" ExceptionFrame* scheduler_timer_tick(
         return current_frame;
 
     SchedulerTask& current = tasks[cpu_index][cpu.current_task];
+    if (current.cpu != cpu_index ||
+        (current.state != SCHEDULER_TASK_READY &&
+         current.state != SCHEDULER_TASK_RUNNING &&
+         current.state != SCHEDULER_TASK_STOPPED))
+        return current_frame;
+
     current.saved_frame = current_frame;
 
     if (current.remaining_quantum > 0)
