@@ -309,7 +309,10 @@ extern "C" void lapic_timer_start()
         IA32_X2APIC_LVT_TIMER,
         LAPIC_TIMER_PERIODIC | 0x20U);
 
-    lapic_write(LAPIC_TIMER_INITIAL, IA32_X2APIC_INITIAL_COUNT, 1000000U);
+    lapic_write(
+        LAPIC_TIMER_INITIAL,
+        IA32_X2APIC_INITIAL_COUNT,
+        lapic_timer_initial_count);
 }
 
 extern "C" void lapic_stop_timer()
