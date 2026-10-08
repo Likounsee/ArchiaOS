@@ -118,7 +118,7 @@ extern "C" u64 vmm_alloc_pages(
                 }
             }
             regions[free_slot] = {
-                cursor, pages, user, writable, executable, true
+                cursor, pages, user, writable, executable, true, true
             };
             allocated_pages += pages;
             return cursor;
@@ -132,7 +132,8 @@ extern "C" bool vmm_free_pages(u64 base, u64 pages)
 {
     for (unsigned int i = 0; i < VMM_MAX_REGIONS; ++i)
     {
-        if (!regions[i].used || regions[i].base != base || regions[i].pages != pages)
+        if (!regions[i].used || !regions[i].mapped ||
+            regions[i].base != base || regions[i].pages != pages)
             continue;
         for (u64 page = 0; page < pages; ++page)
         {
@@ -183,9 +184,23 @@ extern "C" bool vmm_reserve(u64 base, u64 pages, bool user)
     {
         if (!region.used)
         {
-            region = {base, pages, user, true, false, true};
+            region = {base, pages, user, false, false, false, true};
             return true;
         }
+    }
+    return false;
+}
+
+extern "C" bool vmm_release(u64 base, u64 pages)
+{
+    for (auto& region : regions)
+    {
+        if (!region.used || region.mapped ||
+            region.base != base || region.pages != pages)
+            continue;
+
+        region = {};
+        return true;
     }
     return false;
 }
@@ -218,6 +233,14 @@ extern "C" void vmm_run_tests()
     if (!paging_unmap_4k(NOVOS_KERNEL_HEAP_BASE))
         for (;;) asm volatile("cli; hlt");
     pmm_free_page(occupiedPhysical);
+
+    const u64 reserved = NOVOS_KERNEL_HEAP_BASE + 2 * NOVOS_PAGE_SIZE;
+    if (!vmm_reserve(reserved, 2, false) ||
+        vmm_alloc_pages(2, false, true, false) != 0 ||
+        vmm_free_pages(reserved, 2) ||
+        !vmm_release(reserved, 2) ||
+        vmm_release(reserved, 2))
+        for (;;) asm volatile("cli; hlt");
 
     const u64 base = vmm_alloc_pages(2, false, true, false);
     if (base == 0 || !vmm_is_mapped(base) || !vmm_is_mapped(base + NOVOS_PAGE_SIZE))
