@@ -378,6 +378,20 @@ extern "C" void address_space_run_tests()
     if (address_space_create(&occupied))
         for (;;) asm volatile("cli; hlt");
 
+    /*
+     * Kernel/HHDM roots copied into a user address space must never carry
+     * PAGE_USER. Verify every populated upper-half PML4 entry.
+     */
+    auto* created_pml4 = table(space.pml4_physical);
+    if (!created_pml4)
+        for (;;) asm volatile("cli; hlt");
+    for (unsigned int i = 256; i < 512; ++i)
+    {
+        if ((created_pml4[i] & PAGE_PRESENT) &&
+            (created_pml4[i] & PAGE_USER))
+            for (;;) asm volatile("cli; hlt");
+    }
+
     space.active = true;
     if (address_space_destroy(&space))
         for (;;) asm volatile("cli; hlt");
