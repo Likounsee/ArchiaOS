@@ -133,6 +133,45 @@ static bool reclaimable_efi_type(u32 type)
            type == 7;   /* EfiConventionalMemory */
 }
 
+static bool reserve_boot_page_table_tree(u64 physical, unsigned int level)
+{
+    if (physical == 0 ||
+        (physical & (PAGE_SIZE - 1ULL)) != 0 ||
+        physical >= pmm_max_frames * PAGE_SIZE)
+        return false;
+
+    reserve_range(physical, 1);
+
+    if (level == 1)
+        return true;
+
+    auto* entries = reinterpret_cast<const u64*>(physical);
+    for (unsigned int i = 0; i < 512; ++i)
+    {
+        const u64 entry = entries[i];
+        if ((entry & 1ULL) == 0)
+            continue;
+
+        if (level <= 3 && (entry & (1ULL << 7)) != 0)
+            continue;
+
+        const u64 child = entry & 0x000FFFFFFFFFF000ULL;
+        if (!reserve_boot_page_table_tree(child, level - 1))
+            return false;
+    }
+
+    return true;
+}
+
+static bool reserve_boot_page_tables()
+{
+    u64 cr3 = 0;
+    asm volatile("mov %%cr3, %0" : "=r"(cr3));
+    cr3 &= ~0xFFFULL;
+
+    return reserve_boot_page_table_tree(cr3, 4);
+}
+
 extern "C" bool pmm_initialize(BootInfo* bootInfo)
 {
     pmm_bitmap = nullptr;
@@ -244,6 +283,14 @@ extern "C" bool pmm_initialize(BootInfo* bootInfo)
     reserve_bytes(
         bootInfo->pmm_bitmap_base,
         bootInfo->pmm_bitmap_size);
+
+    /*
+     * The kernel adopts the UEFI transition CR3 rather than replacing it.
+     * Its page-table pages came from EfiLoaderData, so they must remain
+     * reserved while that hierarchy is still active.
+     */
+    if (!reserve_boot_page_tables())
+        return false;
 
     /* Physical address zero is never a valid allocation result. */
     if (!bitmap_test(0))
