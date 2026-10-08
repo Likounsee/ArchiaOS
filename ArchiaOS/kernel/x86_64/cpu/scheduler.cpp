@@ -414,7 +414,7 @@ extern "C" bool scheduler_run_test()
     scheduler_cpu_start(0);
     if (scheduler_current_task(0) != 0 ||
         tasks[0][0].state != SCHEDULER_TASK_RUNNING ||
-        tasks[0][1].state != SCHEDULER_TASK_READY ||
+        tasks[0][1].state != SCHEDULER_TASK_STOPPED ||
         tasks[0][2].state != SCHEDULER_TASK_STOPPED)
         return false;
 
