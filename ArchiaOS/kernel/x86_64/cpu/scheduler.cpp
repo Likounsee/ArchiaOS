@@ -11,6 +11,7 @@ static volatile unsigned int kernel_thread_exit_id[SCHEDULER_MAX_CPUS] = {};
 static unsigned int scheduler_cpu_count = 1;
 static unsigned int scheduler_apic_ids[SCHEDULER_MAX_CPUS] = {};
 static volatile bool scheduler_ready_flag = false;
+static volatile bool scheduler_apic_map_ready = false;
 static volatile unsigned long long bootstrap_stack_top[SCHEDULER_MAX_CPUS] = {};
 static volatile SchedulerThreadEntry bootstrap_entry[SCHEDULER_MAX_CPUS] = {};
 static volatile void* bootstrap_argument[SCHEDULER_MAX_CPUS] = {};
@@ -39,6 +40,7 @@ extern "C" bool scheduler_initialize(unsigned int cpu_count)
 
     scheduler_cpu_count = cpu_count;
     scheduler_ready_flag = false;
+    scheduler_apic_map_ready = false;
 
     for (unsigned int cpu = 0; cpu < cpu_count; ++cpu)
     {
@@ -87,6 +89,7 @@ extern "C" bool scheduler_set_cpu_apic_ids(
 
     for (unsigned int cpu = 0; cpu < count; ++cpu)
         scheduler_apic_ids[cpu] = apic_ids[cpu];
+    scheduler_apic_map_ready = true;
     return true;
 }
 
@@ -283,7 +286,14 @@ extern "C" bool scheduler_run_test()
         !scheduler_set_cpu_apic_ids(&apic_id, 1))
         return false;
 
-    scheduler_ready_flag = true;
+    if (scheduler_set_ready_for_kernel())
+    {
+        scheduler_ready_flag = false;
+        return false;
+    }
+    if (!scheduler_set_cpu_apic_ids(&apic_id, 1) ||
+        !scheduler_set_ready_for_kernel())
+        return false;
     ExceptionFrame test_frame = {};
 
     for (unsigned int i = 0; i < SCHEDULER_QUANTUM_TICKS; ++i)
@@ -441,7 +451,7 @@ extern "C" unsigned long long scheduler_kernel_thread_counter(unsigned int cpu_i
 
 extern "C" bool scheduler_set_ready_for_kernel()
 {
-    if (scheduler_cpu_count == 0)
+    if (scheduler_cpu_count == 0 || !scheduler_apic_map_ready)
         return false;
     __atomic_store_n(&scheduler_ready_flag, true, __ATOMIC_RELEASE);
     return true;
