@@ -2,6 +2,12 @@
 #include "paging.hpp"
 #include "pmm.hpp"
 
+static inline void address_space_test_marker(char c)
+{
+    asm volatile("outb %0, %1" : : "a"(c), "Nd"(static_cast<unsigned short>(0xE9)));
+}
+
+
 static inline void zero_table(u64 physical)
 {
     auto* table = reinterpret_cast<u64*>(paging_physical_to_virtual(physical));
@@ -445,10 +451,12 @@ extern "C" bool address_space_is_user_executable(
 
 extern "C" void address_space_run_tests()
 {
+    address_space_test_marker('A');
     AddressSpace space{};
     if (!address_space_create(&space))
         for (;;) asm volatile("cli; hlt");
 
+    address_space_test_marker('B');
     AddressSpace occupied = space;
     if (address_space_create(&occupied))
         for (;;) asm volatile("cli; hlt");
@@ -473,11 +481,13 @@ extern "C" void address_space_run_tests()
      * a dedicated CR3 activation test; here we validate the address-space
      * lifecycle guard without switching away from the bootstrap CR3.
      */
+    address_space_test_marker('C');
     space.active = true;
     if (address_space_activate(&space))
         for (;;) asm volatile("cli; hlt");
     space.active = false;
 
+    address_space_test_marker('D');
     if (address_space_map(
             &space, USER_VIRTUAL_BASE, 0,
             true, false) ||
