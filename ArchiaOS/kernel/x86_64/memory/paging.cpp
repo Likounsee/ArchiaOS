@@ -376,12 +376,12 @@ extern "C" bool paging_map_4k(
         physicalAddress >= mapped_physical_limit)
         return false;
 
-    u64* entry = find_4k_entry(virtualAddress, flags.user, true, true);
-    if (entry == nullptr)
-        return false;
-
     const u64 flagsValue = page_entry_flags(flags);
     if (flagsValue == 0)
+        return false;
+
+    u64* entry = find_4k_entry(virtualAddress, flags.user, true, true);
+    if (entry == nullptr)
         return false;
 
     *entry = physicalAddress | flagsValue;
