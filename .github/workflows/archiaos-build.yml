@@ -33,17 +33,17 @@ jobs:
 
       - name: Verify ELF and EFI outputs
         run: |
-          test -s ArchiaOS/build/kernel.elf
+          test -s ArchiaOS/build/OS_kernel.elf
           test -s ArchiaOS/build/BOOTX64.EFI
           test -s ArchiaOS/build/esp/EFI/BOOT/BOOTX64.EFI
           test -s ArchiaOS/build/esp/EFI/ARCHIAOS/ARCHIAOS_kernel.elf
-          llvm-readobj --file-headers ArchiaOS/build/kernel.elf
-          llvm-readobj --program-headers ArchiaOS/build/kernel.elf
-          llvm-nm ArchiaOS/build/kernel.elf | grep "kernel_entry$"
+          llvm-readobj --file-headers ArchiaOS/build/OS_kernel.elf
+          llvm-readobj --program-headers ArchiaOS/build/OS_kernel.elf
+          llvm-nm ArchiaOS/build/OS_kernel.elf | grep "kernel_entry$"
           llvm-readobj --file-headers ArchiaOS/build/BOOTX64.EFI
-          llvm-readobj --program-headers ArchiaOS/build/kernel.elf
-          llvm-objdump -d ArchiaOS/build/kernel.elf | head -n 120
-          llvm-objdump -d --start-address=0x1004B0 --stop-address=0x1004F0 ArchiaOS/build/kernel.elf
+          llvm-readobj --program-headers ArchiaOS/build/OS_kernel.elf
+          llvm-objdump -d ArchiaOS/build/OS_kernel.elf | head -n 120
+          llvm-objdump -d --start-address=0x1004B0 --stop-address=0x1004F0 ArchiaOS/build/OS_kernel.elf
 
       - name: Prepare GPT + OpenFS storage test disk
         run: |
