@@ -87,7 +87,7 @@ static bool map_stack(AddressSpace* space, uint64_t* top)
     if (!space || !top)
         return false;
 
-    const uint64_t stack_top = NOVOS_USER_VIRTUAL_TOP;
+    const uint64_t stack_top = USER_VIRTUAL_TOP;
     const uint64_t stack_base = stack_top - 3ULL * PAGE_SIZE;
 
     /* Keep the lowest page unmapped as a guard page below the user stack. */
@@ -161,8 +161,8 @@ extern "C" bool process_create_elf(
             (ph.flags & ~7U) != 0 ||
             (ph.flags & 6U) == 6U ||
             ph.vaddr < USER_VIRTUAL_BASE ||
-            ph.vaddr >= NOVOS_USER_VIRTUAL_TOP ||
-            ph.memsz > NOVOS_USER_VIRTUAL_TOP - ph.vaddr ||
+            ph.vaddr >= USER_VIRTUAL_TOP ||
+            ph.memsz > USER_VIRTUAL_TOP - ph.vaddr ||
             (ph.align != 0 && (ph.align & (ph.align - 1)) != 0) ||
             (ph.align > 1 &&
              ((ph.vaddr ^ ph.offset) & (ph.align - 1)) != 0))
@@ -254,7 +254,7 @@ extern "C" bool process_create_elf(
     }
 
     if (header->entry < USER_VIRTUAL_BASE ||
-        header->entry >= NOVOS_USER_VIRTUAL_TOP ||
+        header->entry >= USER_VIRTUAL_TOP ||
         !entry_file_backed_executable ||
         !address_space_is_user_executable(&space, header->entry))
     {
@@ -408,7 +408,7 @@ extern "C" bool process_handle_syscall(ExceptionFrame* frame)
         return false;
 
     if (current_process->user_stack_top < 2ULL * PAGE_SIZE ||
-        current_process->user_stack_top > NOVOS_USER_VIRTUAL_TOP)
+        current_process->user_stack_top > USER_VIRTUAL_TOP)
         return false;
 
     const uint64_t stack_base =

@@ -60,7 +60,7 @@ extern "C" bool address_space_map(
         physical_address >= paging_max_physical_address() ||
         (writable && executable) ||
         virtual_address < USER_VIRTUAL_BASE ||
-        virtual_address >= NOVOS_USER_VIRTUAL_TOP)
+        virtual_address >= USER_VIRTUAL_TOP)
         return false;
 
     auto* pml4 = table(space->pml4_physical);
@@ -293,7 +293,7 @@ extern "C" bool address_space_is_user_mapped(
 {
     if (!space || !space->pml4_physical ||
         virtual_address < USER_VIRTUAL_BASE ||
-        virtual_address >= NOVOS_USER_VIRTUAL_TOP)
+        virtual_address >= USER_VIRTUAL_TOP)
         return false;
     auto* pml4 = table(space->pml4_physical);
     if (!pml4) return false;
@@ -321,7 +321,7 @@ extern "C" bool address_space_is_user_executable(
 {
     if (!space || !space->pml4_physical ||
         virtual_address < USER_VIRTUAL_BASE ||
-        virtual_address >= NOVOS_USER_VIRTUAL_TOP)
+        virtual_address >= USER_VIRTUAL_TOP)
         return false;
 
     auto* pml4 = table(space->pml4_physical);
@@ -403,7 +403,7 @@ extern "C" void address_space_run_tests()
             &space, USER_VIRTUAL_BASE + PAGE_SIZE))
         for (;;) asm volatile("cli; hlt");
 
-    if (address_space_is_user_mapped(&space, NOVOS_USER_VIRTUAL_TOP))
+    if (address_space_is_user_mapped(&space, USER_VIRTUAL_TOP))
         for (;;) asm volatile("cli; hlt");
 
     const u64 executable_physical = pmm_alloc_page();
