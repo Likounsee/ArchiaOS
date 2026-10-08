@@ -287,19 +287,29 @@ extern "C" bool address_space_is_user_executable(
 
     auto* pml4 = table(space->pml4_physical);
     if (!pml4) return false;
+
     const u64 e4 = pml4[(virtual_address >> 39) & 0x1FF];
-    if (!(e4 & NOVOS_PAGE_PRESENT) || !(e4 & NOVOS_PAGE_USER)) return false;
+    if (!(e4 & NOVOS_PAGE_PRESENT) || !(e4 & NOVOS_PAGE_USER))
+        return false;
+
     auto* pdpt = table(e4 & ~0xFFFULL);
+    if (!pdpt) return false;
     const u64 e3 = pdpt[(virtual_address >> 30) & 0x1FF];
     if (!(e3 & NOVOS_PAGE_PRESENT) || !(e3 & NOVOS_PAGE_USER) ||
-        (e3 & NOVOS_PAGE_NO_EXECUTE)) return false;
+        (e3 & NOVOS_PAGE_NO_EXECUTE))
+        return false;
     if (e3 & NOVOS_PAGE_HUGE) return true;
+
     auto* pd = table(e3 & ~0xFFFULL);
+    if (!pd) return false;
     const u64 e2 = pd[(virtual_address >> 21) & 0x1FF];
     if (!(e2 & NOVOS_PAGE_PRESENT) || !(e2 & NOVOS_PAGE_USER) ||
-        (e2 & NOVOS_PAGE_NO_EXECUTE)) return false;
+        (e2 & NOVOS_PAGE_NO_EXECUTE))
+        return false;
     if (e2 & NOVOS_PAGE_HUGE) return true;
+
     auto* pt = table(e2 & ~0xFFFULL);
+    if (!pt) return false;
     const u64 e1 = pt[(virtual_address >> 12) & 0x1FF];
     return (e1 & (NOVOS_PAGE_PRESENT | NOVOS_PAGE_USER)) ==
                (NOVOS_PAGE_PRESENT | NOVOS_PAGE_USER) &&
