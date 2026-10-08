@@ -290,8 +290,12 @@ extern "C" u64 pmm_alloc_page_below(u64 exclusiveLimit)
     if (exclusiveLimit <= PAGE_SIZE)
         return 0;
 
-    /* Include the frame containing exclusiveLimit - 1 even when the limit is unaligned. */
-    u64 maxFrame = (exclusiveLimit - 1ULL) / PAGE_SIZE + 1ULL;
+    /*
+     * Only return complete pages strictly below the exclusive limit.
+     * An unaligned limit therefore excludes the page containing its
+     * final byte.
+     */
+    u64 maxFrame = exclusiveLimit / PAGE_SIZE;
     if (maxFrame > pmm_max_frames)
         maxFrame = pmm_max_frames;
 

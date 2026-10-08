@@ -101,6 +101,14 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
         for (;;) asm volatile ("cli; hlt");
     }
 
+    const u64 free_before_tiny_below = pmm_free_page_count();
+    if (pmm_alloc_page_below(PAGE_SIZE + 1ULL) != 0 ||
+        pmm_free_page_count() != free_before_tiny_below)
+    {
+        debug_str("PMM TEST FAIL: TINY BELOW LIMIT\n");
+        for (;;) asm volatile ("cli; hlt");
+    }
+
     u64 page_a = pmm_alloc_page();
     u64 page_b = pmm_alloc_page();
 
