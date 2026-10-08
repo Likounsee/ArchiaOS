@@ -573,8 +573,6 @@ extern "C" void address_space_run_tests()
             &space, USER_VIRTUAL_BASE + 5 * PAGE_SIZE))
         for (;;) asm volatile("cli; hlt");
 
-    asm volatile("mov %0, %%cr3" : : "r"(test_cr3) : "memory");
-    space.active = false;
 
     if (!address_space_destroy(&space) || space.pml4_physical != 0)
         for (;;) asm volatile("cli; hlt");
