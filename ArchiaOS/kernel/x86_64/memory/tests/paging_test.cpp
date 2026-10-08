@@ -256,7 +256,7 @@ extern "C" void paging_run_tests()
      * A supervisor-only identity mapping must not be promoted to USER just
      * because a fine-grained user mapping is requested inside its huge leaf.
      */
-    const identityUserProbe = pmm_alloc_page();
+    const u64 identityUserProbe = pmm_alloc_page();
     if (identityUserProbe == 0 ||
         paging_map_4k(
             USER_VIRTUAL_BASE,
