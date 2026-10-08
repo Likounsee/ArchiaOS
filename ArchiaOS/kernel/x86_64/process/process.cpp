@@ -731,6 +731,13 @@ extern "C" bool process_run_ring3_test()
         return false;
     process.address_space.active = false;
 
+    process.address_space.active = true;
+    process.state = PROCESS_READY;
+    if (process_activate(&process))
+        return false;
+    process.address_space.active = false;
+    process.state = PROCESS_READY;
+
     if (!process_activate(&process))
         return false;
 
