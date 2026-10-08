@@ -59,6 +59,11 @@ extern "C" bool device_manager_test()
         return false;
 
     const Device* d = device_manager_get(id);
+    next_id = UINT32_MAX;
+    uint32_t wrapped_id = 0;
+    if (!device_manager_register(DEVICE_PCI, 0, 0, &wrapped_id) ||
+        wrapped_id == 0)
+        return false;
     return d && d->type == DEVICE_PCI &&
            d->resource0 == 0x1234 &&
            device_manager_count() == 1;
