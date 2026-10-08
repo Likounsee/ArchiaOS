@@ -451,15 +451,20 @@ static bool setup_identity_2m()
     if (mapped_physical_limit > PMM_MAX_PHYSICAL_ADDRESS)
         mapped_physical_limit = PMM_MAX_PHYSICAL_ADDRESS;
 
-    if (mapped_physical_limit < PAGE_2M_SIZE)
+    if (mapped_physical_limit < PAGE_2M_SIZE ||
+        bootstrapPml4Physical >= mapped_physical_limit)
         return false;
 
     const u64 identityPdptPhysical =
         identityPdptEntry & ~0xFFFULL;
+    if (identityPdptPhysical >= mapped_physical_limit)
+        return false;
 
     pml4_physical = bootstrapPml4Physical;
-    pml4 = bootstrapPml4;
-    pdpt = reinterpret_cast<u64*>(identityPdptPhysical);
+    pml4 = table_pointer(bootstrapPml4Physical);
+    pdpt = table_pointer(identityPdptPhysical);
+    if (!pml4 || !pdpt)
+        return false;
 
     /*
      * The boot hierarchy uses 2 MiB leaves on CPUs without 1 GiB pages and
