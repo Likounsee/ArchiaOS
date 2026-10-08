@@ -504,6 +504,14 @@ extern "C" bool process_run_ring3_test()
         return false;
     put32(image + 68, 5);
 
+    static Process entry_in_bss{};
+    put64(image + 24, 0x400102);
+    put64(image + 96, 1);
+    if (process_create_elf(&entry_in_bss, image, sizeof(image)))
+        return false;
+    put64(image + 24, 0x400100);
+    put64(image + 96, 30);
+
     static Process invalid_alignment{};
     put64(image + 72, 0x400101);
     put64(image + 96, 1);
