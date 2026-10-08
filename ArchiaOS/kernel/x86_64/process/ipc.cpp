@@ -123,13 +123,34 @@ extern "C" bool ipc_test()
     if (endpoint < 0)
         return false;
 
+    IpcMessage unauthorized{};
+    if (ipc_receive(endpoint, 42, &unauthorized) ||
+        ipc_destroy(endpoint, 42))
+        return false;
+
     const bool sent = ipc_send(endpoint, 42, 0x1234U, 0x1122334455667788ULL);
     IpcMessage message{};
     const bool received = ipc_receive(endpoint, 0, &message);
-    const bool destroyed = ipc_destroy(endpoint, 0);
+    if (!sent || !received ||
+        message.sender_pid != 42 ||
+        message.code != 0x1234U ||
+        message.value != 0x1122334455667788ULL)
+        return false;
 
-    return sent && received && destroyed &&
-           message.sender_pid == 42 &&
-           message.code == 0x1234U &&
-           message.value == 0x1122334455667788ULL;
+    for (unsigned int i = 0; i < IPC_QUEUE_DEPTH; ++i)
+        if (!ipc_send(endpoint, 42, i, i))
+            return false;
+    if (ipc_send(endpoint, 42, 0xFFFFU, 0))
+        return false;
+
+    for (unsigned int i = 0; i < IPC_QUEUE_DEPTH; ++i)
+    {
+        IpcMessage queued{};
+        if (!ipc_receive(endpoint, 0, &queued) ||
+            queued.code != i ||
+            queued.value != i)
+            return false;
+    }
+
+    return ipc_destroy(endpoint, 0);
 }
