@@ -553,6 +553,17 @@ extern "C" bool paging_map_4k(
         return false;
 
     /*
+     * The generic paging API is also used by kernel code. Keep its USER
+     * permission independently bounded so a caller cannot create a user
+     * mapping in an arbitrary canonical kernel address merely by setting
+     * flags.user.
+     */
+    if (flags.user &&
+        (virtualAddress < USER_VIRTUAL_BASE ||
+         virtualAddress >= USER_VIRTUAL_TOP))
+        return false;
+
+    /*
      * Do not silently replace an existing 4 KiB leaf with a different frame.
      * Huge bootstrap mappings are deliberately excluded because find_4k_entry
      * can split them before installing the requested fine-grained mapping.
