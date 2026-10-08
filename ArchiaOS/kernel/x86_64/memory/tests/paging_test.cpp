@@ -186,6 +186,18 @@ extern "C" void paging_run_tests()
     if (!paging_map_4k(testPage, testPage, readOnlyNoExecute))
         fail("PAGING TEST FAIL: 4K MAP\n");
 
+    const u64 conflictingPage = pmm_alloc_page();
+    if (conflictingPage == 0 ||
+        paging_map_4k(
+            testPage,
+            conflictingPage,
+            readOnlyNoExecute) ||
+        paging_translate(testPage) != testPage)
+    {
+        fail("PAGING TEST FAIL: CONFLICTING REMAP\n");
+    }
+    pmm_free_page(conflictingPage);
+
     const u64 entry = paging_get_4k_entry(testPage);
 
     if ((entry & 0x000FFFFFFFFFF000ULL) != testPage ||
