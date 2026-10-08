@@ -179,5 +179,21 @@ extern "C" bool ipc_test()
         if (!ipc_destroy(extra_endpoints[i], 1))
             return false;
 
-    return ipc_destroy(endpoint, 1);
+    if (!ipc_destroy(endpoint, 1))
+        return false;
+
+    const owner_endpoint = ipc_create(77);
+    if (owner_endpoint < 0 ||
+        !ipc_send(owner_endpoint, 42, 0x55U, 0xAAULL))
+        return false;
+
+    ipc_destroy_owner(77);
+
+    IpcMessage destroyed_message{};
+    if (ipc_send(owner_endpoint, 42, 0x56U, 0xBBULL) ||
+        ipc_receive(owner_endpoint, 77, &destroyed_message) ||
+        ipc_destroy(owner_endpoint, 77))
+        return false;
+
+    return true;
 }
