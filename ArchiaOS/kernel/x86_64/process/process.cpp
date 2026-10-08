@@ -697,6 +697,33 @@ extern "C" bool process_run_ring3_test()
         return false;
     process.user_stack_top = saved_user_stack_top;
 
+    ExceptionFrame invalid_user_segment_frame{};
+    invalid_user_segment_frame.cs = 0x1B;
+    invalid_user_segment_frame.user_ss = 0x10;
+    invalid_user_segment_frame.rflags = 0x202ULL;
+    invalid_user_segment_frame.user_rsp = process.user_stack_top;
+    invalid_user_segment_frame.rip = process.entry;
+    if (process_handle_syscall(&invalid_user_segment_frame))
+        return false;
+
+    ExceptionFrame invalid_user_flags_frame{};
+    invalid_user_flags_frame.cs = 0x1B;
+    invalid_user_flags_frame.user_ss = 0x23;
+    invalid_user_flags_frame.rflags = 0x200ULL;
+    invalid_user_flags_frame.user_rsp = process.user_stack_top;
+    invalid_user_flags_frame.rip = process.entry;
+    if (process_handle_syscall(&invalid_user_flags_frame))
+        return false;
+
+    ExceptionFrame invalid_user_iopl_frame{};
+    invalid_user_iopl_frame.cs = 0x1B;
+    invalid_user_iopl_frame.user_ss = 0x23;
+    invalid_user_iopl_frame.rflags = 0x3202ULL;
+    invalid_user_iopl_frame.user_rsp = process.user_stack_top;
+    invalid_user_iopl_frame.rip = process.entry;
+    if (process_handle_syscall(&invalid_user_iopl_frame))
+        return false;
+
     ExceptionFrame invalid_user_stack_frame{};
     invalid_user_stack_frame.cs = 0x1B;
     invalid_user_stack_frame.user_ss = 0x23;
