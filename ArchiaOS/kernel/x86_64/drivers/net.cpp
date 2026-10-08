@@ -8,6 +8,9 @@ static bool initialized = false;
 
 extern "C" bool net_initialize()
 {
+    if (initialized)
+        return true;
+
     head = tail = 0;
     initialized = true;
     return true;
