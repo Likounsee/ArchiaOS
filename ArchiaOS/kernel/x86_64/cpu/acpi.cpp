@@ -284,7 +284,7 @@ extern "C" bool acpi_initialize(unsigned long long rsdp_address)
      * Keep the legacy memory scan as a fallback for older firmware
      * and future BIOS/CSM support.
      */
-    if (address_is_mapped(rsdp_address) &&
+    if (range_is_mapped(rsdp_address, 20) &&
         signature8(rsdp_address, "RSD PTR ") &&
         checksum_ok(rsdp_address, 20))
     {
@@ -294,12 +294,13 @@ extern "C" bool acpi_initialize(unsigned long long rsdp_address)
         {
             rsdp = rsdp_address;
         }
-        else
+        else if (range_is_mapped(rsdp_address, 24))
         {
             unsigned int length = read32(rsdp_address + 20);
 
             if (length >= 36 &&
                 length <= 4096 &&
+                range_is_mapped(rsdp_address, length) &&
                 checksum_ok(rsdp_address, length))
             {
                 rsdp = rsdp_address;
