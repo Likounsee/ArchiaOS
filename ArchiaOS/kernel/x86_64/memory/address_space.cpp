@@ -525,11 +525,15 @@ extern "C" void address_space_run_tests()
     if (duplicate_map)
         for (;;) asm volatile("cli; hlt");
 
-    if (address_space_map(
+    const bool alias_map =
+        address_space_map(
             &space, USER_VIRTUAL_BASE + PAGE_SIZE,
-            physical, false, false) ||
+            physical, false, false);
+    const bool alias_visible =
         address_space_is_user_mapped(
-            &space, USER_VIRTUAL_BASE + PAGE_SIZE))
+            &space, USER_VIRTUAL_BASE + PAGE_SIZE);
+    address_space_test_marker(alias_map || alias_visible ? 'N' : 'O');
+    if (alias_map || alias_visible)
         for (;;) asm volatile("cli; hlt");
 
     if (address_space_map(
