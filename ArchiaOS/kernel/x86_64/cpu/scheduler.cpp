@@ -310,7 +310,7 @@ extern "C" bool scheduler_run_test()
 
     if (!scheduler_set_ready_for_kernel())
         return false;
-    if (scheduler_set_local_cpu_index(1))
+    if (!scheduler_set_local_cpu_index(SCHEDULER_MAX_CPUS))
         return false;
     if (!scheduler_set_local_cpu_index(0))
         return false;
@@ -489,7 +489,13 @@ extern "C" bool scheduler_set_ready_for_kernel()
 
 extern "C" bool scheduler_set_local_cpu_index(unsigned int cpu_index)
 {
-    if (cpu_index >= scheduler_cpu_count)
+    /*
+     * AP bootstrap happens before the final scheduler topology is installed.
+     * The local CPU slot therefore cannot be constrained by
+     * scheduler_cpu_count here; the final scheduler paths still validate
+     * active CPU indices before indexing their per-CPU state.
+     */
+    if (cpu_index >= SCHEDULER_MAX_CPUS)
         return false;
 
     const unsigned long long value = static_cast<unsigned long long>(cpu_index) + 1ULL;
