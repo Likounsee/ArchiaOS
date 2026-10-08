@@ -376,6 +376,16 @@ extern "C" bool paging_map_4k(
         physicalAddress >= mapped_physical_limit)
         return false;
 
+    /*
+     * Do not silently replace an existing virtual-to-physical mapping with a
+     * different frame. Callers may intentionally remap the same frame to
+     * change permissions, but changing the backing frame here would leak the
+     * previous owner because paging has no ownership information.
+     */
+    const u64 existingPhysical = paging_translate(virtualAddress) & ~0xFFFULL;
+    if (existingPhysical != 0 && existingPhysical != physicalAddress)
+        return false;
+
     const u64 flagsValue = page_entry_flags(flags);
     if (flagsValue == 0)
         return false;
