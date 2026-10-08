@@ -49,7 +49,7 @@ extern "C" void* kmalloc(u64 size)
             break;
         }
     }
-    if (!free_block)
+    if (!free_block || size > UINT64_MAX - used_bytes)
         return nullptr;
 
     const u64 pages = (size + PAGE_SIZE - 1ULL) / PAGE_SIZE;
