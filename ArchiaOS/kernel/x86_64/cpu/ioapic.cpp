@@ -5,6 +5,7 @@
 static volatile unsigned int* ioapic_base = nullptr;
 static unsigned int ioapic_gsi_base = 0;
 static unsigned int ioapic_redirection_count = 0;
+static bool ioapic_initialized = false;
 
 static constexpr unsigned int IOAPIC_REGSEL = 0x00;
 static constexpr unsigned int IOAPIC_WINDOW = 0x10;
@@ -40,6 +41,9 @@ static unsigned long long ioapic_read_redirection_index(unsigned int index)
 
 extern "C" bool ioapic_initialize(const AcpiInfo* acpi)
 {
+    if (ioapic_initialized)
+        return true;
+
     if (acpi == nullptr || acpi->ioapic_address == 0 || acpi->ioapic_count == 0)
         return false;
     const unsigned long long base = acpi->ioapic_address & ~(PAGE_SIZE - 1ULL);
@@ -57,6 +61,8 @@ extern "C" bool ioapic_initialize(const AcpiInfo* acpi)
     ioapic_redirection_count = count;
     for (unsigned int i = 0; i < count; ++i)
         ioapic_write_redirection(i, IOAPIC_MASK);
+
+    ioapic_initialized = true;
     return true;
 }
 
