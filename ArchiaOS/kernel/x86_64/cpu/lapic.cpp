@@ -37,6 +37,7 @@ static constexpr unsigned int LAPIC_TIMER_PERIODIC = 1U << 17;
 
 static volatile unsigned long long lapic_ticks = 0;
 static unsigned int lapic_timer_initial_count = 1000000U;
+static bool lapic_global_timing_initialized = false;
 
 static inline unsigned long long rdmsr(unsigned int msr)
 {
@@ -282,6 +283,22 @@ extern "C" bool lapic_initialize()
         lapic_base = reinterpret_cast<volatile unsigned char*>(physical);
     }
 
+    /*
+     * AP startup calls this routine once per CPU. The APIC timer is local to
+     * each CPU, but the calibration result and diagnostic tick counter are
+     * kernel-global. Recalibrating or resetting them on every AP would let a
+     * later CPU silently change the BSP timer rate or erase observed ticks.
+     */
+    if (!lapic_global_timing_initialized)
+    {
+        lapic_global_timing_initialized = true;
+        lapic_ticks = 0;
+
+        lapic_timer_initial_count = 1000000U;
+        if (!calibrate_lapic_timer())
+            lapic_timer_initial_count = 1000000U;
+    }
+
     const unsigned long long svr =
         lapic_read(LAPIC_SVR, IA32_X2APIC_SVR);
     lapic_write(
@@ -296,12 +313,6 @@ extern "C" bool lapic_initialize()
     lapic_write(0x080, 0x808, 0);
     lapic_write(LAPIC_LVT_TIMER, IA32_X2APIC_LVT_TIMER, 0x10000U | 0x20U);
     lapic_write(LAPIC_TIMER_DIVIDE, IA32_X2APIC_DIVIDE, 0x3U);
-
-    lapic_timer_initial_count = 1000000U;
-    if (!calibrate_lapic_timer())
-        lapic_timer_initial_count = 1000000U;
-
-    lapic_ticks = 0;
 
     return true;
 }
