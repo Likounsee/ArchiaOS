@@ -271,7 +271,7 @@ extern "C" Process* process_find(uint32_t pid)
 
 extern "C" bool process_unregister(Process* process)
 {
-    if (!process || process == current_process)
+    if (!process || process == current_process || process->state != PROCESS_READY)
         return false;
     for (unsigned int i = 0; i < PROCESS_MAX; ++i)
     {
@@ -572,6 +572,11 @@ extern "C" bool process_run_ring3_test()
         return false;
     if (!process_register(&process) || process_registered_count() != 1)
         return false;
+
+    process.state = PROCESS_RUNNING;
+    if (process_unregister(&process))
+        return false;
+    process.state = PROCESS_READY;
 
     if (!process_activate(&process))
         return false;
