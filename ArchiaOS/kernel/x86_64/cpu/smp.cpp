@@ -255,7 +255,10 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
                 stackVirtual,
                 stackPhysical,
                 PagingFlags{true, false, false, false, false}))
+        {
+            pmm_free_page(stackPhysical);
             return false;
+        }
 
         mailbox->cr3_physical = cr3;
         mailbox->entry_virtual = entry;
