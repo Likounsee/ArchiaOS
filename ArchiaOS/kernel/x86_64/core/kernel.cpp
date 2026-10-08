@@ -302,6 +302,13 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     }
     debug_str("NET: LOOPBACK OK\n");
 
+    if (!exception_test_null_frame())
+    {
+        debug_str("[KERNEL] NULL EXCEPTION FRAME TEST FAILED\n");
+        halt();
+    }
+    debug_str("CPU: NULL EXCEPTION FRAME HANDLER OK\n");
+
     debug_str("CPU: testing invalid opcode handler\n");
     exception_expect_invalid_opcode(
         reinterpret_cast<unsigned long long>(&idt_test_invalid_opcode));
