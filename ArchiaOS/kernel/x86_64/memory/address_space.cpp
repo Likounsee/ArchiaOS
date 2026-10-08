@@ -375,6 +375,7 @@ extern "C" bool address_space_activate(AddressSpace* space)
     current_cr3 &= ~0xFFFULL;
 
     asm volatile("mov %0, %%cr3" : : "r"(space->pml4_physical) : "memory");
+    address_space_test_marker('X');
     space->active = true;
     return true;
 }
