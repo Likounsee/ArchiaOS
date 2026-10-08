@@ -398,6 +398,16 @@ extern "C" void address_space_run_tests()
         for (;;) asm volatile("cli; hlt");
     pml4[user_pml4_index] = saved_pml4_entry;
 
+    pml4[user_pml4_index] = saved_pml4_entry & ~NOVOS_PAGE_WRITE;
+    const u64 blocked_write_physical = pmm_alloc_page();
+    if (!blocked_write_physical ||
+        address_space_map(
+            &space, NOVOS_USER_VIRTUAL_BASE + 4 * NOVOS_PAGE_SIZE,
+            blocked_write_physical, true, false))
+        for (;;) asm volatile("cli; hlt");
+    pmm_free_page(blocked_write_physical);
+    pml4[user_pml4_index] = saved_pml4_entry;
+
     pml4[user_pml4_index] = saved_pml4_entry | NOVOS_PAGE_NO_EXECUTE;
     const u64 blocked_exec_physical = pmm_alloc_page();
     if (!blocked_exec_physical ||
