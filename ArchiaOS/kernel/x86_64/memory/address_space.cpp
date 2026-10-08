@@ -40,9 +40,21 @@ extern "C" bool address_space_create(AddressSpace* space)
     auto* src = table(paging_pml4_physical());
     if (!dst || !src) { pmm_free_page(pml4); return false; }
 
-    /* Upper-half kernel/HHDM mappings are shared read-only page-table roots. */
+    /*
+     * Upper-half kernel/HHDM mappings are shared page-table roots, but they
+     * must remain supervisor-only. Never copy a malformed USER root into a
+     * new address space: doing so would defeat kernel/user isolation before
+     * any user mapping is installed.
+     */
     for (unsigned int i = 256; i < 512; ++i)
+    {
+        if ((src[i] & PAGE_PRESENT) && (src[i] & PAGE_USER))
+        {
+            pmm_free_page(pml4);
+            return false;
+        }
         dst[i] = src[i];
+    }
 
     space->pml4_physical = pml4;
     space->active = false;
