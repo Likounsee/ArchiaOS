@@ -111,6 +111,9 @@ static void release_range(u64 start, u64 page_count)
     for (u64 i = 0; i < page_count; ++i)
     {
         const u64 frame = firstFrame + i;
+        if (reserved_test(frame))
+            continue;
+
         if (bitmap_test(frame))
         {
             bitmap_clear(frame);
