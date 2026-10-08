@@ -413,7 +413,7 @@ extern "C" bool process_handle_syscall(ExceptionFrame* frame)
 
     const uint64_t stack_base =
         current_process->user_stack_top - 2ULL * NOVOS_PAGE_SIZE;
-    if (frame->user_rsp < stack_base + NOVOS_PAGE_SIZE ||
+    if (frame->user_rsp < stack_base ||
         frame->user_rsp > current_process->user_stack_top ||
         (frame->user_rsp < current_process->user_stack_top &&
          !address_space_is_user_mapped(
