@@ -27,10 +27,11 @@ extern "C" [[noreturn]] void scheduler_task1_entry(void*)
     }
 }
 
-static bool task_ready(const SchedulerTask& task)
+static bool task_ready(const SchedulerTask& task, unsigned int cpu_index)
 {
-    return task.state == SCHEDULER_TASK_READY ||
-           task.state == SCHEDULER_TASK_RUNNING;
+    return task.cpu == cpu_index &&
+           (task.state == SCHEDULER_TASK_READY ||
+            task.state == SCHEDULER_TASK_RUNNING);
 }
 
 extern "C" bool scheduler_initialize(unsigned int cpu_count)
@@ -364,6 +365,15 @@ extern "C" bool scheduler_run_test()
     }
     tasks[0][0].cpu = saved_task_cpu;
     tasks[0][0].remaining_quantum = saved_task_quantum;
+
+    const unsigned int saved_task1_cpu = tasks[0][1].cpu;
+    tasks[0][1].cpu = 1;
+    if (scheduler_timer_tick(0, &test_frame) != &test_frame ||
+        scheduler_current_task(0) != 0)
+    {
+        return false;
+    }
+    tasks[0][1].cpu = saved_task1_cpu;
 
     for (unsigned int i = 0; i < SCHEDULER_QUANTUM_TICKS; ++i)
         scheduler_timer_tick(0, &test_frame);
