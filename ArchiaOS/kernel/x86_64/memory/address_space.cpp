@@ -2,6 +2,12 @@
 #include "paging.hpp"
 #include "pmm.hpp"
 
+static inline void address_space_test_marker(char c)
+{
+    asm volatile("outb %0, %1" : : "a"(c), "Nd"(static_cast<unsigned short>(0xE9)));
+}
+
+
 static inline void zero_table(u64 physical)
 {
     auto* table = reinterpret_cast<u64*>(paging_physical_to_virtual(physical));
@@ -443,10 +449,12 @@ extern "C" bool address_space_is_user_executable(
 
 extern "C" void address_space_run_tests()
 {
+    address_space_test_marker('A');
     AddressSpace space{};
     if (!address_space_create(&space))
         for (;;) asm volatile("cli; hlt");
 
+    address_space_test_marker('B');
     AddressSpace occupied = space;
     if (address_space_create(&occupied))
         for (;;) asm volatile("cli; hlt");
@@ -465,10 +473,12 @@ extern "C" void address_space_run_tests()
             for (;;) asm volatile("cli; hlt");
     }
 
+    address_space_test_marker('C');
     space.active = true;
     if (address_space_destroy(&space))
         for (;;) asm volatile("cli; hlt");
 
+    address_space_test_marker('D');
     u64 test_cr3 = 0;
     asm volatile("mov %%cr3, %0" : "=r"(test_cr3));
     test_cr3 &= ~0xFFFULL;
@@ -482,6 +492,7 @@ extern "C" void address_space_run_tests()
     asm volatile("mov %0, %%cr3" : : "r"(test_cr3) : "memory");
     space.active = false;
 
+    address_space_test_marker('E');
     if (address_space_map(
             &space, USER_VIRTUAL_BASE, 0,
             true, false) ||
@@ -497,6 +508,7 @@ extern "C" void address_space_run_tests()
             paging_limit, true, false))
         for (;;) asm volatile("cli; hlt");
 
+    address_space_test_marker('F');
     const u64 physical = pmm_alloc_page();
     if (!physical ||
         !address_space_map(&space, USER_VIRTUAL_BASE, physical, true, false) ||
@@ -524,6 +536,7 @@ extern "C" void address_space_run_tests()
     if (address_space_is_user_mapped(&space, USER_VIRTUAL_TOP))
         for (;;) asm volatile("cli; hlt");
 
+    address_space_test_marker('G');
     const u64 executable_physical = pmm_alloc_page();
     if (!executable_physical ||
         !address_space_map(
@@ -567,6 +580,7 @@ extern "C" void address_space_run_tests()
     pmm_free_page(blocked_exec_physical);
     pml4[user_pml4_index] = saved_pml4_entry;
 
+    address_space_test_marker('H');
     const u64 active_map_physical = pmm_alloc_page();
     if (!active_map_physical ||
         !address_space_activate(&space) ||
@@ -580,6 +594,7 @@ extern "C" void address_space_run_tests()
     asm volatile("mov %0, %%cr3" : : "r"(test_cr3) : "memory");
     space.active = false;
 
+    address_space_test_marker('I');
     if (!address_space_destroy(&space) || space.pml4_physical != 0)
         for (;;) asm volatile("cli; hlt");
 }
