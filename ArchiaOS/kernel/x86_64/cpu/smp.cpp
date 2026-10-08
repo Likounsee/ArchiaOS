@@ -242,7 +242,8 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
         mailbox->cr0 = cr0;
         mailbox->cr4 = cr4;
         mailbox->efer = efer;
-        mailbox->processor_index = index;
+        /* Scheduler CPU 0 is always the BSP; APs are compacted after it. */
+        mailbox->processor_index = expectedOnline;
         mailbox->apic_id = apicId;
         __atomic_store_n(&mailbox->started, 0U, __ATOMIC_RELEASE);
         mailbox->reserved = 0;
