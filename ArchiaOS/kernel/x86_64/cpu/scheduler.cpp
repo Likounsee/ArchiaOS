@@ -272,6 +272,16 @@ extern "C" bool scheduler_run_test()
     unsigned int apic_id = lapic_current_id();
     if (!scheduler_set_cpu_apic_ids(&apic_id, 1))
         return false;
+    if (scheduler_set_cpu_apic_ids(nullptr, 0))
+        return false;
+
+    if (!scheduler_initialize(2))
+        return false;
+    const unsigned int duplicate_apic_ids[2] = {apic_id, apic_id};
+    if (scheduler_set_cpu_apic_ids(duplicate_apic_ids, 2) ||
+        !scheduler_initialize(1) ||
+        !scheduler_set_cpu_apic_ids(&apic_id, 1))
+        return false;
 
     scheduler_ready_flag = true;
     ExceptionFrame test_frame = {};
