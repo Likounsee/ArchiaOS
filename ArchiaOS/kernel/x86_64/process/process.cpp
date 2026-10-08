@@ -483,28 +483,49 @@ extern "C" bool process_handle_syscall(ExceptionFrame* frame)
              &current_process->address_space, frame->user_rsp)))
         return false;
 
-    if (frame->rip > UINT64_MAX - 2ULL ||
+    /*
+     * INT 0x80 saves the address of the instruction after INT, so RIP in the
+     * hardware exception frame points past CD 80. Validate both the saved
+     * return address and the two bytes immediately preceding it.
+     */
+    if (frame->rip < 2ULL ||
+        frame->rip > UINT64_MAX - 1ULL ||
         !address_space_is_user_executable(
             &current_process->address_space, frame->rip) ||
         !address_space_is_user_executable(
-            &current_process->address_space, frame->rip + 1ULL))
+            &current_process->address_space, frame->rip + 1ULL) ||
+        !address_space_is_user_executable(
+            &current_process->address_space, frame->rip - 2ULL) ||
+        !address_space_is_user_executable(
+            &current_process->address_space, frame->rip - 1ULL))
         return false;
 
-    const u64 instruction_physical = paging_translate(frame->rip);
-    const u64 next_instruction_physical = paging_translate(frame->rip + 1ULL);
-    const u64 instruction_virtual =
-        paging_physical_to_virtual(instruction_physical);
-    const u64 next_instruction_virtual =
-        paging_physical_to_virtual(next_instruction_physical);
-    if (!instruction_physical || !next_instruction_physical ||
-        !instruction_virtual || !next_instruction_virtual)
+    const u64 syscall_rip = frame->rip - 2ULL;
+    const u64 syscall_next_rip = frame->rip - 1ULL;
+    const u64 return_physical = paging_translate(frame->rip);
+    const u64 return_next_physical = paging_translate(frame->rip + 1ULL);
+    const u64 syscall_physical = paging_translate(syscall_rip);
+    const u64 syscall_next_physical = paging_translate(syscall_next_rip);
+    const u64 return_virtual =
+        paging_physical_to_virtual(return_physical);
+    const u64 return_next_virtual =
+        paging_physical_to_virtual(return_next_physical);
+    const u64 syscall_virtual =
+        paging_physical_to_virtual(syscall_physical);
+    const u64 syscall_next_virtual =
+        paging_physical_to_virtual(syscall_next_physical);
+    if (!return_physical || !return_next_physical ||
+        !syscall_physical || !syscall_next_physical ||
+        !return_virtual || !return_next_virtual ||
+        !syscall_virtual || !syscall_next_virtual)
         return false;
 
-    const auto* instruction =
-        reinterpret_cast<const uint8_t*>(instruction_virtual);
-    const auto* next_instruction =
-        reinterpret_cast<const uint8_t*>(next_instruction_virtual);
-    if (instruction[0] != 0xCD || next_instruction[0] != 0x80)
+    const auto* syscall_instruction =
+        reinterpret_cast<const uint8_t*>(syscall_virtual);
+    const auto* syscall_next_instruction =
+        reinterpret_cast<const uint8_t*>(syscall_next_virtual);
+    if (syscall_instruction[0] != 0xCD ||
+        syscall_next_instruction[0] != 0x80)
         return false;
 
     if ((frame->rax == 4 || frame->rax == 5 || frame->rax == 6) &&
@@ -556,7 +577,7 @@ extern "C" bool process_handle_syscall(ExceptionFrame* frame)
             frame->rax = static_cast<uint64_t>(-1);
             break;
     }
-    frame->rip += 2;
+    /* The CPU already advanced RIP past INT 0x80 in the saved frame. */
     return true;
 }
 
