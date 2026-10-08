@@ -273,7 +273,7 @@ extern "C" bool lapic_initialize()
         const u64 physical = apic_base & APIC_BASE_MASK;
         if (physical >= NOVOS_PMM_MAX_PHYSICAL_ADDRESS ||
             !paging_map_4k(physical, physical, PagingFlags{
-                true, false, true, true, true}))
+                true, false, false, true, true}))
             return false;
         lapic_base = reinterpret_cast<volatile unsigned char*>(physical);
     }

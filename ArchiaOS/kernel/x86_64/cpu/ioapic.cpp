@@ -44,7 +44,7 @@ extern "C" bool ioapic_initialize(const AcpiInfo* acpi)
         return false;
     const unsigned long long base = acpi->ioapic_address & ~(NOVOS_PAGE_SIZE - 1ULL);
     if (base >= NOVOS_PMM_MAX_PHYSICAL_ADDRESS ||
-        !paging_map_4k(base, base, PagingFlags{true, false, true, true, true}))
+        !paging_map_4k(base, base, PagingFlags{true, false, false, true, true}))
         return false;
 
     ioapic_base = reinterpret_cast<volatile unsigned int*>(base);
