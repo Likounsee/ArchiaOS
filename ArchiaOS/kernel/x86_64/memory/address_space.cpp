@@ -499,7 +499,7 @@ extern "C" void address_space_run_tests()
             true, false))
         for (;;) asm volatile("cli; hlt");
 
-    address_space_test_marker('E');
+    address_space_test_marker('H');
     const u64 paging_limit = paging_max_physical_address();
     if (paging_limit == 0 ||
         address_space_map(
