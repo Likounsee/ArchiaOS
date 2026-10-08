@@ -611,6 +611,14 @@ extern "C" bool storage_test()
     if (!storage_initialize())
         return false;
 
+    const unsigned int saved_controller_count = controller_count;
+    const unsigned int saved_real_block_device_count =
+        real_block_device_count;
+    if (!storage_initialize() ||
+        controller_count != saved_controller_count ||
+        real_block_device_count != saved_real_block_device_count)
+        return false;
+
     for (unsigned int i=0;i<controller_count;++i)
     {
         const StorageController* c=&controllers[i];
