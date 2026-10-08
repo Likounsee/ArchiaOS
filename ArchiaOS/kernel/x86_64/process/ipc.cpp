@@ -182,7 +182,7 @@ extern "C" bool ipc_test()
     if (!ipc_destroy(endpoint, 1))
         return false;
 
-    const owner_endpoint = ipc_create(77);
+    const int owner_endpoint = ipc_create(77);
     if (owner_endpoint < 0 ||
         !ipc_send(owner_endpoint, 42, 0x55U, 0xAAULL))
         return false;
