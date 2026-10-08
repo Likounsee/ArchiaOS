@@ -1,4 +1,5 @@
 #include "pmm.hpp"
+#include "../cpu/features.hpp"
 
 struct EfiMemoryDescriptor
 {
@@ -153,9 +154,20 @@ extern "C" bool pmm_initialize(BootInfo* bootInfo)
     pmm_bitmap_words = (bootInfo->pmm_bitmap_size / 2ULL) / sizeof(u64);
     pmm_reserved_bitmap = pmm_bitmap + pmm_bitmap_words;
     const u64 bitmap_frames = pmm_bitmap_words * 64ULL;
-    pmm_max_frames = bitmap_frames < NOVOS_PMM_MAX_FRAMES
+    u64 supported_frames = NOVOS_PMM_MAX_FRAMES;
+    const CpuInfo* cpu = cpu_get_info();
+    if (cpu == nullptr || cpu->physical_address_bits < 32)
+        return false;
+    if (cpu->physical_address_bits < 63)
+    {
+        const u64 cpu_physical_limit = 1ULL << cpu->physical_address_bits;
+        supported_frames = cpu_physical_limit / NOVOS_PAGE_SIZE;
+    }
+    pmm_max_frames = bitmap_frames < supported_frames
         ? bitmap_frames
-        : NOVOS_PMM_MAX_FRAMES;
+        : supported_frames;
+    if (pmm_max_frames == 0)
+        return false;
 
     for (u64 i = 0; i < pmm_bitmap_words; ++i)
     {
@@ -395,4 +407,9 @@ extern "C" void pmm_free_page(u64 physicalAddress)
 extern "C" u64 pmm_free_page_count()
 {
     return pmm_free_pages;
+}
+
+extern "C" u64 pmm_max_physical_address()
+{
+    return pmm_max_frames * NOVOS_PAGE_SIZE;
 }

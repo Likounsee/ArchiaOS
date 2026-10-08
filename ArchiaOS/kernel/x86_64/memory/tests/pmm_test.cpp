@@ -1,4 +1,5 @@
 #include "pmm.hpp"
+#include "../cpu/features.hpp"
 
 static inline void debug_char(char c)
 {
@@ -31,6 +32,22 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
     debug_str("PMM TEST START\n");
 
     u64 free_before = pmm_free_page_count();
+    const CpuInfo* cpu = cpu_get_info();
+    if (cpu == nullptr || pmm_max_physical_address() == 0)
+    {
+        debug_str("PMM TEST FAIL: CPU PHYSICAL LIMIT\n");
+        for (;;) asm volatile ("cli; hlt");
+    }
+    if (cpu->physical_address_bits < 63)
+    {
+        const u64 cpu_limit = 1ULL << cpu->physical_address_bits;
+        if (pmm_max_physical_address() > cpu_limit ||
+            pmm_alloc_page_above(cpu_limit) != 0)
+        {
+            debug_str("PMM TEST FAIL: CPU PHYSICAL LIMIT\n");
+            for (;;) asm volatile ("cli; hlt");
+        }
+    }
 
     if (bootInfo->kernel_image_base != 0)
     {
