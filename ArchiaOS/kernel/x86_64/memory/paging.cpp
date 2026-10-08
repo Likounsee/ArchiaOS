@@ -213,11 +213,35 @@ static u64 allocate_table_page()
 
 static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split_huge)
 {
-    if (pml4 == nullptr ||
-        !canonical_address(virtualAddress))
+    if (pml4 == nullptr || !canonical_address(virtualAddress))
         return nullptr;
 
     u64& pml4e = pml4[(virtualAddress >> 39) & 0x1FF];
+    bool created_pml4_table = false;
+    bool created_pdpt_table = false;
+    bool created_pd_table = false;
+    u64 pdpt_physical = 0;
+    u64 pd_physical = 0;
+    u64 pt_physical = 0;
+
+    auto rollback_created_tables = [&]() {
+        if (created_pd_table)
+        {
+            auto* pdpt_table = table_pointer(pml4e & ~0xFFFULL);
+            pdpt_table[(virtualAddress >> 30) & 0x1FF] = 0;
+            pmm_free_page(pd_physical);
+        }
+
+        if (created_pdpt_table)
+        {
+            pml4e = 0;
+            pmm_free_page(pdpt_physical);
+        }
+
+        if (created_pml4_table)
+            pml4e = 0;
+    };
+
     if ((pml4e & NOVOS_PAGE_PRESENT) == 0)
     {
         if (!create) return nullptr;
@@ -225,19 +249,36 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
         if (!table) return nullptr;
         pml4e = table | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE |
                 (user ? NOVOS_PAGE_USER : 0);
+        created_pml4_table = true;
     }
     else if (user)
         pml4e |= NOVOS_PAGE_USER;
 
     auto* table3 = table_pointer(pml4e & ~0xFFFULL);
+    if (!table3)
+    {
+        rollback_created_tables();
+        return nullptr;
+    }
+
     u64& pdpte = table3[(virtualAddress >> 30) & 0x1FF];
     if ((pdpte & NOVOS_PAGE_PRESENT) == 0)
     {
-        if (!create) return nullptr;
+        if (!create)
+        {
+            rollback_created_tables();
+            return nullptr;
+        }
         const u64 table = allocate_table_page();
-        if (!table) return nullptr;
+        if (!table)
+        {
+            rollback_created_tables();
+            return nullptr;
+        }
         pdpte = table | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE |
                 (user ? NOVOS_PAGE_USER : 0);
+        pdpt_physical = table;
+        created_pdpt_table = true;
     }
     else if (user)
         pdpte |= NOVOS_PAGE_USER;
@@ -245,18 +286,18 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
     if ((pdpte & NOVOS_PAGE_HUGE) != 0)
     {
         if (!split_huge)
+        {
+            rollback_created_tables();
             return nullptr;
+        }
 
         const u64 oldPdpte = pdpte;
         if (!split_1g_pdpte(&pdpte))
+        {
+            rollback_created_tables();
             return nullptr;
+        }
 
-        /*
-         * Splitting 1 GiB creates a new PD, but the requested 4 KiB leaf
-         * still requires splitting the selected 2 MiB PDE. If that second
-         * allocation fails, restore the original huge mapping and release
-         * the temporary PD so a failed map is observationally atomic.
-         */
         auto* splitPd = table_pointer(pdpte & ~0xFFFULL);
         const unsigned int splitIndex = (virtualAddress >> 21) & 0x1FF;
         if ((splitPd[splitIndex] & NOVOS_PAGE_HUGE) != 0 &&
@@ -265,19 +306,36 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
             const u64 splitPdPhysical = pdpte & ~0xFFFULL;
             pdpte = oldPdpte;
             pmm_free_page(splitPdPhysical);
+            rollback_created_tables();
             return nullptr;
         }
     }
 
     auto* table2 = table_pointer(pdpte & ~0xFFFULL);
+    if (!table2)
+    {
+        rollback_created_tables();
+        return nullptr;
+    }
+
     u64& pde = table2[(virtualAddress >> 21) & 0x1FF];
     if ((pde & NOVOS_PAGE_PRESENT) == 0)
     {
-        if (!create) return nullptr;
+        if (!create)
+        {
+            rollback_created_tables();
+            return nullptr;
+        }
         const u64 table = allocate_table_page();
-        if (!table) return nullptr;
+        if (!table)
+        {
+            rollback_created_tables();
+            return nullptr;
+        }
         pde = table | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE |
               (user ? NOVOS_PAGE_USER : 0);
+        pd_physical = table;
+        created_pd_table = true;
     }
     else if (user)
         pde |= NOVOS_PAGE_USER;
@@ -285,12 +343,24 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
     if ((pde & NOVOS_PAGE_HUGE) != 0)
     {
         if (!split_huge)
+        {
+            rollback_created_tables();
             return nullptr;
+        }
         if (!split_2m_pde(&pde))
+        {
+            rollback_created_tables();
             return nullptr;
+        }
     }
 
     auto* pt = table_pointer(pde & ~0xFFFULL);
+    if (!pt)
+    {
+        rollback_created_tables();
+        return nullptr;
+    }
+
     return &pt[(virtualAddress >> 12) & 0x1FF];
 }
 
