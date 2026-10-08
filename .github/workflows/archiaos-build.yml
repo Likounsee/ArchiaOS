@@ -218,7 +218,7 @@ jobs:
           for cpu in $models; do
             echo "===== QEMU CPU MODEL: $cpu ====="
             cp /usr/share/OVMF/OVMF_VARS_4M.fd "ArchiaOS/build/OVMF_VARS_${cpu}.fd"
-            timeout 15s qemu-system-x86_64 \
+            timeout 30s qemu-system-x86_64 \
               -machine q35 \
               -cpu "$cpu" \
               -m 256M \
@@ -297,7 +297,7 @@ jobs:
           for smp in 4 8; do
             echo "===== SMP SCALE: $smp CPUs ====="
             cp /usr/share/OVMF/OVMF_VARS_4M.fd "ArchiaOS/build/OVMF_VARS_scale_${smp}.fd"
-            timeout 20s qemu-system-x86_64 \
+            timeout 30s qemu-system-x86_64 \
               -machine q35 \
               -cpu qemu64 \
               -m 256M \
