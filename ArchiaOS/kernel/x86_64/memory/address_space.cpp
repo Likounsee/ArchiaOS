@@ -246,7 +246,7 @@ static void destroy_table_level(u64 physical, unsigned int level)
 
 extern "C" bool address_space_destroy(AddressSpace* space)
 {
-    if (!space || !space->pml4_physical)
+    if (!space || !space->pml4_physical || space->active)
         return false;
 
     u64 current_cr3 = 0;
@@ -365,6 +365,11 @@ extern "C" void address_space_run_tests()
     AddressSpace occupied = space;
     if (address_space_create(&occupied))
         for (;;) asm volatile("cli; hlt");
+
+    space.active = true;
+    if (address_space_destroy(&space))
+        for (;;) asm volatile("cli; hlt");
+    space.active = false;
 
     if (address_space_map(
             &space, NOVOS_USER_VIRTUAL_BASE, 0,
