@@ -1,4 +1,4 @@
-name: ArchiaOS build
+name: OS build
 
 on:
   push:
@@ -36,7 +36,7 @@ jobs:
           test -s ArchiaOS/build/OS_kernel.elf
           test -s ArchiaOS/build/BOOTX64.EFI
           test -s ArchiaOS/build/esp/EFI/BOOT/BOOTX64.EFI
-          test -s ArchiaOS/build/esp/EFI/ARCHIAOS/ARCHIAOS_kernel.elf
+          test -s ArchiaOS/build/esp/EFI/OS/OS_kernel.elf
           llvm-readobj --file-headers ArchiaOS/build/OS_kernel.elf
           llvm-readobj --program-headers ArchiaOS/build/OS_kernel.elf
           llvm-nm ArchiaOS/build/OS_kernel.elf | grep "kernel_entry$"
@@ -93,13 +93,13 @@ jobs:
           put32(mbr, 446 + 12, 0xffffffff)
           mbr[510:512] = b"\x55\xAA"
 
-          # One deterministic ArchiaOS/OpenFS GPT partition.
+          # One deterministic OS/OpenFS GPT partition.
           entries = bytearray(ENTRY_SECTORS * SECTOR)
           entries[0:16] = TYPE_GUID
           entries[16:32] = UNIQUE_GUID
           put64(entries, 32, FIRST)
           put64(entries, 40, FIRST + PARTITION_SECTORS - 1)
-          name = "ArchiaOS OpenFS".encode("utf-16le")
+          name = "OS OpenFS".encode("utf-16le")
           entries[56:56 + len(name)] = name
           entries_crc = zlib.crc32(entries) & 0xffffffff
 
@@ -239,7 +239,7 @@ jobs:
               exit 1
             fi
             for marker in \
-              "ARCHIAOS KERNEL STARTED" \
+              "KERNEL STARTED" \
               "BootInfo: OK" \
               "Memory Map: OK" \
               "Framebuffer: OK" \

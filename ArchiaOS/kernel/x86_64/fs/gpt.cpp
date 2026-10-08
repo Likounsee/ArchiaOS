@@ -171,7 +171,7 @@ extern "C" bool gpt_test() {
     disk[SS+24]^=1; return !gpt_read_partitions(&d,p,4,&n);
 }
 
-extern "C" bool gpt_partition_is_archiaos_system(const BlockDevice* d)
+extern "C" bool gpt_partition_is_system(const BlockDevice* d)
 {
     const uint8_t kTypeGuid[16]={0xA1,0x7E,0x4F,0x52,0x9B,0x22,0x4C,0x8D,0xA6,0x13,0x52,0x9C,0x7B,0x10,0x6E,0x41};
     if(!d||d->type!=BLOCK_DEVICE_PARTITION||!d->context)return false;

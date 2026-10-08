@@ -103,7 +103,7 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         halt();
     }
 
-    constexpr UINT64 bootstrapPhysicalLimit = NOVOS_PMM_MAX_PHYSICAL_ADDRESS;
+    constexpr UINT64 bootstrapPhysicalLimit = PMM_MAX_PHYSICAL_ADDRESS;
     const auto physical_range_ok = [](UINT64 base, UINT64 size) -> bool
     {
         return base != 0 && size != 0 &&
@@ -493,11 +493,11 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     if (bootInfo->framebuffer_base)
     {
         /* Framebuffer is MMIO/video memory: use UC page mappings. */
-        const UINT64 first = bootInfo->framebuffer_base & ~(NOVOS_PAGE_SIZE - 1ULL);
+        const UINT64 first = bootInfo->framebuffer_base & ~(PAGE_SIZE - 1ULL);
         const UINT64 end = bootInfo->framebuffer_base +
             static_cast<UINT64>(bootInfo->framebuffer_pitch) *
             static_cast<UINT64>(bootInfo->framebuffer_height);
-        for (UINT64 page = first; page < end; page += NOVOS_PAGE_SIZE)
+        for (UINT64 page = first; page < end; page += PAGE_SIZE)
         {
             if (!paging_map_4k(page, page, PagingFlags{true, false, true, true, true}))
             {
