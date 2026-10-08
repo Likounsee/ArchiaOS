@@ -47,7 +47,7 @@ extern "C" bool address_space_map(
         (virtual_address & 0xFFFULL) ||
         (physical_address & 0xFFFULL) ||
         physical_address == 0 ||
-        physical_address >= NOVOS_PMM_MAX_PHYSICAL_ADDRESS ||
+        physical_address >= paging_max_physical_address() ||
         (writable && executable) ||
         virtual_address < NOVOS_USER_VIRTUAL_BASE ||
         virtual_address >= NOVOS_USER_VIRTUAL_TOP)
@@ -358,6 +358,13 @@ extern "C" void address_space_run_tests()
         address_space_map(
             &space, NOVOS_USER_VIRTUAL_BASE, NOVOS_PMM_MAX_PHYSICAL_ADDRESS,
             true, false))
+        for (;;) asm volatile("cli; hlt");
+
+    const u64 paging_limit = paging_max_physical_address();
+    if (paging_limit == 0 ||
+        address_space_map(
+            &space, NOVOS_USER_VIRTUAL_BASE + NOVOS_PAGE_SIZE,
+            paging_limit, true, false))
         for (;;) asm volatile("cli; hlt");
 
     const u64 physical = pmm_alloc_page();
