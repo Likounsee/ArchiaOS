@@ -415,10 +415,17 @@ extern "C" bool process_handle_syscall(ExceptionFrame* frame)
 {
     if (!frame || !current_process ||
         current_process->state != PROCESS_RUNNING ||
+        !current_process->address_space.active ||
         frame->cs != 0x1B ||
         frame->user_ss != 0x23 ||
         (frame->rflags & (1ULL << 1)) == 0 ||
         (frame->rflags & (3ULL << 12)) != 0)
+        return false;
+
+    uint64_t current_cr3 = 0;
+    asm volatile("mov %%cr3, %0" : "=r"(current_cr3));
+    current_cr3 &= ~0xFFFULL;
+    if (current_cr3 != current_process->address_space.pml4_physical)
         return false;
 
     if (current_process->user_stack_top < 2ULL * PAGE_SIZE ||
@@ -754,6 +761,11 @@ extern "C" bool process_run_ring3_test()
     if (process_handle_syscall(&invalid_syscall_frame))
         return false;
     process.state = PROCESS_RUNNING;
+
+    process.address_space.active = false;
+    if (process_handle_syscall(&invalid_syscall_frame))
+        return false;
+    process.address_space.active = true;
 
     ExceptionFrame overflow_syscall_frame{};
     overflow_syscall_frame.user_rsp = process.user_stack_top;
