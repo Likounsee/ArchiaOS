@@ -428,14 +428,20 @@ extern "C" bool process_handle_syscall(ExceptionFrame* frame)
         return false;
 
     const u64 instruction_physical = paging_translate(frame->rip);
+    const u64 next_instruction_physical = paging_translate(frame->rip + 1ULL);
     const u64 instruction_virtual =
         paging_physical_to_virtual(instruction_physical);
-    if (!instruction_physical || !instruction_virtual)
+    const u64 next_instruction_virtual =
+        paging_physical_to_virtual(next_instruction_physical);
+    if (!instruction_physical || !next_instruction_physical ||
+        !instruction_virtual || !next_instruction_virtual)
         return false;
 
     const auto* instruction =
         reinterpret_cast<const uint8_t*>(instruction_virtual);
-    if (instruction[0] != 0xCD || instruction[1] != 0x80)
+    const auto* next_instruction =
+        reinterpret_cast<const uint8_t*>(next_instruction_virtual);
+    if (instruction[0] != 0xCD || next_instruction[0] != 0x80)
         return false;
 
     if ((frame->rax == 4 || frame->rax == 5 || frame->rax == 6) &&
