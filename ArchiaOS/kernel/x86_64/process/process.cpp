@@ -340,9 +340,12 @@ extern "C" bool process_activate(Process* process)
         return false;
     if (!address_space_activate(&process->address_space))
         return false;
-    if (current_process && current_process != process &&
-        current_process->state == PROCESS_RUNNING)
-        current_process->state = PROCESS_READY;
+    if (current_process && current_process != process)
+    {
+        current_process->address_space.active = false;
+        if (current_process->state == PROCESS_RUNNING)
+            current_process->state = PROCESS_READY;
+    }
     current_process = process;
     process->state = PROCESS_RUNNING;
     return true;
@@ -648,7 +651,9 @@ extern "C" bool process_run_ring3_test()
         !process_register(&next_process) ||
         !process_activate(&next_process) ||
         process.state != PROCESS_READY ||
+        process.address_space.active ||
         next_process.state != PROCESS_RUNNING ||
+        !next_process.address_space.active ||
         process_current_pid() != next_process.pid ||
         !process_activate(&process) ||
         process.state != PROCESS_RUNNING ||
