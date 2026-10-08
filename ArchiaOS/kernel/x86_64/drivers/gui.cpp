@@ -27,8 +27,12 @@ extern "C" int gui_create_window(uint32_t x, uint32_t y, uint32_t width, uint32_
     {
         if (!windows[i].used)
         {
+            const uint32_t id_value = next_id ? next_id : 1U;
+            next_id = id_value + 1U;
+            if (!next_id)
+                next_id = 1U;
             windows[i] = {
-                true, next_id++, x, y, width, height,
+                true, id_value, x, y, width, height,
                 0x003A4656U, 0x00F2F4F7U
             };
             ++count;
