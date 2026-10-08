@@ -162,12 +162,14 @@ extern "C" void paging_run_tests()
         fail("PAGING TEST FAIL: MAP API\n");
 
     if (paging_translate(0x0000800000000000ULL) != 0 ||
-        paging_translate(0xFFFF000000000000ULL) != 0 ||
-        paging_get_4k_entry(0x0000800000000000ULL) != 0 ||
-        paging_get_4k_entry(0xFFFF000000000000ULL) != 0 ||
-        paging_unmap_4k(0x0000800000000000ULL) ||
+        paging_translate(0xFFFF000000000000ULL) != 0)
+        fail("PAGING TEST FAIL: NONCANONICAL TRANSLATE\n");
+    if (paging_get_4k_entry(0x0000800000000000ULL) != 0 ||
+        paging_get_4k_entry(0xFFFF000000000000ULL) != 0)
+        fail("PAGING TEST FAIL: NONCANONICAL ENTRY\n");
+    if (paging_unmap_4k(0x0000800000000000ULL) ||
         paging_unmap_4k(0xFFFF000000000000ULL))
-        fail("PAGING TEST FAIL: NONCANONICAL ADDRESS\n");
+        fail("PAGING TEST FAIL: NONCANONICAL UNMAP\n");
 
     test_str("PAGING CANONICAL ADDRESS PASS\n");
 
