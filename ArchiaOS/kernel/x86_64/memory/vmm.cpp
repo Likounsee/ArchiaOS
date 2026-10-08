@@ -74,10 +74,19 @@ extern "C" u64 vmm_alloc_pages(
                     return 0;
             }
 
+            unsigned int free_slot = VMM_MAX_REGIONS;
             for (unsigned int i = 0; i < VMM_MAX_REGIONS; ++i)
             {
-                if (regions[i].used) continue;
-                u64 mapped = 0;
+                if (!regions[i].used)
+                {
+                    free_slot = i;
+                    break;
+                }
+            }
+            if (free_slot == VMM_MAX_REGIONS)
+                return 0;
+
+            u64 mapped = 0;
                 for (; mapped < pages; ++mapped)
                 {
                     const u64 physical = pmm_alloc_page();
@@ -107,11 +116,11 @@ extern "C" u64 vmm_alloc_pages(
                         return 0;
                     }
                 }
-                regions[i] = {cursor, pages, user, writable, executable, true};
-                allocated_pages += pages;
-                return cursor;
-            }
-            return 0;
+            regions[free_slot] = {
+                cursor, pages, user, writable, executable, true
+            };
+            allocated_pages += pages;
+            return cursor;
         }
         cursor = next;
     }
