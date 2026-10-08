@@ -177,7 +177,11 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     debug_str("CPU: IDT 256 VECTORS OK\n");
 
     debug_str("PMM: initializing\n");
-    pmm_initialize(bootInfo);
+    if (!pmm_initialize(bootInfo))
+    {
+        debug_str("[KERNEL] PMM INIT FAILED\n");
+        halt();
+    }
     debug_str("PMM: running tests\n");
     pmm_run_tests(bootInfo);
     debug_str("PMM: TESTS OK\n");
