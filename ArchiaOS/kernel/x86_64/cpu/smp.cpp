@@ -20,6 +20,7 @@ extern "C" unsigned char smp_trampoline_start[];
 extern "C" unsigned char smp_trampoline_end[];
 
 static volatile uint32_t online_count = 0;
+static bool smp_initialized = false;
 
 static inline uint64_t smp_read_cr0()
 {
@@ -130,6 +131,9 @@ static bool wait_for_ap(
 
 extern "C" bool smp_initialize(const AcpiInfo* acpi)
 {
+    if (smp_initialized)
+        return true;
+
     online_count = 1;
 
     if (acpi == nullptr || acpi->processor_count == 0)
@@ -327,6 +331,8 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
 
     if (__atomic_load_n(&online_count, __ATOMIC_ACQUIRE) != expectedOnline)
         return false;
+
+    smp_initialized = true;
 
     /*
      * Every AP has published 'started' before this point, and the AP entry
