@@ -48,11 +48,12 @@ The intended sequence is:
 3. establish dedicated kernel stacks and guard pages;
 4. track page-table ownership and mapping lifetimes;
 5. build kernel heap allocation on top of PMM + virtual mappings;
-6. create user address spaces;
-7. enable SMEP/SMAP once user mappings and kernel/user memory access rules are real;
-8. add PCID/INVPCID where the detected CPU and address-space design permit it.
+6. create isolated user address spaces with USER/RW/NX mappings, a guarded user stack, and ELF loading;
+7. enforce ring-3 syscall frame, code, and stack validation;
+8. enable SMEP/SMAP now that kernel/user mappings are established and audited;
+9. add PCID/INVPCID where the detected CPU and address-space design permit it.
 
-The HHDM is therefore an architectural foundation, not a claim that final virtual-memory management is complete.
+The HHDM is therefore an architectural foundation. User address spaces and the kernel VMM are implemented on top of it, while the virtual-memory subsystem is still not a complete general-purpose allocator for every future mapping class.
 
 ## Validation
 
