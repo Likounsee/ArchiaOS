@@ -678,6 +678,16 @@ extern "C" bool process_run_ring3_test()
     if (process_handle_syscall(&overflow_syscall_frame))
         return false;
 
+    const uint64_t saved_user_stack_top = process.user_stack_top;
+    process.user_stack_top = NOVOS_PAGE_SIZE;
+    ExceptionFrame malformed_stack_layout{};
+    malformed_stack_layout.cs = 0x1B;
+    malformed_stack_layout.user_rsp = NOVOS_PAGE_SIZE;
+    malformed_stack_layout.rip = process.entry;
+    if (process_handle_syscall(&malformed_stack_layout))
+        return false;
+    process.user_stack_top = saved_user_stack_top;
+
     ExceptionFrame invalid_user_stack_frame{};
     invalid_user_stack_frame.cs = 0x1B;
     invalid_user_stack_frame.user_rsp =
