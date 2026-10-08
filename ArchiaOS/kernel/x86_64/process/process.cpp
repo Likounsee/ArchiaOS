@@ -380,16 +380,56 @@ extern "C" bool process_activate(Process* process)
         process->state != PROCESS_READY ||
         process_find(process->pid) != process)
         return false;
+
+    /*
+     * Activation changes CR3 and the process ownership metadata together.
+     * Keep interrupts masked across the transaction so an IRQ cannot observe
+     * current_process pointing at the old address space after CR3 changed.
+     */
+    unsigned long long flags = 0;
+    asm volatile("pushfq; popq %0" : "=r"(flags) : : "memory");
+    asm volatile("cli" : : : "memory");
+
+    if (current_process && current_process != process)
+    {
+        if (!current_process->address_space.pml4_physical ||
+            !current_process->address_space.active)
+        {
+            if (flags & (1ULL << 9))
+                asm volatile("sti" : : : "memory");
+            return false;
+        }
+
+        u64 current_cr3 = 0;
+        asm volatile("mov %%cr3, %0" : "=r"(current_cr3));
+        current_cr3 &= ~0xFFFULL;
+        if (current_cr3 != current_process->address_space.pml4_physical)
+        {
+            if (flags & (1ULL << 9))
+                asm volatile("sti" : : : "memory");
+            return false;
+        }
+    }
+
     if (!address_space_activate(&process->address_space))
+    {
+        if (flags & (1ULL << 9))
+            asm volatile("sti" : : : "memory");
         return false;
+    }
+
     if (current_process && current_process != process)
     {
         current_process->address_space.active = false;
         if (current_process->state == PROCESS_RUNNING)
             current_process->state = PROCESS_READY;
     }
+
     current_process = process;
     process->state = PROCESS_RUNNING;
+
+    if (flags & (1ULL << 9))
+        asm volatile("sti" : : : "memory");
     return true;
 }
 
