@@ -271,6 +271,8 @@ extern "C" bool scheduler_run_test()
 {
     if (!scheduler_initialize(1))
         return false;
+    if (scheduler_set_ready_for_kernel())
+        return false;
 
     unsigned int apic_id = lapic_current_id();
     if (!scheduler_set_cpu_apic_ids(&apic_id, 1))
@@ -286,13 +288,7 @@ extern "C" bool scheduler_run_test()
         !scheduler_set_cpu_apic_ids(&apic_id, 1))
         return false;
 
-    if (scheduler_set_ready_for_kernel())
-    {
-        scheduler_ready_flag = false;
-        return false;
-    }
-    if (!scheduler_set_cpu_apic_ids(&apic_id, 1) ||
-        !scheduler_set_ready_for_kernel())
+    if (!scheduler_set_ready_for_kernel())
         return false;
     ExceptionFrame test_frame = {};
 
