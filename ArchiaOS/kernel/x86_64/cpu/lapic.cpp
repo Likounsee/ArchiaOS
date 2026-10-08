@@ -369,6 +369,14 @@ static bool lapic_send_ipi(
     unsigned long long command,
     bool broadcast = false)
 {
+    /*
+     * xAPIC encodes the destination APIC ID in an 8-bit field. Reject
+     * unrepresentable IDs instead of silently truncating them into a
+     * different CPU; x2APIC carries the full 32-bit destination ID.
+     */
+    if (!x2apic_mode && !broadcast && apic_id > 0xFFU)
+        return false;
+
     if (x2apic_mode)
     {
         wrmsr(
