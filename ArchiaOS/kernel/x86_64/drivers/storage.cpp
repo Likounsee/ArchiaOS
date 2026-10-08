@@ -141,6 +141,27 @@ static bool ahci_start(AhciPortContext& port)
     return true;
 }
 
+static void ahci_release_port(AhciPortContext& port)
+{
+    if (port.initialized && port.regs)
+        (void)ahci_stop(port);
+
+    if (port.command_list_physical)
+        pmm_free_page(port.command_list_physical);
+    if (port.fis_physical)
+        pmm_free_page(port.fis_physical);
+    if (port.table_physical)
+        pmm_free_page(port.table_physical);
+    if (port.dma_physical)
+    {
+        pmm_free_page(port.dma_physical);
+        pmm_free_page(port.dma_physical + PAGE_SIZE);
+    }
+
+    port = {};
+}
+
+
 static int ahci_find_slot(AhciPortContext& port, uint32_t slot_count)
 {
     const uint32_t used =
@@ -376,22 +397,14 @@ static bool ahci_prepare_port(uint64_t hba_base, uint32_t port_number,
     port.fis_physical = pmm_alloc_page_above(0x00200000ULL);
     port.table_physical = pmm_alloc_page_above(0x00200000ULL);
     port.dma_physical = pmm_alloc_contiguous(2);
-    auto release_resources = [&]() {
-        if (port.command_list_physical)
-            pmm_free_page(port.command_list_physical);
-        if (port.fis_physical)
-            pmm_free_page(port.fis_physical);
-        if (port.table_physical)
-            pmm_free_page(port.table_physical);
-        if (port.dma_physical)
-        {
-            pmm_free_page(port.dma_physical);
-            pmm_free_page(port.dma_physical + PAGE_SIZE);
-        }
-        port = {};
-    };
-
-    if (!port.command_list_physical || !port.fis_physical ||
+    if (!port.command_list_physical ||
+        !port.fis_physical ||
+        !port.table_physical ||
+        !port.dma_physical)
+    {
+        ahci_release_port(port);
+        return false;
+    }
         !port.table_physical || !port.dma_physical)
     {
         release_resources();
@@ -408,7 +421,7 @@ static bool ahci_prepare_port(uint64_t hba_base, uint32_t port_number,
         paging_physical_to_virtual(port.dma_physical));
     if (!port.command_list || !port.fis || !port.table || !port.dma)
     {
-        release_resources();
+        ahci_release_port(port);
         return false;
     }
 
@@ -440,7 +453,10 @@ static bool ahci_prepare_port(uint64_t hba_base, uint32_t port_number,
     *ahci_reg(port.regs, AHCI_PxIS) = 0xFFFFFFFFU;
     *ahci_reg(port.regs, AHCI_PxIE) = 0;
     if (!ahci_start(port))
+    {
+        ahci_release_port(port);
         return false;
+    }
 
     port.initialized = true;
     return true;
@@ -492,7 +508,10 @@ static bool ahci_attach_controller(const StorageController& controller)
         auto& port = ahci_ports[port_number];
         storage_debug("AHCI PORT READY\n");
         if (!ahci_identify(port))
+        {
+            ahci_release_port(port);
             continue;
+        }
 
         BlockDevice device{
             0, BLOCK_DEVICE_AHCI, AHCI_SECTOR_SIZE, port.sector_count,
@@ -503,6 +522,10 @@ static bool ahci_attach_controller(const StorageController& controller)
         {
             port.block_id = id;
             ++real_block_device_count;
+        }
+        else
+        {
+            ahci_release_port(port);
         }
     }
 
