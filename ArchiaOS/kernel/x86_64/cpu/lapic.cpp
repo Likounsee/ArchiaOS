@@ -292,7 +292,7 @@ extern "C" bool lapic_initialize()
     if (!lapic_global_timing_initialized)
     {
         lapic_global_timing_initialized = true;
-        lapic_ticks = 0;
+        __atomic_store_n(&lapic_ticks, 0ULL, __ATOMIC_RELAXED);
 
         lapic_timer_initial_count = 1000000U;
         if (!calibrate_lapic_timer())
@@ -448,10 +448,10 @@ extern "C" void lapic_eoi()
 
 extern "C" unsigned long long lapic_get_ticks()
 {
-    return lapic_ticks;
+    return __atomic_load_n(&lapic_ticks, __ATOMIC_ACQUIRE);
 }
 
 extern "C" void lapic_timer_interrupt()
 {
-    lapic_ticks = lapic_ticks + 1;
+    __atomic_fetch_add(&lapic_ticks, 1ULL, __ATOMIC_RELAXED);
 }
