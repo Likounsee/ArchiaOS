@@ -329,16 +329,15 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
         return false;
 
     /*
-     * With no APs to start, the trampoline is never consumed. Release both
-     * aliases so single-CPU systems do not retain a permanent low-memory
-     * allocation solely for SMP bootstrap.
+     * Every AP has published 'started' before this point, and the AP entry
+     * path never reads the mailbox again after that publication. The
+     * trampoline is therefore no longer executable by any AP. Release both
+     * aliases and the backing page on every successful SMP initialization,
+     * including multi-CPU systems.
      */
-    if (expectedOnline == 1)
-    {
-        (void)paging_unmap_4k(trampolinePhysical);
-        (void)paging_unmap_4k(trampolineVirtual);
-        pmm_free_page(trampolinePhysical);
-    }
+    (void)paging_unmap_4k(trampolinePhysical);
+    (void)paging_unmap_4k(trampolineVirtual);
+    pmm_free_page(trampolinePhysical);
 
     return true;
 }
