@@ -51,6 +51,11 @@ extern "C" bool exception_page_fault_test_active()
     return page_fault_test.recovery_rip != 0;
 }
 
+extern "C" bool exception_test_null_frame()
+{
+    return exception_dispatch(nullptr) == nullptr;
+}
+
 extern "C" void exception_expect_invalid_opcode(unsigned long long rip)
 {
     invalid_opcode_test_rip = rip;
