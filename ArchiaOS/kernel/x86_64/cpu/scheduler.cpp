@@ -316,6 +316,12 @@ extern "C" bool scheduler_run_test()
         return false;
     ExceptionFrame test_frame = {};
 
+    const unsigned int saved_task_cpu = tasks[0][0].cpu;
+    tasks[0][0].cpu = 1;
+    if (scheduler_timer_tick(0, &test_frame) != &test_frame)
+        return false;
+    tasks[0][0].cpu = saved_task_cpu;
+
     for (unsigned int i = 0; i < SCHEDULER_QUANTUM_TICKS; ++i)
         scheduler_timer_tick(0, &test_frame);
 
