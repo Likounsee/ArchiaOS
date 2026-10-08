@@ -137,6 +137,18 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
             ? acpi->processor_count
             : AcpiInfo::MAX_PROCESSORS;
 
+    bool currentApicPresent = false;
+    for (unsigned int i = 0; i < processorLimit; ++i)
+    {
+        if (acpi->processor_apic_ids[i] == currentApicId)
+        {
+            currentApicPresent = true;
+            break;
+        }
+    }
+    if (!currentApicPresent)
+        return false;
+
     for (unsigned int i = 0; i < processorLimit; ++i)
     {
         for (unsigned int previous = 0; previous < i; ++previous)
