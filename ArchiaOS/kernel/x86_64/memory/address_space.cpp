@@ -399,7 +399,7 @@ extern "C" void address_space_run_tests()
     pml4[user_pml4_index] = saved_pml4_entry;
 
     pml4[user_pml4_index] = saved_pml4_entry | NOVOS_PAGE_NO_EXECUTE;
-    const blocked_exec_physical = pmm_alloc_page();
+    const u64 blocked_exec_physical = pmm_alloc_page();
     if (!blocked_exec_physical ||
         address_space_map(
             &space, NOVOS_USER_VIRTUAL_BASE + 3 * NOVOS_PAGE_SIZE,
