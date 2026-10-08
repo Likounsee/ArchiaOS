@@ -216,6 +216,11 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
     if (pml4 == nullptr || !canonical_address(virtualAddress))
         return nullptr;
 
+    if (user &&
+        virtualAddress >= NOVOS_KERNEL_HEAP_BASE &&
+        virtualAddress < NOVOS_KERNEL_HEAP_BASE + NOVOS_KERNEL_HEAP_SIZE)
+        return nullptr;
+
     u64& pml4e = pml4[(virtualAddress >> 39) & 0x1FF];
     const u64 original_pml4e = pml4e;
     bool created_pml4_table = false;
