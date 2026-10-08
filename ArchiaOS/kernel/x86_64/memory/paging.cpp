@@ -263,13 +263,11 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
     }
     else if (user)
     {
-        if (virtualAddress >= KERNEL_HEAP_BASE &&
-            virtualAddress < KERNEL_HEAP_BASE + KERNEL_HEAP_SIZE)
+        if ((pml4e & PAGE_USER) == 0)
         {
             rollback_created_tables();
             return nullptr;
         }
-        pml4e |= PAGE_USER;
     }
 
     auto* table3 = table_pointer(pml4e & ~0xFFFULL);
@@ -300,13 +298,11 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
     }
     else if (user)
     {
-        if (virtualAddress >= KERNEL_HEAP_BASE &&
-            virtualAddress < KERNEL_HEAP_BASE + KERNEL_HEAP_SIZE)
+        if ((pdpte & PAGE_USER) == 0)
         {
             rollback_created_tables();
             return nullptr;
         }
-        pdpte |= PAGE_USER;
     }
 
     if ((pdpte & PAGE_HUGE) != 0)
@@ -365,13 +361,11 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
     }
     else if (user)
     {
-        if (virtualAddress >= KERNEL_HEAP_BASE &&
-            virtualAddress < KERNEL_HEAP_BASE + KERNEL_HEAP_SIZE)
+        if ((pde & PAGE_USER) == 0)
         {
             rollback_created_tables();
             return nullptr;
         }
-        pde |= PAGE_USER;
     }
 
     if ((pde & PAGE_HUGE) != 0)
