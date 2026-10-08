@@ -87,35 +87,36 @@ extern "C" u64 vmm_alloc_pages(
                 return 0;
 
             u64 mapped = 0;
-                for (; mapped < pages; ++mapped)
+            for (; mapped < pages; ++mapped)
+            {
+                const u64 physical = pmm_alloc_page();
+                if (physical == 0)
                 {
-                    const u64 physical = pmm_alloc_page();
-                    if (physical == 0)
+                    for (u64 j = 0; j < mapped; ++j)
                     {
-                        for (u64 j = 0; j < mapped; ++j)
-                        {
-                            const u64 va = cursor + j * NOVOS_PAGE_SIZE;
-                            const u64 pa = paging_translate(va);
-                            paging_unmap_4k(va);
-                            if (pa)
-                                pmm_free_page(pa & ~0xFFFULL);
-                        }
-                        return 0;
+                        const u64 va = cursor + j * NOVOS_PAGE_SIZE;
+                        const u64 pa = paging_translate(va);
+                        paging_unmap_4k(va);
+                        if (pa)
+                            pmm_free_page(pa & ~0xFFFULL);
                     }
-                    if (!paging_map_4k(cursor + mapped * NOVOS_PAGE_SIZE,
-                        physical, PagingFlags{writable, user, executable, false, false}))
-                    {
-                        pmm_free_page(physical);
-                        for (u64 j = 0; j < mapped; ++j)
-                        {
-                            const u64 va = cursor + j * NOVOS_PAGE_SIZE;
-                            const u64 pa = paging_translate(va);
-                            paging_unmap_4k(va);
-                            if (pa) pmm_free_page(pa & ~0xFFFULL);
-                        }
-                        return 0;
-                    }
+                    return 0;
                 }
+                if (!paging_map_4k(cursor + mapped * NOVOS_PAGE_SIZE,
+                    physical, PagingFlags{writable, user, executable, false, false}))
+                {
+                    pmm_free_page(physical);
+                    for (u64 j = 0; j < mapped; ++j)
+                    {
+                        const u64 va = cursor + j * NOVOS_PAGE_SIZE;
+                        const u64 pa = paging_translate(va);
+                        paging_unmap_4k(va);
+                        if (pa)
+                            pmm_free_page(pa & ~0xFFFULL);
+                    }
+                    return 0;
+                }
+            }
             regions[free_slot] = {
                 cursor, pages, user, writable, executable, true
             };
