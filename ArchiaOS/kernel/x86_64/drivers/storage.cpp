@@ -376,9 +376,7 @@ static bool ahci_prepare_port(uint64_t hba_base, uint32_t port_number,
     port.fis_physical = pmm_alloc_page_above(0x00200000ULL);
     port.table_physical = pmm_alloc_page_above(0x00200000ULL);
     port.dma_physical = pmm_alloc_contiguous(2);
-    if (!port.command_list_physical || !port.fis_physical ||
-        !port.table_physical || !port.dma_physical)
-    {
+    auto release_resources = [&]() {
         if (port.command_list_physical)
             pmm_free_page(port.command_list_physical);
         if (port.fis_physical)
@@ -386,8 +384,17 @@ static bool ahci_prepare_port(uint64_t hba_base, uint32_t port_number,
         if (port.table_physical)
             pmm_free_page(port.table_physical);
         if (port.dma_physical)
+        {
             pmm_free_page(port.dma_physical);
+            pmm_free_page(port.dma_physical + AHCI_SECTOR_SIZE * 16U);
+        }
         port = {};
+    };
+
+    if (!port.command_list_physical || !port.fis_physical ||
+        !port.table_physical || !port.dma_physical)
+    {
+        release_resources();
         return false;
     }
 
@@ -404,8 +411,7 @@ static bool ahci_prepare_port(uint64_t hba_base, uint32_t port_number,
         pmm_free_page(port.command_list_physical);
         pmm_free_page(port.fis_physical);
         pmm_free_page(port.table_physical);
-        pmm_free_page(port.dma_physical);
-        port = {};
+        release_resources();
         return false;
     }
 
