@@ -147,6 +147,11 @@ static bool split_1g_pdpte(u64* pdpte)
         return false;
 
     auto* pdTable = table_pointer(pdPhysical);
+    if (!pdTable)
+    {
+        pmm_free_page(pdPhysical);
+        return false;
+    }
     zero_page(pdPhysical);
 
     for (u64 i = 0; i < 512; ++i)
@@ -184,6 +189,11 @@ static bool split_2m_pde(u64* pde)
         return false;
 
     auto* pt = table_pointer(ptPhysical);
+    if (!pt)
+    {
+        pmm_free_page(ptPhysical);
+        return false;
+    }
     zero_page(ptPhysical);
 
     /*
