@@ -8,6 +8,7 @@ static constexpr unsigned int STORAGE_MAX_CONTROLLERS = 8;
 static StorageController controllers[STORAGE_MAX_CONTROLLERS] = {};
 static unsigned int controller_count = 0;
 static unsigned int real_block_device_count = 0;
+static bool storage_initialized = false;
 
 static constexpr uint32_t AHCI_GHC = 0x04;
 static constexpr uint32_t AHCI_CAP = 0x00;
@@ -537,6 +538,9 @@ static bool add_controller(StorageControllerType type,const PciDevice* pci,uint6
 
 extern "C" bool storage_initialize()
 {
+    if (storage_initialized)
+        return true;
+
     storage_debug("STORAGE INIT START\n");
     controller_count=0;
     real_block_device_count=0;
@@ -581,6 +585,7 @@ extern "C" bool storage_initialize()
                 storage_debug("STORAGE INIT AHCI ATTACH OK\n");
         }
 
+    storage_initialized = true;
     return true;
 }
 
