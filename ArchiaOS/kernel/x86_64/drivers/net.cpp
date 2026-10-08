@@ -85,6 +85,8 @@ extern "C" bool net_test()
 
     if (!net_loopback_send(&packet) || net_pending() != 1)
         return false;
+    if (!net_initialize() || net_pending() != 1)
+        return false;
 
     NetPacket received{};
     return net_receive(&received) &&
