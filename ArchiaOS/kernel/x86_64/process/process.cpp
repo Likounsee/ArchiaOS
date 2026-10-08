@@ -241,7 +241,7 @@ extern "C" bool process_register(Process* process)
 {
     if (!process || !process->pid ||
         !process->address_space.pml4_physical ||
-        (process->state != PROCESS_READY && process->state != PROCESS_RUNNING))
+        process->state != PROCESS_READY)
         return false;
     for (unsigned int i = 0; i < PROCESS_MAX; ++i)
     {
@@ -558,6 +558,11 @@ extern "C" bool process_run_ring3_test()
     Process invalid_state = process;
     invalid_state.state = PROCESS_EXITED;
     if (process_register(&invalid_state))
+        return false;
+
+    Process forged_running = process;
+    forged_running.state = PROCESS_RUNNING;
+    if (process_register(&forged_running))
         return false;
 
     if (!process_unregister(&process) || process_registered_count() != 0)
