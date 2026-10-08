@@ -180,7 +180,10 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
             trampolineVirtual,
             trampolinePhysical,
             PagingFlags{true, false, true, false, false}))
+    {
+        pmm_free_page(trampolinePhysical);
         return false;
+    }
 
     /*
      * The AP executes the trampoline through its physical/identity address
