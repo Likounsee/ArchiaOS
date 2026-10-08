@@ -330,7 +330,7 @@ extern "C" unsigned int lapic_current_id()
     if (x2apic_mode)
         return static_cast<unsigned int>(rdmsr(0x802));
 
-    return *lapic_register(0x020);
+    return *lapic_register(0x020) >> 24;
 }
 
 static inline unsigned char io_in8(unsigned short port)
