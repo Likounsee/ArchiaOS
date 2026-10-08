@@ -48,6 +48,7 @@ EFI_STATUS open_kernel_file(
     if (status != EFI_SUCCESS || !root)
         return status;
 
+    /* Keep this path synchronized with the generic CMake EFI layout. */
     static CHAR16 path[] = {
         0x005C, 0x0045, 0x0046, 0x0049, 0x005C,
         0x004F, 0x0053,
