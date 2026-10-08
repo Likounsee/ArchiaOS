@@ -31,7 +31,8 @@ static u64* table(u64 physical)
 
 extern "C" bool address_space_create(AddressSpace* space)
 {
-    if (!space) return false;
+    if (!space || space->pml4_physical != 0 || space->active)
+        return false;
     const u64 pml4 = new_table();
     if (!pml4) return false;
 
@@ -359,6 +360,10 @@ extern "C" void address_space_run_tests()
 {
     AddressSpace space{};
     if (!address_space_create(&space))
+        for (;;) asm volatile("cli; hlt");
+
+    AddressSpace occupied = space;
+    if (address_space_create(&occupied))
         for (;;) asm volatile("cli; hlt");
 
     if (address_space_map(
