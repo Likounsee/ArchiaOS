@@ -61,6 +61,55 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
         }
     }
 
+    struct TestEfiMemoryDescriptor
+    {
+        u32 type;
+        u32 pad;
+        u64 physical_start;
+        u64 virtual_start;
+        u64 number_of_pages;
+        u64 attribute;
+    };
+
+    bool checked_firmware_reserved = false;
+    const u64 entry_count =
+        bootInfo->memory_map_size / bootInfo->memory_descriptor_size;
+    for (u64 i = 0; i < entry_count; ++i)
+    {
+        const auto* descriptor =
+            reinterpret_cast<const TestEfiMemoryDescriptor*>(
+                bootInfo->memory_map_address +
+                i * bootInfo->memory_descriptor_size);
+
+        const bool reclaimable =
+            descriptor->type == 1 ||
+            descriptor->type == 2 ||
+            descriptor->type == 3 ||
+            descriptor->type == 4 ||
+            descriptor->type == 7;
+        if (reclaimable || descriptor->number_of_pages == 0 ||
+            descriptor->physical_start == 0)
+            continue;
+
+        const u64 reserved_firmware_page =
+            descriptor->physical_start & ~(PAGE_SIZE - 1ULL);
+        const u64 before_firmware_free = pmm_free_page_count();
+        pmm_free_page(reserved_firmware_page);
+        if (pmm_free_page_count() != before_firmware_free)
+        {
+            debug_str("PMM TEST FAIL: FIRMWARE FRAME FREED\n");
+            for (;;) asm volatile ("cli; hlt");
+        }
+        checked_firmware_reserved = true;
+        break;
+    }
+
+    if (!checked_firmware_reserved)
+    {
+        debug_str("PMM TEST FAIL: NO FIRMWARE RESERVED RANGE\n");
+        for (;;) asm volatile ("cli; hlt");
+    }
+
     if (free_before == 0)
     {
         debug_str("PMM TEST FAIL: NO FREE PAGES\n");
