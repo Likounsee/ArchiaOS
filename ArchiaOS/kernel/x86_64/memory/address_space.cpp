@@ -70,6 +70,17 @@ static bool physical_mapped_in_address_space(
                physical, space->pml4_physical, 4);
 }
 
+static bool address_space_is_current(const AddressSpace* space)
+{
+    if (!space || !space->pml4_physical || !space->active)
+        return false;
+
+    u64 current_cr3 = 0;
+    asm volatile("mov %%cr3, %0" : "=r"(current_cr3));
+    current_cr3 &= ~0xFFFULL;
+    return current_cr3 == space->pml4_physical;
+}
+
 extern "C" bool address_space_create(AddressSpace* space)
 {
     if (!space || space->pml4_physical != 0 || space->active)
@@ -269,6 +280,13 @@ extern "C" bool address_space_map(
     if (writable) flags |= PAGE_WRITE;
     if (!executable) flags |= PAGE_NO_EXECUTE;
     pt[i1] = physical_address | flags;
+
+    /*
+     * If this is the currently active address space, invalidate a stale TLB
+     * entry left by a previous mapping at the same virtual address.
+     */
+    if (address_space_is_current(space))
+        asm volatile("invlpg (%0)" : : "r"(virtual_address) : "memory");
 
     return true;
 }
