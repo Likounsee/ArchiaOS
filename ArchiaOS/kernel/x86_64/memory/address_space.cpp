@@ -532,7 +532,8 @@ extern "C" void address_space_run_tests()
     const bool alias_visible =
         address_space_is_user_mapped(
             &space, USER_VIRTUAL_BASE + PAGE_SIZE);
-    address_space_test_marker(alias_map || alias_visible ? 'N' : 'O');
+    address_space_test_marker(alias_map ? 'P' : 'Q');
+    address_space_test_marker(alias_visible ? 'R' : 'S');
     if (alias_map || alias_visible)
         for (;;) asm volatile("cli; hlt");
 
