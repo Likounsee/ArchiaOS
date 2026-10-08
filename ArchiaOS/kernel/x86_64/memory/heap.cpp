@@ -24,7 +24,10 @@ extern "C" bool heap_initialize()
 
 extern "C" void* kmalloc(u64 size)
 {
-    if (size == 0) return nullptr;
+    if (size == 0 ||
+        size > UINT64_MAX - (NOVOS_PAGE_SIZE - 1ULL))
+        return nullptr;
+
     const u64 pages = (size + NOVOS_PAGE_SIZE - 1ULL) / NOVOS_PAGE_SIZE;
     const u64 base = vmm_alloc_pages(pages, false, true, false);
     if (!base) return nullptr;
@@ -68,6 +71,11 @@ extern "C" u64 heap_used_bytes()
 
 extern "C" void heap_run_tests()
 {
+    const u64 before = heap_used_bytes();
+    if (kmalloc(UINT64_MAX) != nullptr ||
+        heap_used_bytes() != before)
+        for (;;) asm volatile("cli; hlt");
+
     void* a = kmalloc(1);
     void* b = kmalloc(8193);
     if (!a || !b || a == b)
