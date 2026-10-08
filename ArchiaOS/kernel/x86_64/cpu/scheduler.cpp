@@ -298,47 +298,67 @@ extern "C" bool scheduler_run_test()
         scheduler_test_debug(1);
         return false;
     if (scheduler_set_ready_for_kernel())
+    {
         scheduler_test_debug(2);
         return false;
+    }
 
     unsigned int apic_id = lapic_current_id();
     if (!scheduler_set_cpu_apic_ids(&apic_id, 1))
+    {
         scheduler_test_debug(3);
         return false;
+    }
     if (scheduler_set_cpu_apic_ids(nullptr, 0))
+    {
         scheduler_test_debug(4);
         return false;
+    }
 
     cpus[0].current_task = SCHEDULER_MAX_TASKS;
     if (!scheduler_set_ready_for_kernel())
+    {
         scheduler_test_debug(5);
         return false;
+    }
     ExceptionFrame invalid_task_frame = {};
     if (scheduler_timer_tick(0, &invalid_task_frame) != &invalid_task_frame)
+    {
         scheduler_test_debug(6);
         return false;
+    }
 
     if (!scheduler_initialize(2))
+    {
         scheduler_test_debug(7);
         return false;
+    }
     const unsigned int duplicate_apic_ids[2] = {apic_id, apic_id};
     const unsigned int invalid_apic_ids[2] = {apic_id, 0xFFFFFFFFU};
     if (scheduler_set_cpu_apic_ids(invalid_apic_ids, 2) ||
         scheduler_set_cpu_apic_ids(duplicate_apic_ids, 2) ||
         !scheduler_initialize(1) ||
         !scheduler_set_cpu_apic_ids(&apic_id, 1))
+    {
         scheduler_test_debug(8);
         return false;
+    }
 
     if (!scheduler_set_ready_for_kernel())
+    {
         scheduler_test_debug(9);
         return false;
+    }
     if (!scheduler_set_local_cpu_index(SCHEDULER_MAX_CPUS))
+    {
         scheduler_test_debug(10);
         return false;
+    }
     if (!scheduler_set_local_cpu_index(0))
+    {
         scheduler_test_debug(11);
         return false;
+    }
     ExceptionFrame test_frame = {};
 
     const unsigned int saved_task_cpu = tasks[0][0].cpu;
@@ -347,8 +367,10 @@ extern "C" bool scheduler_run_test()
     tasks[0][0].remaining_quantum = 0;
     if (scheduler_timer_tick(0, &test_frame) != &test_frame ||
         scheduler_current_task(0) != 0)
+    {
         scheduler_test_debug(12);
         return false;
+    }
     tasks[0][0].cpu = saved_task_cpu;
     tasks[0][0].remaining_quantum = saved_task_quantum;
 
@@ -360,8 +382,10 @@ extern "C" bool scheduler_run_test()
         scheduler_task_count(0) != 2 ||
         tasks[0][0].state != SCHEDULER_TASK_READY ||
         tasks[0][1].state != SCHEDULER_TASK_RUNNING)
+    {
         scheduler_test_debug(13);
         return false;
+    }
 
     for (unsigned int i = 0; i < SCHEDULER_QUANTUM_TICKS; ++i)
         scheduler_timer_tick(0, &test_frame);
