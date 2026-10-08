@@ -39,6 +39,10 @@ extern "C" bool scheduler_initialize(unsigned int cpu_count)
     if (cpu_count == 0 || cpu_count > SCHEDULER_MAX_CPUS)
         return false;
 
+    /* Once released, reinitializing would invalidate live per-CPU tasks. */
+    if (scheduler_ready())
+        return false;
+
     scheduler_cpu_count = cpu_count;
     scheduler_ready_flag = false;
     scheduler_apic_map_ready = false;
@@ -437,6 +441,12 @@ extern "C" bool scheduler_run_test()
          reused_id == 2 &&
          scheduler_task_count(0) == 2 &&
          tasks[0][2].state == SCHEDULER_TASK_READY;
+
+    if (!scheduler_set_ready_for_kernel())
+        return false;
+    if (scheduler_initialize(1))
+        return false;
+    scheduler_ready_flag = false;
 
     scheduler_ready_flag = false;
     return ok;
