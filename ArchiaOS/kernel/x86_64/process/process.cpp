@@ -88,10 +88,10 @@ static bool map_stack(AddressSpace* space, uint64_t* top)
         return false;
 
     const uint64_t stack_top = NOVOS_USER_VIRTUAL_TOP;
-    const uint64_t stack_base = stack_top - 3ULL * NOVOS_PAGE_SIZE;
+    const uint64_t stack_base = stack_top - 3ULL * PAGE_SIZE;
 
     /* Keep the lowest page unmapped as a guard page below the user stack. */
-    for (uint64_t va = stack_base + NOVOS_PAGE_SIZE; va < stack_top; va += NOVOS_PAGE_SIZE)
+    for (uint64_t va = stack_base + PAGE_SIZE; va < stack_top; va += PAGE_SIZE)
     {
         const uint64_t physical = pmm_alloc_page_above(0x01000000ULL);
         if (!physical)
@@ -160,7 +160,7 @@ extern "C" bool process_create_elf(
             !range_ok(ph.offset, ph.filesz, image_size) ||
             (ph.flags & ~7U) != 0 ||
             (ph.flags & 6U) == 6U ||
-            ph.vaddr < NOVOS_USER_VIRTUAL_BASE ||
+            ph.vaddr < USER_VIRTUAL_BASE ||
             ph.vaddr >= NOVOS_USER_VIRTUAL_TOP ||
             ph.memsz > NOVOS_USER_VIRTUAL_TOP - ph.vaddr ||
             (ph.align != 0 && (ph.align & (ph.align - 1)) != 0) ||
@@ -202,7 +202,7 @@ extern "C" bool process_create_elf(
 
         const uint64_t base = ph.vaddr & ~0xFFFULL;
         const uint64_t end = (ph.vaddr + ph.memsz + 0xFFFULL) & ~0xFFFULL;
-        for (uint64_t va = base; va < end; va += NOVOS_PAGE_SIZE)
+        for (uint64_t va = base; va < end; va += PAGE_SIZE)
         {
             const uint64_t physical = pmm_alloc_page_above(0x01000000ULL);
             if (!physical)
@@ -224,7 +224,7 @@ extern "C" bool process_create_elf(
             for (unsigned int j = 0; j < 4096; ++j)
                 page[j] = 0;
 
-            const uint64_t page_end = va + NOVOS_PAGE_SIZE;
+            const uint64_t page_end = va + PAGE_SIZE;
             const uint64_t copy_begin = ph.vaddr > va ? ph.vaddr : va;
             const uint64_t file_end = ph.vaddr + ph.filesz;
             const uint64_t copy_end = file_end < page_end ? file_end : page_end;
@@ -253,7 +253,7 @@ extern "C" bool process_create_elf(
         return false;
     }
 
-    if (header->entry < NOVOS_USER_VIRTUAL_BASE ||
+    if (header->entry < USER_VIRTUAL_BASE ||
         header->entry >= NOVOS_USER_VIRTUAL_TOP ||
         !entry_file_backed_executable ||
         !address_space_is_user_executable(&space, header->entry))
@@ -407,12 +407,12 @@ extern "C" bool process_handle_syscall(ExceptionFrame* frame)
         (frame->rflags & (3ULL << 12)) != 0)
         return false;
 
-    if (current_process->user_stack_top < 2ULL * NOVOS_PAGE_SIZE ||
+    if (current_process->user_stack_top < 2ULL * PAGE_SIZE ||
         current_process->user_stack_top > NOVOS_USER_VIRTUAL_TOP)
         return false;
 
     const uint64_t stack_base =
-        current_process->user_stack_top - 2ULL * NOVOS_PAGE_SIZE;
+        current_process->user_stack_top - 2ULL * PAGE_SIZE;
     if (frame->user_rsp < stack_base ||
         frame->user_rsp > current_process->user_stack_top ||
         (frame->user_rsp < current_process->user_stack_top &&
@@ -625,11 +625,11 @@ extern "C" bool process_run_ring3_test()
     if (!process_create_elf(&process, image, sizeof(image)))
         return false;
     const uint64_t stack_guard =
-        process.user_stack_top - 3ULL * NOVOS_PAGE_SIZE;
+        process.user_stack_top - 3ULL * PAGE_SIZE;
     if (address_space_is_user_mapped(&process.address_space, stack_guard) ||
         !address_space_is_user_mapped(
             &process.address_space,
-            process.user_stack_top - NOVOS_PAGE_SIZE))
+            process.user_stack_top - PAGE_SIZE))
         return false;
 
     Process busy_state{};
@@ -732,7 +732,7 @@ extern "C" bool process_run_ring3_test()
     invalid_syscall_frame.cs = 0x1B;
     invalid_syscall_frame.user_ss = 0x23;
     invalid_syscall_frame.rflags = 0x202ULL;
-    invalid_syscall_frame.rip = process.user_stack_top - NOVOS_PAGE_SIZE;
+    invalid_syscall_frame.rip = process.user_stack_top - PAGE_SIZE;
     if (process_handle_syscall(&invalid_syscall_frame))
         return false;
 
@@ -751,12 +751,12 @@ extern "C" bool process_run_ring3_test()
         return false;
 
     const uint64_t saved_user_stack_top = process.user_stack_top;
-    process.user_stack_top = NOVOS_PAGE_SIZE;
+    process.user_stack_top = PAGE_SIZE;
     ExceptionFrame malformed_stack_layout{};
     malformed_stack_layout.cs = 0x1B;
     malformed_stack_layout.user_ss = 0x23;
     malformed_stack_layout.rflags = 0x202ULL;
-    malformed_stack_layout.user_rsp = NOVOS_PAGE_SIZE;
+    malformed_stack_layout.user_rsp = PAGE_SIZE;
     malformed_stack_layout.rip = process.entry;
     if (process_handle_syscall(&malformed_stack_layout))
         return false;
@@ -794,7 +794,7 @@ extern "C" bool process_run_ring3_test()
     valid_low_stack_frame.user_ss = 0x23;
     valid_low_stack_frame.rflags = 0x202ULL;
     valid_low_stack_frame.user_rsp =
-        process.user_stack_top - 2ULL * NOVOS_PAGE_SIZE;
+        process.user_stack_top - 2ULL * PAGE_SIZE;
     valid_low_stack_frame.rip = process.entry + 5ULL;
     valid_low_stack_frame.rax = 1;
     const unsigned long long low_stack_syscall_count =
@@ -809,7 +809,7 @@ extern "C" bool process_run_ring3_test()
     invalid_user_stack_frame.user_ss = 0x23;
     invalid_user_stack_frame.rflags = 0x202ULL;
     invalid_user_stack_frame.user_rsp =
-        process.user_stack_top - 3ULL * NOVOS_PAGE_SIZE;
+        process.user_stack_top - 3ULL * PAGE_SIZE;
     invalid_user_stack_frame.rip = process.entry + 5ULL;
     invalid_user_stack_frame.rax = 1;
     const unsigned long long rejected_user_stack_syscalls =

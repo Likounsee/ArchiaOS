@@ -2,11 +2,11 @@
 
 #include "pmm.hpp"
 
-constexpr u64 NOVOS_PAGE_PRESENT = 1ULL << 0;
-constexpr u64 NOVOS_PAGE_WRITE = 1ULL << 1;
-constexpr u64 NOVOS_PAGE_USER = 1ULL << 2;
-constexpr u64 NOVOS_PAGE_HUGE = 1ULL << 7;
-constexpr u64 NOVOS_PAGE_NO_EXECUTE = 1ULL << 63;
+constexpr u64 PAGE_PRESENT = 1ULL << 0;
+constexpr u64 PAGE_WRITE = 1ULL << 1;
+constexpr u64 PAGE_USER = 1ULL << 2;
+constexpr u64 PAGE_HUGE = 1ULL << 7;
+constexpr u64 PAGE_NO_EXECUTE = 1ULL << 63;
 
 /*
  * Four-level paging layout:
@@ -15,13 +15,13 @@ constexpr u64 NOVOS_PAGE_NO_EXECUTE = 1ULL << 63;
  *
  * 0xFFFF800000000000 is 48-bit canonical and corresponds to PML4 index 256.
  */
-constexpr u64 NOVOS_HHDM_BASE = 0xFFFF800000000000ULL;
+constexpr u64 HHDM_BASE = 0xFFFF800000000000ULL;
 
 /* Reserved virtual-address layout for the next VM stages. */
 constexpr u64 NOVOS_KERNEL_VIRTUAL_BASE = 0xFFFFFFFF80000000ULL;
-constexpr u64 NOVOS_KERNEL_HEAP_BASE = 0xFFFF900000000000ULL;
-constexpr u64 NOVOS_KERNEL_HEAP_SIZE = 0x0000001000000000ULL; /* 64 GiB */
-constexpr u64 NOVOS_USER_VIRTUAL_BASE = 0x0000000000400000ULL;
+constexpr u64 KERNEL_HEAP_BASE = 0xFFFF900000000000ULL;
+constexpr u64 KERNEL_HEAP_SIZE = 0x0000001000000000ULL; /* 64 GiB */
+constexpr u64 USER_VIRTUAL_BASE = 0x0000000000400000ULL;
 constexpr u64 NOVOS_USER_VIRTUAL_TOP = 0x00007FFFFFFFF000ULL;
 
 struct PagingFlags

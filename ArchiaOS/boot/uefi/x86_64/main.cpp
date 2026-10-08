@@ -134,7 +134,7 @@ extern "C" EFI_STATUS EFIAPI efi_main(
     EFI_SYSTEM_TABLE* systemTable)
 {
     boot_debug_init(systemTable);
-    boot_debug("ARCHIAOS UEFI BOOT\r\n");
+    boot_debug("UEFI BOOT\r\n");
 
     if (!systemTable || !systemTable->BootServices)
         boot_halt();
@@ -161,12 +161,12 @@ extern "C" EFI_STATUS EFIAPI efi_main(
     if (status != EFI_SUCCESS)
         boot_halt();
 
-    bootInfo->magic = NOVOS_BOOT_INFO_MAGIC;
-    bootInfo->version = NOVOS_BOOT_INFO_VERSION;
+    bootInfo->magic = BOOT_INFO_MAGIC;
+    bootInfo->version = BOOT_INFO_VERSION;
     bootInfo->size = sizeof(BootInfo);
     bootInfo->uefi_system_table =
         reinterpret_cast<UINT64>(systemTable);
-    bootInfo->bootloader_version = NOVOS_BOOTLOADER_VERSION;
+    bootInfo->bootloader_version = BOOTLOADER_VERSION;
     bootInfo->kernel_image_base = kernel.base;
     bootInfo->kernel_image_size = kernel.size;
     bootInfo->boot_info_address =
@@ -262,5 +262,5 @@ extern "C" EFI_STATUS EFIAPI efi_main(
      * boot_debug or any EFI service before the kernel handoff.
      * handoff.S converts Microsoft x64 -> SysV AMD64 and jumps.
      */
-    archiaos_x86_64_handoff(kernel.entry, bootInfo, bootPml4Physical);
+    x86_64_handoff(kernel.entry, bootInfo, bootPml4Physical);
 }

@@ -1,167 +1,167 @@
 cmake_minimum_required(VERSION 3.20)
 project(ArchiaOS NONE)
 
-set(ARCHIAOS_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
-set(ARCHIAOS_BUILD ${CMAKE_BINARY_DIR})
+set(OS_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
+set(OS_BUILD ${CMAKE_BINARY_DIR})
 
-set(ARCHIAOS_CLANG "" CACHE FILEPATH "Clang++ compiler")
-set(ARCHIAOS_LLD "" CACHE FILEPATH "LLD ELF linker")
-set(ARCHIAOS_LLD_LINK "" CACHE FILEPATH "LLD PE/COFF linker")
-option(ARCHIAOS_BOOT_DEBUG "Enable UEFI debug-port output" ON)
+set(OS_CLANG "" CACHE FILEPATH "Clang++ compiler")
+set(OS_LLD "" CACHE FILEPATH "LLD ELF linker")
+set(OS_LLD_LINK "" CACHE FILEPATH "LLD PE/COFF linker")
+option(OS_BOOT_DEBUG "Enable UEFI debug-port output" ON)
 
-if(NOT ARCHIAOS_CLANG)
-    find_program(ARCHIAOS_CLANG
+if(NOT OS_CLANG)
+    find_program(OS_CLANG
         NAMES clang++.exe clang++ clang++-18 clang++-19 clang++-17
         PATHS /usr/bin /usr/local/bin)
 endif()
-if(NOT ARCHIAOS_LLD)
-    find_program(ARCHIAOS_LLD
+if(NOT OS_LLD)
+    find_program(OS_LLD
         NAMES ld.lld.exe ld.lld ld.lld-18 ld.lld-19 ld.lld-17
         PATHS /usr/bin /usr/local/bin)
 endif()
-if(NOT ARCHIAOS_LLD_LINK)
-    find_program(ARCHIAOS_LLD_LINK
+if(NOT OS_LLD_LINK)
+    find_program(OS_LLD_LINK
         NAMES lld-link.exe lld-link lld-link-18 lld-link-19 lld-link-17
         PATHS /usr/bin /usr/local/bin)
 endif()
 
-if(NOT ARCHIAOS_CLANG AND EXISTS "C:/Program Files/LLVM/bin/clang++.exe")
-    set(ARCHIAOS_CLANG "C:/Program Files/LLVM/bin/clang++.exe")
+if(NOT OS_CLANG AND EXISTS "C:/Program Files/LLVM/bin/clang++.exe")
+    set(OS_CLANG "C:/Program Files/LLVM/bin/clang++.exe")
 endif()
-if(NOT ARCHIAOS_LLD AND EXISTS "C:/Program Files/LLVM/bin/ld.lld.exe")
-    set(ARCHIAOS_LLD "C:/Program Files/LLVM/bin/ld.lld.exe")
+if(NOT OS_LLD AND EXISTS "C:/Program Files/LLVM/bin/ld.lld.exe")
+    set(OS_LLD "C:/Program Files/LLVM/bin/ld.lld.exe")
 endif()
-if(NOT ARCHIAOS_LLD_LINK AND EXISTS "C:/Program Files/LLVM/bin/lld-link.exe")
-    set(ARCHIAOS_LLD_LINK "C:/Program Files/LLVM/bin/lld-link.exe")
+if(NOT OS_LLD_LINK AND EXISTS "C:/Program Files/LLVM/bin/lld-link.exe")
+    set(OS_LLD_LINK "C:/Program Files/LLVM/bin/lld-link.exe")
 endif()
 
-foreach(tool IN ITEMS ARCHIAOS_CLANG ARCHIAOS_LLD ARCHIAOS_LLD_LINK)
+foreach(tool IN ITEMS OS_CLANG OS_LLD OS_LLD_LINK)
     if(NOT ${tool})
         message(FATAL_ERROR "${tool} not found. Install LLVM or pass -D${tool}=...")
     endif()
 endforeach()
 
-set(ARCHIAOS_BOOT_DIR ${ARCHIAOS_ROOT}/boot/uefi/x86_64)
-set(ARCHIAOS_BOOT_INC ${ARCHIAOS_ROOT}/boot/uefi/include)
-set(ARCHIAOS_COMMON ${ARCHIAOS_ROOT}/common)
-set(ARCHIAOS_KERNEL_DIR ${ARCHIAOS_ROOT}/kernel/x86_64/core)
-set(ARCHIAOS_CPU_DIR ${ARCHIAOS_ROOT}/kernel/x86_64/cpu)
-set(ARCHIAOS_MEMORY_DIR ${ARCHIAOS_ROOT}/kernel/x86_64/memory)
-set(ARCHIAOS_PROCESS_DIR ${ARCHIAOS_ROOT}/kernel/x86_64/process)
-set(ARCHIAOS_FS_DIR ${ARCHIAOS_ROOT}/kernel/x86_64/fs)
-set(ARCHIAOS_DRIVERS_DIR ${ARCHIAOS_ROOT}/kernel/x86_64/drivers)
-set(ARCHIAOS_OPENFS_ROOT ${ARCHIAOS_ROOT}/kernel/fs/openfs)
-set(ARCHIAOS_OPENFS_INC ${ARCHIAOS_OPENFS_ROOT}/include)
-set(ARCHIAOS_OPENFS_COMPAT ${ARCHIAOS_FS_DIR}/openfs_compat)
+set(OS_BOOT_DIR ${OS_ROOT}/boot/uefi/x86_64)
+set(OS_BOOT_INC ${OS_ROOT}/boot/uefi/include)
+set(OS_COMMON ${OS_ROOT}/common)
+set(OS_KERNEL_DIR ${OS_ROOT}/kernel/x86_64/core)
+set(OS_CPU_DIR ${OS_ROOT}/kernel/x86_64/cpu)
+set(OS_MEMORY_DIR ${OS_ROOT}/kernel/x86_64/memory)
+set(OS_PROCESS_DIR ${OS_ROOT}/kernel/x86_64/process)
+set(OS_FS_DIR ${OS_ROOT}/kernel/x86_64/fs)
+set(OS_DRIVERS_DIR ${OS_ROOT}/kernel/x86_64/drivers)
+set(OS_OPENFS_ROOT ${OS_ROOT}/kernel/fs/openfs)
+set(OS_OPENFS_INC ${OS_OPENFS_ROOT}/include)
+set(OS_OPENFS_COMPAT ${OS_FS_DIR}/openfs_compat)
 
-set(ARCHIAOS_BOOT_HEADERS
-    ${ARCHIAOS_BOOT_INC}/uefi.h
-    ${ARCHIAOS_BOOT_INC}/boot_debug.h
-    ${ARCHIAOS_BOOT_INC}/filesystem.h
-    ${ARCHIAOS_BOOT_INC}/elf_loader.h
-    ${ARCHIAOS_BOOT_INC}/framebuffer.h
-    ${ARCHIAOS_BOOT_INC}/memory_map.h
-    ${ARCHIAOS_BOOT_INC}/handoff.h
-    ${ARCHIAOS_BOOT_INC}/boot_paging.h
-    ${ARCHIAOS_COMMON}/boot_info.h
+set(OS_BOOT_HEADERS
+    ${OS_BOOT_INC}/uefi.h
+    ${OS_BOOT_INC}/boot_debug.h
+    ${OS_BOOT_INC}/filesystem.h
+    ${OS_BOOT_INC}/elf_loader.h
+    ${OS_BOOT_INC}/framebuffer.h
+    ${OS_BOOT_INC}/memory_map.h
+    ${OS_BOOT_INC}/handoff.h
+    ${OS_BOOT_INC}/boot_paging.h
+    ${OS_COMMON}/boot_info.h
 )
 
-set(ARCHIAOS_KERNEL_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel.obj)
-set(ARCHIAOS_KERNEL_ENTRY_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_entry.obj)
-set(ARCHIAOS_KERNEL_MEMORY_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_memory.obj)
-set(ARCHIAOS_KERNEL_ACPI_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_acpi.obj)
-set(ARCHIAOS_KERNEL_EXCEPTION_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_exception.obj)
-set(ARCHIAOS_KERNEL_GDT_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_gdt.obj)
-set(ARCHIAOS_KERNEL_IDT_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_idt.obj)
-set(ARCHIAOS_KERNEL_IRQ_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_irq.obj)
-set(ARCHIAOS_KERNEL_LAPIC_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_lapic.obj)
-set(ARCHIAOS_KERNEL_IOAPIC_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_ioapic.obj)
-set(ARCHIAOS_KERNEL_TSS_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_tss.obj)
-set(ARCHIAOS_KERNEL_PAGING_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_paging.obj)
-set(ARCHIAOS_KERNEL_PAGING_TEST_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_paging_test.obj)
-set(ARCHIAOS_KERNEL_PMM_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_pmm.obj)
-set(ARCHIAOS_KERNEL_PMM_TEST_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_pmm_test.obj)
-set(ARCHIAOS_KERNEL_CPUID_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_cpuid.obj)
-set(ARCHIAOS_KERNEL_CPU_REPORT_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_cpu_report.obj)
-set(ARCHIAOS_KERNEL_SECURITY_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_security.obj)
-set(ARCHIAOS_KERNEL_SMP_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_smp.obj)
-set(ARCHIAOS_KERNEL_SCHEDULER_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_scheduler.obj)
-set(ARCHIAOS_KERNEL_SMP_TRAMPOLINE_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_smp_trampoline.obj)
-set(ARCHIAOS_KERNEL_VMM_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_vmm.obj)
-set(ARCHIAOS_KERNEL_HEAP_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_heap.obj)
-set(ARCHIAOS_KERNEL_ADDRESS_SPACE_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_address_space.obj)
-set(ARCHIAOS_KERNEL_PROCESS_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_process.obj)
-set(ARCHIAOS_KERNEL_RING3_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_ring3.obj)
-set(ARCHIAOS_KERNEL_IPC_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_ipc.obj)
-set(ARCHIAOS_KERNEL_VFS_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_vfs.obj)
-set(ARCHIAOS_KERNEL_PCI_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_pci.obj)
-set(ARCHIAOS_KERNEL_INPUT_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_input.obj)
-set(ARCHIAOS_KERNEL_GRAPHICS_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_graphics.obj)
-set(ARCHIAOS_KERNEL_GUI_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_gui.obj)
-set(ARCHIAOS_KERNEL_DEVICE_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_device.obj)
-set(ARCHIAOS_KERNEL_NET_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_net.obj)
-set(ARCHIAOS_KERNEL_BLOCK_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_block.obj)
-set(ARCHIAOS_KERNEL_GPT_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_gpt.obj)
-set(ARCHIAOS_KERNEL_STORAGE_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_storage.obj)
-set(ARCHIAOS_KERNEL_OPENFS_COMPAT_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_openfs_compat.obj)
-set(ARCHIAOS_KERNEL_OPENFS_ADAPTER_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_openfs_adapter.obj)
-set(ARCHIAOS_KERNEL_OPENFS_TEST_OBJ ${ARCHIAOS_BUILD}/archiaos_kernel_openfs_test.obj)
-set(ARCHIAOS_OPENFS_C_SOURCES
+set(OS_KERNEL_OBJ ${OS_BUILD}/os_kernel.obj)
+set(OS_KERNEL_ENTRY_OBJ ${OS_BUILD}/os_kernel_entry.obj)
+set(OS_KERNEL_MEMORY_OBJ ${OS_BUILD}/os_kernel_memory.obj)
+set(OS_KERNEL_ACPI_OBJ ${OS_BUILD}/os_kernel_acpi.obj)
+set(OS_KERNEL_EXCEPTION_OBJ ${OS_BUILD}/os_kernel_exception.obj)
+set(OS_KERNEL_GDT_OBJ ${OS_BUILD}/os_kernel_gdt.obj)
+set(OS_KERNEL_IDT_OBJ ${OS_BUILD}/os_kernel_idt.obj)
+set(OS_KERNEL_IRQ_OBJ ${OS_BUILD}/os_kernel_irq.obj)
+set(OS_KERNEL_LAPIC_OBJ ${OS_BUILD}/os_kernel_lapic.obj)
+set(OS_KERNEL_IOAPIC_OBJ ${OS_BUILD}/os_kernel_ioapic.obj)
+set(OS_KERNEL_TSS_OBJ ${OS_BUILD}/os_kernel_tss.obj)
+set(OS_KERNEL_PAGING_OBJ ${OS_BUILD}/os_kernel_paging.obj)
+set(OS_KERNEL_PAGING_TEST_OBJ ${OS_BUILD}/os_kernel_paging_test.obj)
+set(OS_KERNEL_PMM_OBJ ${OS_BUILD}/os_kernel_pmm.obj)
+set(OS_KERNEL_PMM_TEST_OBJ ${OS_BUILD}/os_kernel_pmm_test.obj)
+set(OS_KERNEL_CPUID_OBJ ${OS_BUILD}/os_kernel_cpuid.obj)
+set(OS_KERNEL_CPU_REPORT_OBJ ${OS_BUILD}/os_kernel_cpu_report.obj)
+set(OS_KERNEL_SECURITY_OBJ ${OS_BUILD}/os_kernel_security.obj)
+set(OS_KERNEL_SMP_OBJ ${OS_BUILD}/os_kernel_smp.obj)
+set(OS_KERNEL_SCHEDULER_OBJ ${OS_BUILD}/os_kernel_scheduler.obj)
+set(OS_KERNEL_SMP_TRAMPOLINE_OBJ ${OS_BUILD}/os_kernel_smp_trampoline.obj)
+set(OS_KERNEL_VMM_OBJ ${OS_BUILD}/os_kernel_vmm.obj)
+set(OS_KERNEL_HEAP_OBJ ${OS_BUILD}/os_kernel_heap.obj)
+set(OS_KERNEL_ADDRESS_SPACE_OBJ ${OS_BUILD}/os_kernel_address_space.obj)
+set(OS_KERNEL_PROCESS_OBJ ${OS_BUILD}/os_kernel_process.obj)
+set(OS_KERNEL_RING3_OBJ ${OS_BUILD}/os_kernel_ring3.obj)
+set(OS_KERNEL_IPC_OBJ ${OS_BUILD}/os_kernel_ipc.obj)
+set(OS_KERNEL_VFS_OBJ ${OS_BUILD}/os_kernel_vfs.obj)
+set(OS_KERNEL_PCI_OBJ ${OS_BUILD}/os_kernel_pci.obj)
+set(OS_KERNEL_INPUT_OBJ ${OS_BUILD}/os_kernel_input.obj)
+set(OS_KERNEL_GRAPHICS_OBJ ${OS_BUILD}/os_kernel_graphics.obj)
+set(OS_KERNEL_GUI_OBJ ${OS_BUILD}/os_kernel_gui.obj)
+set(OS_KERNEL_DEVICE_OBJ ${OS_BUILD}/os_kernel_device.obj)
+set(OS_KERNEL_NET_OBJ ${OS_BUILD}/os_kernel_net.obj)
+set(OS_KERNEL_BLOCK_OBJ ${OS_BUILD}/os_kernel_block.obj)
+set(OS_KERNEL_GPT_OBJ ${OS_BUILD}/os_kernel_gpt.obj)
+set(OS_KERNEL_STORAGE_OBJ ${OS_BUILD}/os_kernel_storage.obj)
+set(OS_KERNEL_OPENFS_COMPAT_OBJ ${OS_BUILD}/os_kernel_openfs_compat.obj)
+set(OS_KERNEL_OPENFS_ADAPTER_OBJ ${OS_BUILD}/os_kernel_openfs_adapter.obj)
+set(OS_KERNEL_OPENFS_TEST_OBJ ${OS_BUILD}/os_kernel_openfs_test.obj)
+set(OS_OPENFS_C_SOURCES
     allocator.c bitmap.c crc32c.c dir.c extent.c file.c format.c fsck.c
     inode.c inode_alloc.c journal.c link.c mount.c path.c transaction.c)
 
-set(ARCHIAOS_KERNEL_ELF ${ARCHIAOS_BUILD}/ARCHIAOS_kernel.elf)
+set(OS_KERNEL_ELF ${OS_BUILD}/OS_kernel.elf)
 
-set(ARCHIAOS_BOOT_MAIN_OBJ ${ARCHIAOS_BUILD}/archiaos_boot_main.obj)
-set(ARCHIAOS_BOOT_DEBUG_OBJ ${ARCHIAOS_BUILD}/archiaos_boot_debug.obj)
-set(ARCHIAOS_BOOT_FS_OBJ ${ARCHIAOS_BUILD}/archiaos_boot_filesystem.obj)
-set(ARCHIAOS_BOOT_ELF_OBJ ${ARCHIAOS_BUILD}/archiaos_boot_elf_loader.obj)
-set(ARCHIAOS_BOOT_FB_OBJ ${ARCHIAOS_BUILD}/archiaos_boot_framebuffer.obj)
-set(ARCHIAOS_BOOT_MM_OBJ ${ARCHIAOS_BUILD}/archiaos_boot_memory_map.obj)
-set(ARCHIAOS_BOOT_HANDOFF_OBJ ${ARCHIAOS_BUILD}/archiaos_boot_handoff.obj)
-set(ARCHIAOS_BOOT_PAGING_OBJ ${ARCHIAOS_BUILD}/archiaos_boot_paging.obj)
-set(ARCHIAOS_BOOT_EFI ${ARCHIAOS_BUILD}/BOOTX64.EFI)
+set(OS_BOOT_MAIN_OBJ ${OS_BUILD}/os_boot_main.obj)
+set(OS_BOOT_DEBUG_OBJ ${OS_BUILD}/os_boot_debug.obj)
+set(OS_BOOT_FS_OBJ ${OS_BUILD}/os_boot_filesystem.obj)
+set(OS_BOOT_ELF_OBJ ${OS_BUILD}/os_boot_elf_loader.obj)
+set(OS_BOOT_FB_OBJ ${OS_BUILD}/os_boot_framebuffer.obj)
+set(OS_BOOT_MM_OBJ ${OS_BUILD}/os_boot_memory_map.obj)
+set(OS_BOOT_HANDOFF_OBJ ${OS_BUILD}/os_boot_handoff.obj)
+set(OS_BOOT_PAGING_OBJ ${OS_BUILD}/os_boot_paging.obj)
+set(OS_BOOT_EFI ${OS_BUILD}/BOOTX64.EFI)
 
-set(ARCHIAOS_ESP_DIR ${ARCHIAOS_BUILD}/esp)
-set(ARCHIAOS_ESP_BOOT ${ARCHIAOS_ESP_DIR}/EFI/BOOT/BOOTX64.EFI)
-set(ARCHIAOS_ESP_KERNEL ${ARCHIAOS_ESP_DIR}/EFI/ARCHIAOS/ARCHIAOS_kernel.elf)
+set(OS_ESP_DIR ${OS_BUILD}/esp)
+set(OS_ESP_BOOT ${OS_ESP_DIR}/EFI/BOOT/BOOTX64.EFI)
+set(OS_ESP_KERNEL ${OS_ESP_DIR}/EFI/OS/OS_kernel.elf)
 
-function(archiaos_kernel_compile output source)
+function(os_kernel_compile output source)
     add_custom_command(
         OUTPUT ${output}
-        COMMAND "${ARCHIAOS_CLANG}" -target x86_64-pc-none-elf
+        COMMAND "${OS_CLANG}" -target x86_64-pc-none-elf
             -std=c++20 -ffreestanding -O2 -Wall -Wextra -Werror -fno-builtin -fno-exceptions -fno-rtti
             -fno-stack-protector -fno-pie -fno-asynchronous-unwind-tables
             -fno-threadsafe-statics -mgeneral-regs-only -mcmodel=kernel
             -mno-red-zone -mno-sse -mno-sse2
-            -I"${ARCHIAOS_COMMON}" -I"${ARCHIAOS_CPU_DIR}" -I"${ARCHIAOS_MEMORY_DIR}" -I"${ARCHIAOS_OPENFS_INC}"
+            -I"${OS_COMMON}" -I"${OS_CPU_DIR}" -I"${OS_MEMORY_DIR}" -I"${OS_OPENFS_INC}"
             -c "${source}" -o "${output}"
-        DEPENDS ${source} ${ARCHIAOS_COMMON}/boot_info.h
-            ${ARCHIAOS_CPU_DIR}/cpuid.hpp
-            ${ARCHIAOS_CPU_DIR}/features.hpp
-            ${ARCHIAOS_CPU_DIR}/security.hpp
-            ${ARCHIAOS_CPU_DIR}/idt.hpp
-            ${ARCHIAOS_CPU_DIR}/gdt.hpp
-            ${ARCHIAOS_CPU_DIR}/tss.hpp
-            ${ARCHIAOS_CPU_DIR}/irq.hpp
-            ${ARCHIAOS_CPU_DIR}/lapic.hpp
-            ${ARCHIAOS_CPU_DIR}/ioapic.hpp
-            ${ARCHIAOS_CPU_DIR}/acpi.hpp
-            ${ARCHIAOS_CPU_DIR}/smp.hpp
-            ${ARCHIAOS_CPU_DIR}/scheduler.hpp
-            ${ARCHIAOS_MEMORY_DIR}/paging.hpp
-            ${ARCHIAOS_MEMORY_DIR}/pmm.hpp
-            ${ARCHIAOS_MEMORY_DIR}/vmm.hpp
-            ${ARCHIAOS_MEMORY_DIR}/heap.hpp
-            ${ARCHIAOS_MEMORY_DIR}/address_space.hpp
-            ${ARCHIAOS_PROCESS_DIR}/process.hpp
+        DEPENDS ${source} ${OS_COMMON}/boot_info.h
+            ${OS_CPU_DIR}/cpuid.hpp
+            ${OS_CPU_DIR}/features.hpp
+            ${OS_CPU_DIR}/security.hpp
+            ${OS_CPU_DIR}/idt.hpp
+            ${OS_CPU_DIR}/gdt.hpp
+            ${OS_CPU_DIR}/tss.hpp
+            ${OS_CPU_DIR}/irq.hpp
+            ${OS_CPU_DIR}/lapic.hpp
+            ${OS_CPU_DIR}/ioapic.hpp
+            ${OS_CPU_DIR}/acpi.hpp
+            ${OS_CPU_DIR}/smp.hpp
+            ${OS_CPU_DIR}/scheduler.hpp
+            ${OS_MEMORY_DIR}/paging.hpp
+            ${OS_MEMORY_DIR}/pmm.hpp
+            ${OS_MEMORY_DIR}/vmm.hpp
+            ${OS_MEMORY_DIR}/heap.hpp
+            ${OS_MEMORY_DIR}/address_space.hpp
+            ${OS_PROCESS_DIR}/process.hpp
     )
 endfunction()
 
-function(archiaos_kernel_asm_compile output source)
+function(os_kernel_asm_compile output source)
     add_custom_command(
         OUTPUT ${output}
-        COMMAND "${ARCHIAOS_CLANG}" -target x86_64-pc-none-elf
+        COMMAND "${OS_CLANG}" -target x86_64-pc-none-elf
             -ffreestanding -O2 -fno-pie -fno-asynchronous-unwind-tables
             -mno-red-zone
             -c "${source}" -o "${output}"
@@ -169,199 +169,199 @@ function(archiaos_kernel_asm_compile output source)
     )
 endfunction()
 
-function(archiaos_openfs_c_compile output source)
+function(os_openfs_c_compile output source)
     add_custom_command(
         OUTPUT ${output}
-        COMMAND "${ARCHIAOS_CLANG}" -target x86_64-pc-none-elf
+        COMMAND "${OS_CLANG}" -target x86_64-pc-none-elf
             -x c -std=c11 -ffreestanding -O2 -Wall -Wextra -Werror -Wno-logical-op-parentheses -fno-builtin
             -fno-stack-protector -fno-pie -fno-asynchronous-unwind-tables
             -mgeneral-regs-only -mcmodel=kernel -mno-red-zone -mno-sse -mno-sse2
-            -I"${ARCHIAOS_OPENFS_COMPAT}" -I"${ARCHIAOS_OPENFS_INC}"
+            -I"${OS_OPENFS_COMPAT}" -I"${OS_OPENFS_INC}"
             -c "${source}" -o "${output}"
         DEPENDS ${source}
     )
 endfunction()
 
-function(archiaos_openfs_cpp_compile output source)
+function(os_openfs_cpp_compile output source)
     add_custom_command(
         OUTPUT ${output}
-        COMMAND "${ARCHIAOS_CLANG}" -target x86_64-pc-none-elf
+        COMMAND "${OS_CLANG}" -target x86_64-pc-none-elf
             -std=c++20 -ffreestanding -O2 -Wall -Wextra -Werror -fno-builtin
             -fno-exceptions -fno-rtti -fno-stack-protector -fno-pie
             -fno-asynchronous-unwind-tables -fno-threadsafe-statics
             -mgeneral-regs-only -mcmodel=kernel -mno-red-zone -mno-sse -mno-sse2
-            -I"${ARCHIAOS_COMMON}" -I"${ARCHIAOS_CPU_DIR}" -I"${ARCHIAOS_MEMORY_DIR}"
-            -I"${ARCHIAOS_OPENFS_INC}"
+            -I"${OS_COMMON}" -I"${OS_CPU_DIR}" -I"${OS_MEMORY_DIR}"
+            -I"${OS_OPENFS_INC}"
             -c "${source}" -o "${output}"
         DEPENDS ${source}
     )
 endfunction()
 
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_OBJ} ${ARCHIAOS_KERNEL_DIR}/kernel.cpp)
-archiaos_kernel_asm_compile(${ARCHIAOS_KERNEL_ENTRY_OBJ} ${ARCHIAOS_KERNEL_DIR}/entry.S)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_MEMORY_OBJ} ${ARCHIAOS_MEMORY_DIR}/memory.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_ACPI_OBJ} ${ARCHIAOS_CPU_DIR}/acpi.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_EXCEPTION_OBJ} ${ARCHIAOS_CPU_DIR}/exception.cpp)
-archiaos_kernel_asm_compile(${ARCHIAOS_KERNEL_GDT_OBJ} ${ARCHIAOS_CPU_DIR}/gdt.S)
-archiaos_kernel_asm_compile(${ARCHIAOS_KERNEL_IDT_OBJ} ${ARCHIAOS_CPU_DIR}/idt.S)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_IRQ_OBJ} ${ARCHIAOS_CPU_DIR}/irq.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_LAPIC_OBJ} ${ARCHIAOS_CPU_DIR}/lapic.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_IOAPIC_OBJ} ${ARCHIAOS_CPU_DIR}/ioapic.cpp)
-archiaos_kernel_asm_compile(${ARCHIAOS_KERNEL_TSS_OBJ} ${ARCHIAOS_CPU_DIR}/tss.S)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_PAGING_OBJ} ${ARCHIAOS_MEMORY_DIR}/paging.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_PAGING_TEST_OBJ} ${ARCHIAOS_MEMORY_DIR}/tests/paging_test.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_PMM_OBJ} ${ARCHIAOS_MEMORY_DIR}/pmm.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_PMM_TEST_OBJ} ${ARCHIAOS_MEMORY_DIR}/tests/pmm_test.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_CPUID_OBJ} ${ARCHIAOS_CPU_DIR}/cpuid.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_CPU_REPORT_OBJ} ${ARCHIAOS_CPU_DIR}/cpu_report.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_SECURITY_OBJ} ${ARCHIAOS_CPU_DIR}/security.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_SMP_OBJ} ${ARCHIAOS_CPU_DIR}/smp.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_SCHEDULER_OBJ} ${ARCHIAOS_CPU_DIR}/scheduler.cpp)
-archiaos_kernel_asm_compile(${ARCHIAOS_KERNEL_SMP_TRAMPOLINE_OBJ} ${ARCHIAOS_CPU_DIR}/smp_trampoline.S)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_VMM_OBJ} ${ARCHIAOS_MEMORY_DIR}/vmm.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_HEAP_OBJ} ${ARCHIAOS_MEMORY_DIR}/heap.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_ADDRESS_SPACE_OBJ} ${ARCHIAOS_MEMORY_DIR}/address_space.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_PROCESS_OBJ} ${ARCHIAOS_PROCESS_DIR}/process.cpp)
-archiaos_kernel_asm_compile(${ARCHIAOS_KERNEL_RING3_OBJ} ${ARCHIAOS_PROCESS_DIR}/ring3.S)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_IPC_OBJ} ${ARCHIAOS_PROCESS_DIR}/ipc.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_VFS_OBJ} ${ARCHIAOS_FS_DIR}/vfs.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_PCI_OBJ} ${ARCHIAOS_DRIVERS_DIR}/pci.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_INPUT_OBJ} ${ARCHIAOS_DRIVERS_DIR}/input.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_GRAPHICS_OBJ} ${ARCHIAOS_DRIVERS_DIR}/graphics.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_GUI_OBJ} ${ARCHIAOS_DRIVERS_DIR}/gui.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_DEVICE_OBJ} ${ARCHIAOS_DRIVERS_DIR}/device.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_NET_OBJ} ${ARCHIAOS_DRIVERS_DIR}/net.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_BLOCK_OBJ} ${ARCHIAOS_DRIVERS_DIR}/block.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_GPT_OBJ} ${ARCHIAOS_FS_DIR}/gpt.cpp)
-archiaos_kernel_compile(${ARCHIAOS_KERNEL_STORAGE_OBJ} ${ARCHIAOS_DRIVERS_DIR}/storage.cpp)
+os_kernel_compile(${OS_KERNEL_OBJ} ${OS_KERNEL_DIR}/kernel.cpp)
+os_kernel_asm_compile(${OS_KERNEL_ENTRY_OBJ} ${OS_KERNEL_DIR}/entry.S)
+os_kernel_compile(${OS_KERNEL_MEMORY_OBJ} ${OS_MEMORY_DIR}/memory.cpp)
+os_kernel_compile(${OS_KERNEL_ACPI_OBJ} ${OS_CPU_DIR}/acpi.cpp)
+os_kernel_compile(${OS_KERNEL_EXCEPTION_OBJ} ${OS_CPU_DIR}/exception.cpp)
+os_kernel_asm_compile(${OS_KERNEL_GDT_OBJ} ${OS_CPU_DIR}/gdt.S)
+os_kernel_asm_compile(${OS_KERNEL_IDT_OBJ} ${OS_CPU_DIR}/idt.S)
+os_kernel_compile(${OS_KERNEL_IRQ_OBJ} ${OS_CPU_DIR}/irq.cpp)
+os_kernel_compile(${OS_KERNEL_LAPIC_OBJ} ${OS_CPU_DIR}/lapic.cpp)
+os_kernel_compile(${OS_KERNEL_IOAPIC_OBJ} ${OS_CPU_DIR}/ioapic.cpp)
+os_kernel_asm_compile(${OS_KERNEL_TSS_OBJ} ${OS_CPU_DIR}/tss.S)
+os_kernel_compile(${OS_KERNEL_PAGING_OBJ} ${OS_MEMORY_DIR}/paging.cpp)
+os_kernel_compile(${OS_KERNEL_PAGING_TEST_OBJ} ${OS_MEMORY_DIR}/tests/paging_test.cpp)
+os_kernel_compile(${OS_KERNEL_PMM_OBJ} ${OS_MEMORY_DIR}/pmm.cpp)
+os_kernel_compile(${OS_KERNEL_PMM_TEST_OBJ} ${OS_MEMORY_DIR}/tests/pmm_test.cpp)
+os_kernel_compile(${OS_KERNEL_CPUID_OBJ} ${OS_CPU_DIR}/cpuid.cpp)
+os_kernel_compile(${OS_KERNEL_CPU_REPORT_OBJ} ${OS_CPU_DIR}/cpu_report.cpp)
+os_kernel_compile(${OS_KERNEL_SECURITY_OBJ} ${OS_CPU_DIR}/security.cpp)
+os_kernel_compile(${OS_KERNEL_SMP_OBJ} ${OS_CPU_DIR}/smp.cpp)
+os_kernel_compile(${OS_KERNEL_SCHEDULER_OBJ} ${OS_CPU_DIR}/scheduler.cpp)
+os_kernel_asm_compile(${OS_KERNEL_SMP_TRAMPOLINE_OBJ} ${OS_CPU_DIR}/smp_trampoline.S)
+os_kernel_compile(${OS_KERNEL_VMM_OBJ} ${OS_MEMORY_DIR}/vmm.cpp)
+os_kernel_compile(${OS_KERNEL_HEAP_OBJ} ${OS_MEMORY_DIR}/heap.cpp)
+os_kernel_compile(${OS_KERNEL_ADDRESS_SPACE_OBJ} ${OS_MEMORY_DIR}/address_space.cpp)
+os_kernel_compile(${OS_KERNEL_PROCESS_OBJ} ${OS_PROCESS_DIR}/process.cpp)
+os_kernel_asm_compile(${OS_KERNEL_RING3_OBJ} ${OS_PROCESS_DIR}/ring3.S)
+os_kernel_compile(${OS_KERNEL_IPC_OBJ} ${OS_PROCESS_DIR}/ipc.cpp)
+os_kernel_compile(${OS_KERNEL_VFS_OBJ} ${OS_FS_DIR}/vfs.cpp)
+os_kernel_compile(${OS_KERNEL_PCI_OBJ} ${OS_DRIVERS_DIR}/pci.cpp)
+os_kernel_compile(${OS_KERNEL_INPUT_OBJ} ${OS_DRIVERS_DIR}/input.cpp)
+os_kernel_compile(${OS_KERNEL_GRAPHICS_OBJ} ${OS_DRIVERS_DIR}/graphics.cpp)
+os_kernel_compile(${OS_KERNEL_GUI_OBJ} ${OS_DRIVERS_DIR}/gui.cpp)
+os_kernel_compile(${OS_KERNEL_DEVICE_OBJ} ${OS_DRIVERS_DIR}/device.cpp)
+os_kernel_compile(${OS_KERNEL_NET_OBJ} ${OS_DRIVERS_DIR}/net.cpp)
+os_kernel_compile(${OS_KERNEL_BLOCK_OBJ} ${OS_DRIVERS_DIR}/block.cpp)
+os_kernel_compile(${OS_KERNEL_GPT_OBJ} ${OS_FS_DIR}/gpt.cpp)
+os_kernel_compile(${OS_KERNEL_STORAGE_OBJ} ${OS_DRIVERS_DIR}/storage.cpp)
 
-archiaos_openfs_c_compile(${ARCHIAOS_KERNEL_OPENFS_COMPAT_OBJ} ${ARCHIAOS_OPENFS_COMPAT}/openfs_kernel_compat.c)
-foreach(openfs_source IN LISTS ARCHIAOS_OPENFS_C_SOURCES)
+os_openfs_c_compile(${OS_KERNEL_OPENFS_COMPAT_OBJ} ${OS_OPENFS_COMPAT}/openfs_kernel_compat.c)
+foreach(openfs_source IN LISTS OS_OPENFS_C_SOURCES)
     get_filename_component(openfs_name ${openfs_source} NAME_WE)
-    set(openfs_object ${ARCHIAOS_BUILD}/archiaos_openfs_${openfs_name}.obj)
-    archiaos_openfs_c_compile(${openfs_object} ${ARCHIAOS_OPENFS_ROOT}/src/${openfs_source})
-    list(APPEND ARCHIAOS_KERNEL_OPENFS_OBJECTS ${openfs_object})
+    set(openfs_object ${OS_BUILD}/os_openfs_${openfs_name}.obj)
+    os_openfs_c_compile(${openfs_object} ${OS_OPENFS_ROOT}/src/${openfs_source})
+    list(APPEND OS_KERNEL_OPENFS_OBJECTS ${openfs_object})
 endforeach()
-archiaos_openfs_cpp_compile(${ARCHIAOS_KERNEL_OPENFS_ADAPTER_OBJ} ${ARCHIAOS_FS_DIR}/openfs_adapter.cpp)
-archiaos_openfs_cpp_compile(${ARCHIAOS_KERNEL_OPENFS_TEST_OBJ} ${ARCHIAOS_FS_DIR}/openfs_test.cpp)
+os_openfs_cpp_compile(${OS_KERNEL_OPENFS_ADAPTER_OBJ} ${OS_FS_DIR}/openfs_adapter.cpp)
+os_openfs_cpp_compile(${OS_KERNEL_OPENFS_TEST_OBJ} ${OS_FS_DIR}/openfs_test.cpp)
 
 add_custom_command(
-    OUTPUT ${ARCHIAOS_KERNEL_ELF}
-    COMMAND "${ARCHIAOS_LLD}" -m elf_x86_64
-        -T "${ARCHIAOS_KERNEL_DIR}/kernel.ld"
-        "${ARCHIAOS_KERNEL_OBJ}"
-        "${ARCHIAOS_KERNEL_ENTRY_OBJ}"
-        "${ARCHIAOS_KERNEL_MEMORY_OBJ}"
-        "${ARCHIAOS_KERNEL_ACPI_OBJ}"
-        "${ARCHIAOS_KERNEL_EXCEPTION_OBJ}"
-        "${ARCHIAOS_KERNEL_GDT_OBJ}"
-        "${ARCHIAOS_KERNEL_IDT_OBJ}"
-        "${ARCHIAOS_KERNEL_IRQ_OBJ}"
-        "${ARCHIAOS_KERNEL_LAPIC_OBJ}"
-        "${ARCHIAOS_KERNEL_IOAPIC_OBJ}"
-        "${ARCHIAOS_KERNEL_TSS_OBJ}"
-        "${ARCHIAOS_KERNEL_PAGING_OBJ}"
-        "${ARCHIAOS_KERNEL_PAGING_TEST_OBJ}"
-        "${ARCHIAOS_KERNEL_PMM_OBJ}"
-        "${ARCHIAOS_KERNEL_PMM_TEST_OBJ}"
-        "${ARCHIAOS_KERNEL_CPUID_OBJ}"
-        "${ARCHIAOS_KERNEL_CPU_REPORT_OBJ}"
-        "${ARCHIAOS_KERNEL_SECURITY_OBJ}"
-        "${ARCHIAOS_KERNEL_SMP_OBJ}"
-        "${ARCHIAOS_KERNEL_SCHEDULER_OBJ}"
-        "${ARCHIAOS_KERNEL_SMP_TRAMPOLINE_OBJ}"
-        "${ARCHIAOS_KERNEL_VMM_OBJ}" "${ARCHIAOS_KERNEL_HEAP_OBJ}"
-        "${ARCHIAOS_KERNEL_ADDRESS_SPACE_OBJ}"
-        "${ARCHIAOS_KERNEL_PROCESS_OBJ}" "${ARCHIAOS_KERNEL_RING3_OBJ}" "${ARCHIAOS_KERNEL_IPC_OBJ}" "${ARCHIAOS_KERNEL_VFS_OBJ}" "${ARCHIAOS_KERNEL_PCI_OBJ}" "${ARCHIAOS_KERNEL_INPUT_OBJ}" "${ARCHIAOS_KERNEL_GRAPHICS_OBJ}" "${ARCHIAOS_KERNEL_GUI_OBJ}" "${ARCHIAOS_KERNEL_DEVICE_OBJ}" "${ARCHIAOS_KERNEL_NET_OBJ}" "${ARCHIAOS_KERNEL_BLOCK_OBJ}" "${ARCHIAOS_KERNEL_GPT_OBJ}" "${ARCHIAOS_KERNEL_STORAGE_OBJ}"
-        "${ARCHIAOS_KERNEL_OPENFS_COMPAT_OBJ}" "${ARCHIAOS_KERNEL_OPENFS_ADAPTER_OBJ}" "${ARCHIAOS_KERNEL_OPENFS_TEST_OBJ}"
-        ${ARCHIAOS_KERNEL_OPENFS_OBJECTS}
-        -o "${ARCHIAOS_KERNEL_ELF}"
+    OUTPUT ${OS_KERNEL_ELF}
+    COMMAND "${OS_LLD}" -m elf_x86_64
+        -T "${OS_KERNEL_DIR}/kernel.ld"
+        "${OS_KERNEL_OBJ}"
+        "${OS_KERNEL_ENTRY_OBJ}"
+        "${OS_KERNEL_MEMORY_OBJ}"
+        "${OS_KERNEL_ACPI_OBJ}"
+        "${OS_KERNEL_EXCEPTION_OBJ}"
+        "${OS_KERNEL_GDT_OBJ}"
+        "${OS_KERNEL_IDT_OBJ}"
+        "${OS_KERNEL_IRQ_OBJ}"
+        "${OS_KERNEL_LAPIC_OBJ}"
+        "${OS_KERNEL_IOAPIC_OBJ}"
+        "${OS_KERNEL_TSS_OBJ}"
+        "${OS_KERNEL_PAGING_OBJ}"
+        "${OS_KERNEL_PAGING_TEST_OBJ}"
+        "${OS_KERNEL_PMM_OBJ}"
+        "${OS_KERNEL_PMM_TEST_OBJ}"
+        "${OS_KERNEL_CPUID_OBJ}"
+        "${OS_KERNEL_CPU_REPORT_OBJ}"
+        "${OS_KERNEL_SECURITY_OBJ}"
+        "${OS_KERNEL_SMP_OBJ}"
+        "${OS_KERNEL_SCHEDULER_OBJ}"
+        "${OS_KERNEL_SMP_TRAMPOLINE_OBJ}"
+        "${OS_KERNEL_VMM_OBJ}" "${OS_KERNEL_HEAP_OBJ}"
+        "${OS_KERNEL_ADDRESS_SPACE_OBJ}"
+        "${OS_KERNEL_PROCESS_OBJ}" "${OS_KERNEL_RING3_OBJ}" "${OS_KERNEL_IPC_OBJ}" "${OS_KERNEL_VFS_OBJ}" "${OS_KERNEL_PCI_OBJ}" "${OS_KERNEL_INPUT_OBJ}" "${OS_KERNEL_GRAPHICS_OBJ}" "${OS_KERNEL_GUI_OBJ}" "${OS_KERNEL_DEVICE_OBJ}" "${OS_KERNEL_NET_OBJ}" "${OS_KERNEL_BLOCK_OBJ}" "${OS_KERNEL_GPT_OBJ}" "${OS_KERNEL_STORAGE_OBJ}"
+        "${OS_KERNEL_OPENFS_COMPAT_OBJ}" "${OS_KERNEL_OPENFS_ADAPTER_OBJ}" "${OS_KERNEL_OPENFS_TEST_OBJ}"
+        ${OS_KERNEL_OPENFS_OBJECTS}
+        -o "${OS_KERNEL_ELF}"
     DEPENDS
-        ${ARCHIAOS_KERNEL_OBJ} ${ARCHIAOS_KERNEL_ENTRY_OBJ}
-        ${ARCHIAOS_KERNEL_MEMORY_OBJ} ${ARCHIAOS_KERNEL_ACPI_OBJ}
-        ${ARCHIAOS_KERNEL_EXCEPTION_OBJ} ${ARCHIAOS_KERNEL_GDT_OBJ}
-        ${ARCHIAOS_KERNEL_IDT_OBJ} ${ARCHIAOS_KERNEL_IRQ_OBJ}
-        ${ARCHIAOS_KERNEL_LAPIC_OBJ} ${ARCHIAOS_KERNEL_IOAPIC_OBJ} ${ARCHIAOS_KERNEL_TSS_OBJ}
-        ${ARCHIAOS_KERNEL_PAGING_OBJ} ${ARCHIAOS_KERNEL_PAGING_TEST_OBJ}
-        ${ARCHIAOS_KERNEL_PMM_OBJ}
-        ${ARCHIAOS_KERNEL_PMM_TEST_OBJ}
-        ${ARCHIAOS_KERNEL_CPUID_OBJ} ${ARCHIAOS_KERNEL_CPU_REPORT_OBJ}
-        ${ARCHIAOS_KERNEL_SECURITY_OBJ} ${ARCHIAOS_KERNEL_SMP_OBJ}
-        ${ARCHIAOS_KERNEL_SCHEDULER_OBJ}
-        ${ARCHIAOS_KERNEL_SMP_TRAMPOLINE_OBJ}
-        ${ARCHIAOS_KERNEL_VMM_OBJ} ${ARCHIAOS_KERNEL_HEAP_OBJ}
-        ${ARCHIAOS_KERNEL_ADDRESS_SPACE_OBJ}
-        ${ARCHIAOS_KERNEL_PROCESS_OBJ} ${ARCHIAOS_KERNEL_RING3_OBJ} ${ARCHIAOS_KERNEL_IPC_OBJ} ${ARCHIAOS_KERNEL_VFS_OBJ} ${ARCHIAOS_KERNEL_PCI_OBJ} ${ARCHIAOS_KERNEL_INPUT_OBJ} ${ARCHIAOS_KERNEL_GRAPHICS_OBJ} ${ARCHIAOS_KERNEL_GUI_OBJ} ${ARCHIAOS_KERNEL_DEVICE_OBJ} ${ARCHIAOS_KERNEL_NET_OBJ} ${ARCHIAOS_KERNEL_BLOCK_OBJ} ${ARCHIAOS_KERNEL_GPT_OBJ} ${ARCHIAOS_KERNEL_STORAGE_OBJ}
-        ${ARCHIAOS_KERNEL_DIR}/kernel.ld
-        ${ARCHIAOS_KERNEL_OPENFS_COMPAT_OBJ} ${ARCHIAOS_KERNEL_OPENFS_ADAPTER_OBJ}
-        ${ARCHIAOS_KERNEL_OPENFS_TEST_OBJ} ${ARCHIAOS_KERNEL_OPENFS_OBJECTS}
+        ${OS_KERNEL_OBJ} ${OS_KERNEL_ENTRY_OBJ}
+        ${OS_KERNEL_MEMORY_OBJ} ${OS_KERNEL_ACPI_OBJ}
+        ${OS_KERNEL_EXCEPTION_OBJ} ${OS_KERNEL_GDT_OBJ}
+        ${OS_KERNEL_IDT_OBJ} ${OS_KERNEL_IRQ_OBJ}
+        ${OS_KERNEL_LAPIC_OBJ} ${OS_KERNEL_IOAPIC_OBJ} ${OS_KERNEL_TSS_OBJ}
+        ${OS_KERNEL_PAGING_OBJ} ${OS_KERNEL_PAGING_TEST_OBJ}
+        ${OS_KERNEL_PMM_OBJ}
+        ${OS_KERNEL_PMM_TEST_OBJ}
+        ${OS_KERNEL_CPUID_OBJ} ${OS_KERNEL_CPU_REPORT_OBJ}
+        ${OS_KERNEL_SECURITY_OBJ} ${OS_KERNEL_SMP_OBJ}
+        ${OS_KERNEL_SCHEDULER_OBJ}
+        ${OS_KERNEL_SMP_TRAMPOLINE_OBJ}
+        ${OS_KERNEL_VMM_OBJ} ${OS_KERNEL_HEAP_OBJ}
+        ${OS_KERNEL_ADDRESS_SPACE_OBJ}
+        ${OS_KERNEL_PROCESS_OBJ} ${OS_KERNEL_RING3_OBJ} ${OS_KERNEL_IPC_OBJ} ${OS_KERNEL_VFS_OBJ} ${OS_KERNEL_PCI_OBJ} ${OS_KERNEL_INPUT_OBJ} ${OS_KERNEL_GRAPHICS_OBJ} ${OS_KERNEL_GUI_OBJ} ${OS_KERNEL_DEVICE_OBJ} ${OS_KERNEL_NET_OBJ} ${OS_KERNEL_BLOCK_OBJ} ${OS_KERNEL_GPT_OBJ} ${OS_KERNEL_STORAGE_OBJ}
+        ${OS_KERNEL_DIR}/kernel.ld
+        ${OS_KERNEL_OPENFS_COMPAT_OBJ} ${OS_KERNEL_OPENFS_ADAPTER_OBJ}
+        ${OS_KERNEL_OPENFS_TEST_OBJ} ${OS_KERNEL_OPENFS_OBJECTS}
 )
 
-function(archiaos_boot_compile output source)
+function(os_boot_compile output source)
     add_custom_command(
         OUTPUT ${output}
-        COMMAND "${ARCHIAOS_CLANG}" -target x86_64-pc-win32-coff
+        COMMAND "${OS_CLANG}" -target x86_64-pc-win32-coff
             -std=c++20 -ffreestanding -fshort-wchar -fno-builtin
             -fno-exceptions -fno-rtti -fno-stack-protector -fno-pie -fno-asynchronous-unwind-tables
             -fno-threadsafe-statics -mgeneral-regs-only -Wall -Wextra -Werror
             -mno-red-zone -mno-sse -mno-sse2
-            $<$<BOOL:${ARCHIAOS_BOOT_DEBUG}>:-DNOVOS_BOOT_DEBUG=1>
-            -I"${ARCHIAOS_BOOT_INC}" -I"${ARCHIAOS_COMMON}"
+            $<$<BOOL:${OS_BOOT_DEBUG}>:-DBOOT_DEBUG=1>
+            -I"${OS_BOOT_INC}" -I"${OS_COMMON}"
             -c "${source}" -o "${output}"
-        DEPENDS ${source} ${ARCHIAOS_BOOT_HEADERS}
+        DEPENDS ${source} ${OS_BOOT_HEADERS}
     )
 endfunction()
 
-archiaos_boot_compile(${ARCHIAOS_BOOT_MAIN_OBJ} ${ARCHIAOS_BOOT_DIR}/main.cpp)
-archiaos_boot_compile(${ARCHIAOS_BOOT_DEBUG_OBJ} ${ARCHIAOS_BOOT_DIR}/debug.cpp)
-archiaos_boot_compile(${ARCHIAOS_BOOT_FS_OBJ} ${ARCHIAOS_BOOT_DIR}/filesystem.cpp)
-archiaos_boot_compile(${ARCHIAOS_BOOT_ELF_OBJ} ${ARCHIAOS_BOOT_DIR}/elf_loader.cpp)
-archiaos_boot_compile(${ARCHIAOS_BOOT_FB_OBJ} ${ARCHIAOS_BOOT_DIR}/framebuffer.cpp)
-archiaos_boot_compile(${ARCHIAOS_BOOT_MM_OBJ} ${ARCHIAOS_BOOT_DIR}/memory_map.cpp)
-archiaos_boot_compile(${ARCHIAOS_BOOT_PAGING_OBJ} ${ARCHIAOS_BOOT_DIR}/boot_paging.cpp)
+os_boot_compile(${OS_BOOT_MAIN_OBJ} ${OS_BOOT_DIR}/main.cpp)
+os_boot_compile(${OS_BOOT_DEBUG_OBJ} ${OS_BOOT_DIR}/debug.cpp)
+os_boot_compile(${OS_BOOT_FS_OBJ} ${OS_BOOT_DIR}/filesystem.cpp)
+os_boot_compile(${OS_BOOT_ELF_OBJ} ${OS_BOOT_DIR}/elf_loader.cpp)
+os_boot_compile(${OS_BOOT_FB_OBJ} ${OS_BOOT_DIR}/framebuffer.cpp)
+os_boot_compile(${OS_BOOT_MM_OBJ} ${OS_BOOT_DIR}/memory_map.cpp)
+os_boot_compile(${OS_BOOT_PAGING_OBJ} ${OS_BOOT_DIR}/boot_paging.cpp)
 
 add_custom_command(
-    OUTPUT ${ARCHIAOS_BOOT_HANDOFF_OBJ}
-    COMMAND "${ARCHIAOS_CLANG}" -target x86_64-pc-win32-coff
-        -ffreestanding -c "${ARCHIAOS_BOOT_DIR}/handoff.S"
-        -o "${ARCHIAOS_BOOT_HANDOFF_OBJ}"
-    DEPENDS ${ARCHIAOS_BOOT_DIR}/handoff.S
+    OUTPUT ${OS_BOOT_HANDOFF_OBJ}
+    COMMAND "${OS_CLANG}" -target x86_64-pc-win32-coff
+        -ffreestanding -c "${OS_BOOT_DIR}/handoff.S"
+        -o "${OS_BOOT_HANDOFF_OBJ}"
+    DEPENDS ${OS_BOOT_DIR}/handoff.S
 )
 
 add_custom_command(
-    OUTPUT ${ARCHIAOS_BOOT_EFI}
-    COMMAND "${ARCHIAOS_LLD_LINK}"
+    OUTPUT ${OS_BOOT_EFI}
+    COMMAND "${OS_LLD_LINK}"
         /subsystem:efi_application
         /entry:efi_main
         /nodefaultlib
         /machine:x64
-        "${ARCHIAOS_BOOT_MAIN_OBJ}"
-        "${ARCHIAOS_BOOT_DEBUG_OBJ}"
-        "${ARCHIAOS_BOOT_FS_OBJ}"
-        "${ARCHIAOS_BOOT_ELF_OBJ}"
-        "${ARCHIAOS_BOOT_FB_OBJ}"
-        "${ARCHIAOS_BOOT_MM_OBJ}"
-        "${ARCHIAOS_BOOT_HANDOFF_OBJ}"
-        "${ARCHIAOS_BOOT_PAGING_OBJ}"
-        /out:"${ARCHIAOS_BOOT_EFI}"
+        "${OS_BOOT_MAIN_OBJ}"
+        "${OS_BOOT_DEBUG_OBJ}"
+        "${OS_BOOT_FS_OBJ}"
+        "${OS_BOOT_ELF_OBJ}"
+        "${OS_BOOT_FB_OBJ}"
+        "${OS_BOOT_MM_OBJ}"
+        "${OS_BOOT_HANDOFF_OBJ}"
+        "${OS_BOOT_PAGING_OBJ}"
+        /out:"${OS_BOOT_EFI}"
     DEPENDS
-        ${ARCHIAOS_BOOT_MAIN_OBJ} ${ARCHIAOS_BOOT_DEBUG_OBJ}
-        ${ARCHIAOS_BOOT_FS_OBJ} ${ARCHIAOS_BOOT_ELF_OBJ}
-        ${ARCHIAOS_BOOT_FB_OBJ} ${ARCHIAOS_BOOT_MM_OBJ}
-        ${ARCHIAOS_BOOT_HANDOFF_OBJ}
-        ${ARCHIAOS_BOOT_PAGING_OBJ}
-        ${ARCHIAOS_KERNEL_ELF}
+        ${OS_BOOT_MAIN_OBJ} ${OS_BOOT_DEBUG_OBJ}
+        ${OS_BOOT_FS_OBJ} ${OS_BOOT_ELF_OBJ}
+        ${OS_BOOT_FB_OBJ} ${OS_BOOT_MM_OBJ}
+        ${OS_BOOT_HANDOFF_OBJ}
+        ${OS_BOOT_PAGING_OBJ}
+        ${OS_KERNEL_ELF}
 )
 
 add_custom_command(
-    OUTPUT ${ARCHIAOS_ESP_BOOT}
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${ARCHIAOS_ESP_DIR}/EFI/BOOT"
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${ARCHIAOS_ESP_DIR}/EFI/ARCHIAOS"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ARCHIAOS_BOOT_EFI}" "${ARCHIAOS_ESP_BOOT}"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ARCHIAOS_KERNEL_ELF}" "${ARCHIAOS_ESP_KERNEL}"
-    DEPENDS ${ARCHIAOS_BOOT_EFI} ${ARCHIAOS_KERNEL_ELF}
+    OUTPUT ${OS_ESP_BOOT}
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${OS_ESP_DIR}/EFI/BOOT"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${OS_ESP_DIR}/EFI/OS"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${OS_BOOT_EFI}" "${OS_ESP_BOOT}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${OS_KERNEL_ELF}" "${OS_ESP_KERNEL}"
+    DEPENDS ${OS_BOOT_EFI} ${OS_KERNEL_ELF}
 )
 
-add_custom_target(archiaos_uefi_image ALL DEPENDS ${ARCHIAOS_ESP_BOOT})
-add_custom_target(archiaos_uefi_artifacts
-    DEPENDS ${ARCHIAOS_BOOT_EFI} ${ARCHIAOS_KERNEL_ELF} ${ARCHIAOS_ESP_BOOT})
+add_custom_target(os_uefi_image ALL DEPENDS ${OS_ESP_BOOT})
+add_custom_target(os_uefi_artifacts
+    DEPENDS ${OS_BOOT_EFI} ${OS_KERNEL_ELF} ${OS_ESP_BOOT})

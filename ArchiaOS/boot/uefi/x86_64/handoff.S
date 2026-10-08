@@ -1,7 +1,7 @@
 .text
-.globl archiaos_x86_64_handoff
+.globl x86_64_handoff
 
-archiaos_x86_64_handoff:
+x86_64_handoff:
     /*
      * UEFI/bootloader C++ side uses Microsoft x64 ABI:
      *   RCX = kernel entry

@@ -13,7 +13,7 @@ static constexpr uint64_t TRAMPOLINE_LIMIT = 0x100000ULL;
 static constexpr uint64_t TRAMPOLINE_MAILBOX_OFFSET = 0x400ULL;
 
 static_assert(
-    TRAMPOLINE_MAILBOX_OFFSET + sizeof(SmpTrampolineMailbox) <= NOVOS_PAGE_SIZE,
+    TRAMPOLINE_MAILBOX_OFFSET + sizeof(SmpTrampolineMailbox) <= PAGE_SIZE,
     "SMP trampoline mailbox must fit inside its mapped page");
 
 extern "C" unsigned char smp_trampoline_start[];
@@ -167,7 +167,7 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
     const uint64_t trampolineSize =
         static_cast<uint64_t>(smp_trampoline_end - smp_trampoline_start);
 
-    if (trampolineSize == 0 || trampolineSize > NOVOS_PAGE_SIZE)
+    if (trampolineSize == 0 || trampolineSize > PAGE_SIZE)
         return false;
 
     const uint64_t trampolinePhysical =
@@ -208,7 +208,7 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
     auto* trampoline =
         reinterpret_cast<unsigned char*>(trampolineVirtual);
 
-    for (uint64_t i = 0; i < NOVOS_PAGE_SIZE; ++i)
+    for (uint64_t i = 0; i < PAGE_SIZE; ++i)
         trampoline[i] = 0;
 
     for (uint64_t i = 0; i < trampolineSize; ++i)
@@ -284,7 +284,7 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
         mailbox->cr3_physical = cr3;
         mailbox->entry_virtual = entry;
         mailbox->stack_virtual =
-            (stackVirtual + NOVOS_PAGE_SIZE) & ~0xFULL;
+            (stackVirtual + PAGE_SIZE) & ~0xFULL;
         mailbox->cr0 = cr0;
         mailbox->cr4 = cr4;
         mailbox->efer = efer;

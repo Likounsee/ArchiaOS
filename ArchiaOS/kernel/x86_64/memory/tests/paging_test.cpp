@@ -65,7 +65,7 @@ extern "C" void paging_run_tests()
         0x0000000000200000ULL,
         0x0000000040000000ULL,
         0x0000000100000000ULL,
-        paging_max_physical_address() - NOVOS_PAGE_SIZE
+        paging_max_physical_address() - PAGE_SIZE
     };
 
     for (u64 physical : hhdmSamples)
@@ -82,7 +82,7 @@ extern "C" void paging_run_tests()
     }
 
     if (paging_physical_to_virtual(paging_max_physical_address()) != 0 ||
-        paging_virtual_to_physical(NOVOS_HHDM_BASE +
+        paging_virtual_to_physical(HHDM_BASE +
                                    paging_max_physical_address()) != 0)
     {
         fail("PAGING TEST FAIL: HHDM RANGE\n");
@@ -209,10 +209,10 @@ extern "C" void paging_run_tests()
     const u64 entry = paging_get_4k_entry(testPage);
 
     if ((entry & 0x000FFFFFFFFFF000ULL) != testPage ||
-        (entry & NOVOS_PAGE_PRESENT) == 0 ||
-        (entry & NOVOS_PAGE_WRITE) != 0 ||
-        (entry & NOVOS_PAGE_USER) != 0 ||
-        (entry & NOVOS_PAGE_NO_EXECUTE) == 0)
+        (entry & PAGE_PRESENT) == 0 ||
+        (entry & PAGE_WRITE) != 0 ||
+        (entry & PAGE_USER) != 0 ||
+        (entry & PAGE_NO_EXECUTE) == 0)
     {
         fail("PAGING TEST FAIL: PERMISSIONS\n");
     }
@@ -232,7 +232,7 @@ extern "C" void paging_run_tests()
         false
     };
 
-    if (!paging_map_4k(NOVOS_USER_VIRTUAL_BASE + 0x100000000ULL,
+    if (!paging_map_4k(USER_VIRTUAL_BASE + 0x100000000ULL,
                        userPage,
                        userReadOnly))
         fail("PAGING TEST FAIL: USER MAP\n");
@@ -245,7 +245,7 @@ extern "C" void paging_run_tests()
     const u64 kernelHeapPage = pmm_alloc_page();
     if (kernelHeapPage == 0)
         fail("PAGING TEST FAIL: KERNEL HEAP ALLOCATION\n");
-    if (paging_map_4k(NOVOS_KERNEL_HEAP_BASE,
+    if (paging_map_4k(KERNEL_HEAP_BASE,
                       kernelHeapPage,
                       PagingFlags{true, true, false, false, false}))
         fail("PAGING TEST FAIL: KERNEL HEAP USER PROMOTION\n");
@@ -256,11 +256,11 @@ extern "C" void paging_run_tests()
     auto* pml4Table =
         reinterpret_cast<volatile u64*>(pml4Virtual);
 
-    if ((pml4Table[0] & NOVOS_PAGE_USER) == 0 ||
-        (pml4Table[256] & NOVOS_PAGE_USER) != 0)
+    if ((pml4Table[0] & PAGE_USER) == 0 ||
+        (pml4Table[256] & PAGE_USER) != 0)
         fail("PAGING TEST FAIL: USER/HHDM ISOLATION\n");
 
-    if (!paging_unmap_4k(NOVOS_USER_VIRTUAL_BASE + 0x100000000ULL))
+    if (!paging_unmap_4k(USER_VIRTUAL_BASE + 0x100000000ULL))
         fail("PAGING TEST FAIL: USER UNMAP\n");
 
     pmm_free_page(userPage);

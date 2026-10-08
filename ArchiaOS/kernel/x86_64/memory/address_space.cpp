@@ -59,7 +59,7 @@ extern "C" bool address_space_map(
         physical_address == 0 ||
         physical_address >= paging_max_physical_address() ||
         (writable && executable) ||
-        virtual_address < NOVOS_USER_VIRTUAL_BASE ||
+        virtual_address < USER_VIRTUAL_BASE ||
         virtual_address >= NOVOS_USER_VIRTUAL_TOP)
         return false;
 
@@ -99,22 +99,22 @@ extern "C" bool address_space_map(
         }
     };
 
-    if (pml4[i4] & NOVOS_PAGE_HUGE)
+    if (pml4[i4] & PAGE_HUGE)
         return false;
 
-    if (!(pml4[i4] & NOVOS_PAGE_PRESENT))
+    if (!(pml4[i4] & PAGE_PRESENT))
     {
         const u64 page = new_table();
         if (!page)
             return false;
-        pml4[i4] = page | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE | NOVOS_PAGE_USER;
+        pml4[i4] = page | PAGE_PRESENT | PAGE_WRITE | PAGE_USER;
         created_pdpt = true;
     }
 
     const u64 pml4_flags = pml4[i4];
-    if (!(pml4_flags & NOVOS_PAGE_USER) ||
-        (executable && (pml4_flags & NOVOS_PAGE_NO_EXECUTE)) ||
-        (writable && !(pml4_flags & NOVOS_PAGE_WRITE)))
+    if (!(pml4_flags & PAGE_USER) ||
+        (executable && (pml4_flags & PAGE_NO_EXECUTE)) ||
+        (writable && !(pml4_flags & PAGE_WRITE)))
     {
         rollback_tables();
         return false;
@@ -128,13 +128,13 @@ extern "C" bool address_space_map(
         return false;
     }
 
-    if (pdpt[i3] & NOVOS_PAGE_HUGE)
+    if (pdpt[i3] & PAGE_HUGE)
     {
         rollback_tables();
         return false;
     }
 
-    if (!(pdpt[i3] & NOVOS_PAGE_PRESENT))
+    if (!(pdpt[i3] & PAGE_PRESENT))
     {
         const u64 page = new_table();
         if (!page)
@@ -142,14 +142,14 @@ extern "C" bool address_space_map(
             rollback_tables();
             return false;
         }
-        pdpt[i3] = page | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE | NOVOS_PAGE_USER;
+        pdpt[i3] = page | PAGE_PRESENT | PAGE_WRITE | PAGE_USER;
         created_pd = true;
     }
 
     const u64 pdpt_flags = pdpt[i3];
-    if (!(pdpt_flags & NOVOS_PAGE_USER) ||
-        (executable && (pdpt_flags & NOVOS_PAGE_NO_EXECUTE)) ||
-        (writable && !(pdpt_flags & NOVOS_PAGE_WRITE)))
+    if (!(pdpt_flags & PAGE_USER) ||
+        (executable && (pdpt_flags & PAGE_NO_EXECUTE)) ||
+        (writable && !(pdpt_flags & PAGE_WRITE)))
     {
         rollback_tables();
         return false;
@@ -163,13 +163,13 @@ extern "C" bool address_space_map(
         return false;
     }
 
-    if (pd[i2] & NOVOS_PAGE_HUGE)
+    if (pd[i2] & PAGE_HUGE)
     {
         rollback_tables();
         return false;
     }
 
-    if (!(pd[i2] & NOVOS_PAGE_PRESENT))
+    if (!(pd[i2] & PAGE_PRESENT))
     {
         const u64 page = new_table();
         if (!page)
@@ -177,14 +177,14 @@ extern "C" bool address_space_map(
             rollback_tables();
             return false;
         }
-        pd[i2] = page | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE | NOVOS_PAGE_USER;
+        pd[i2] = page | PAGE_PRESENT | PAGE_WRITE | PAGE_USER;
         created_pt = true;
     }
 
     const u64 pd_flags = pd[i2];
-    if (!(pd_flags & NOVOS_PAGE_USER) ||
-        (executable && (pd_flags & NOVOS_PAGE_NO_EXECUTE)) ||
-        (writable && !(pd_flags & NOVOS_PAGE_WRITE)))
+    if (!(pd_flags & PAGE_USER) ||
+        (executable && (pd_flags & PAGE_NO_EXECUTE)) ||
+        (writable && !(pd_flags & PAGE_WRITE)))
     {
         rollback_tables();
         return false;
@@ -198,15 +198,15 @@ extern "C" bool address_space_map(
         return false;
     }
 
-    if (pt[i1] & NOVOS_PAGE_PRESENT)
+    if (pt[i1] & PAGE_PRESENT)
     {
         rollback_tables();
         return false;
     }
 
-    u64 flags = NOVOS_PAGE_PRESENT | NOVOS_PAGE_USER;
-    if (writable) flags |= NOVOS_PAGE_WRITE;
-    if (!executable) flags |= NOVOS_PAGE_NO_EXECUTE;
+    u64 flags = PAGE_PRESENT | PAGE_USER;
+    if (writable) flags |= PAGE_WRITE;
+    if (!executable) flags |= PAGE_NO_EXECUTE;
     pt[i1] = physical_address | flags;
 
     return true;
@@ -221,7 +221,7 @@ static void destroy_table_level(u64 physical, unsigned int level)
     for (unsigned int i = 0; i < 512; ++i)
     {
         const u64 entry = entries[i];
-        if (!(entry & NOVOS_PAGE_PRESENT))
+        if (!(entry & PAGE_PRESENT))
             continue;
 
         if (level == 1)
@@ -231,7 +231,7 @@ static void destroy_table_level(u64 physical, unsigned int level)
             continue;
         }
 
-        if (entry & NOVOS_PAGE_HUGE)
+        if (entry & PAGE_HUGE)
         {
             entries[i] = 0;
             continue;
@@ -262,9 +262,9 @@ extern "C" bool address_space_destroy(AddressSpace* space)
     for (unsigned int i = 0; i < 256; ++i)
     {
         const u64 entry = pml4[i];
-        if (!(entry & NOVOS_PAGE_PRESENT))
+        if (!(entry & PAGE_PRESENT))
             continue;
-        if (entry & NOVOS_PAGE_HUGE)
+        if (entry & PAGE_HUGE)
             continue;
 
         const u64 child = entry & ~0xFFFULL;
@@ -292,35 +292,35 @@ extern "C" bool address_space_is_user_mapped(
     const AddressSpace* space, u64 virtual_address)
 {
     if (!space || !space->pml4_physical ||
-        virtual_address < NOVOS_USER_VIRTUAL_BASE ||
+        virtual_address < USER_VIRTUAL_BASE ||
         virtual_address >= NOVOS_USER_VIRTUAL_TOP)
         return false;
     auto* pml4 = table(space->pml4_physical);
     if (!pml4) return false;
     const u64 e4 = pml4[(virtual_address >> 39) & 0x1FF];
-    if (!(e4 & NOVOS_PAGE_PRESENT) || !(e4 & NOVOS_PAGE_USER)) return false;
+    if (!(e4 & PAGE_PRESENT) || !(e4 & PAGE_USER)) return false;
     auto* pdpt = table(e4 & ~0xFFFULL);
     if (!pdpt) return false;
     const u64 e3 = pdpt[(virtual_address >> 30) & 0x1FF];
-    if (!(e3 & NOVOS_PAGE_PRESENT) || !(e3 & NOVOS_PAGE_USER)) return false;
-    if (e3 & NOVOS_PAGE_HUGE) return true;
+    if (!(e3 & PAGE_PRESENT) || !(e3 & PAGE_USER)) return false;
+    if (e3 & PAGE_HUGE) return true;
     auto* pd = table(e3 & ~0xFFFULL);
     if (!pd) return false;
     const u64 e2 = pd[(virtual_address >> 21) & 0x1FF];
-    if (!(e2 & NOVOS_PAGE_PRESENT) || !(e2 & NOVOS_PAGE_USER)) return false;
-    if (e2 & NOVOS_PAGE_HUGE) return true;
+    if (!(e2 & PAGE_PRESENT) || !(e2 & PAGE_USER)) return false;
+    if (e2 & PAGE_HUGE) return true;
     auto* pt = table(e2 & ~0xFFFULL);
     if (!pt) return false;
     return (pt[(virtual_address >> 12) & 0x1FF] &
-            (NOVOS_PAGE_PRESENT | NOVOS_PAGE_USER)) ==
-           (NOVOS_PAGE_PRESENT | NOVOS_PAGE_USER);
+            (PAGE_PRESENT | PAGE_USER)) ==
+           (PAGE_PRESENT | PAGE_USER);
 }
 
 extern "C" bool address_space_is_user_executable(
     const AddressSpace* space, u64 virtual_address)
 {
     if (!space || !space->pml4_physical ||
-        virtual_address < NOVOS_USER_VIRTUAL_BASE ||
+        virtual_address < USER_VIRTUAL_BASE ||
         virtual_address >= NOVOS_USER_VIRTUAL_TOP)
         return false;
 
@@ -328,32 +328,32 @@ extern "C" bool address_space_is_user_executable(
     if (!pml4) return false;
 
     const u64 e4 = pml4[(virtual_address >> 39) & 0x1FF];
-    if (!(e4 & NOVOS_PAGE_PRESENT) || !(e4 & NOVOS_PAGE_USER) ||
-        (e4 & NOVOS_PAGE_NO_EXECUTE))
+    if (!(e4 & PAGE_PRESENT) || !(e4 & PAGE_USER) ||
+        (e4 & PAGE_NO_EXECUTE))
         return false;
 
     auto* pdpt = table(e4 & ~0xFFFULL);
     if (!pdpt) return false;
     const u64 e3 = pdpt[(virtual_address >> 30) & 0x1FF];
-    if (!(e3 & NOVOS_PAGE_PRESENT) || !(e3 & NOVOS_PAGE_USER) ||
-        (e3 & NOVOS_PAGE_NO_EXECUTE))
+    if (!(e3 & PAGE_PRESENT) || !(e3 & PAGE_USER) ||
+        (e3 & PAGE_NO_EXECUTE))
         return false;
-    if (e3 & NOVOS_PAGE_HUGE) return true;
+    if (e3 & PAGE_HUGE) return true;
 
     auto* pd = table(e3 & ~0xFFFULL);
     if (!pd) return false;
     const u64 e2 = pd[(virtual_address >> 21) & 0x1FF];
-    if (!(e2 & NOVOS_PAGE_PRESENT) || !(e2 & NOVOS_PAGE_USER) ||
-        (e2 & NOVOS_PAGE_NO_EXECUTE))
+    if (!(e2 & PAGE_PRESENT) || !(e2 & PAGE_USER) ||
+        (e2 & PAGE_NO_EXECUTE))
         return false;
-    if (e2 & NOVOS_PAGE_HUGE) return true;
+    if (e2 & PAGE_HUGE) return true;
 
     auto* pt = table(e2 & ~0xFFFULL);
     if (!pt) return false;
     const u64 e1 = pt[(virtual_address >> 12) & 0x1FF];
-    return (e1 & (NOVOS_PAGE_PRESENT | NOVOS_PAGE_USER)) ==
-               (NOVOS_PAGE_PRESENT | NOVOS_PAGE_USER) &&
-           (e1 & NOVOS_PAGE_NO_EXECUTE) == 0;
+    return (e1 & (PAGE_PRESENT | PAGE_USER)) ==
+               (PAGE_PRESENT | PAGE_USER) &&
+           (e1 & PAGE_NO_EXECUTE) == 0;
 }
 
 extern "C" void address_space_run_tests()
@@ -372,35 +372,35 @@ extern "C" void address_space_run_tests()
     space.active = false;
 
     if (address_space_map(
-            &space, NOVOS_USER_VIRTUAL_BASE, 0,
+            &space, USER_VIRTUAL_BASE, 0,
             true, false) ||
         address_space_map(
-            &space, NOVOS_USER_VIRTUAL_BASE, NOVOS_PMM_MAX_PHYSICAL_ADDRESS,
+            &space, USER_VIRTUAL_BASE, NOVOS_PMM_MAX_PHYSICAL_ADDRESS,
             true, false))
         for (;;) asm volatile("cli; hlt");
 
     const u64 paging_limit = paging_max_physical_address();
     if (paging_limit == 0 ||
         address_space_map(
-            &space, NOVOS_USER_VIRTUAL_BASE + NOVOS_PAGE_SIZE,
+            &space, USER_VIRTUAL_BASE + PAGE_SIZE,
             paging_limit, true, false))
         for (;;) asm volatile("cli; hlt");
 
     const u64 physical = pmm_alloc_page();
     if (!physical ||
-        !address_space_map(&space, NOVOS_USER_VIRTUAL_BASE, physical, true, false) ||
-        !address_space_is_user_mapped(&space, NOVOS_USER_VIRTUAL_BASE))
+        !address_space_map(&space, USER_VIRTUAL_BASE, physical, true, false) ||
+        !address_space_is_user_mapped(&space, USER_VIRTUAL_BASE))
         for (;;) asm volatile("cli; hlt");
 
     if (address_space_map(
-            &space, NOVOS_USER_VIRTUAL_BASE, physical, true, false))
+            &space, USER_VIRTUAL_BASE, physical, true, false))
         for (;;) asm volatile("cli; hlt");
 
     if (address_space_map(
-            &space, NOVOS_USER_VIRTUAL_BASE + NOVOS_PAGE_SIZE,
+            &space, USER_VIRTUAL_BASE + PAGE_SIZE,
             physical, true, true) ||
         address_space_is_user_mapped(
-            &space, NOVOS_USER_VIRTUAL_BASE + NOVOS_PAGE_SIZE))
+            &space, USER_VIRTUAL_BASE + PAGE_SIZE))
         for (;;) asm volatile("cli; hlt");
 
     if (address_space_is_user_mapped(&space, NOVOS_USER_VIRTUAL_TOP))
@@ -409,41 +409,41 @@ extern "C" void address_space_run_tests()
     const u64 executable_physical = pmm_alloc_page();
     if (!executable_physical ||
         !address_space_map(
-            &space, NOVOS_USER_VIRTUAL_BASE + 2 * NOVOS_PAGE_SIZE,
+            &space, USER_VIRTUAL_BASE + 2 * PAGE_SIZE,
             executable_physical, false, true) ||
         !address_space_is_user_executable(
-            &space, NOVOS_USER_VIRTUAL_BASE + 2 * NOVOS_PAGE_SIZE) ||
+            &space, USER_VIRTUAL_BASE + 2 * PAGE_SIZE) ||
         address_space_is_user_executable(
-            &space, NOVOS_USER_VIRTUAL_BASE))
+            &space, USER_VIRTUAL_BASE))
         for (;;) asm volatile("cli; hlt");
 
     auto* pml4 = table(space.pml4_physical);
     const unsigned int user_pml4_index =
-        (NOVOS_USER_VIRTUAL_BASE >> 39) & 0x1FF;
+        (USER_VIRTUAL_BASE >> 39) & 0x1FF;
     if (!pml4)
         for (;;) asm volatile("cli; hlt");
     const u64 saved_pml4_entry = pml4[user_pml4_index];
-    pml4[user_pml4_index] = saved_pml4_entry | NOVOS_PAGE_NO_EXECUTE;
+    pml4[user_pml4_index] = saved_pml4_entry | PAGE_NO_EXECUTE;
     if (address_space_is_user_executable(
-            &space, NOVOS_USER_VIRTUAL_BASE + 2 * NOVOS_PAGE_SIZE))
+            &space, USER_VIRTUAL_BASE + 2 * PAGE_SIZE))
         for (;;) asm volatile("cli; hlt");
     pml4[user_pml4_index] = saved_pml4_entry;
 
-    pml4[user_pml4_index] = saved_pml4_entry & ~NOVOS_PAGE_WRITE;
+    pml4[user_pml4_index] = saved_pml4_entry & ~PAGE_WRITE;
     const u64 blocked_write_physical = pmm_alloc_page();
     if (!blocked_write_physical ||
         address_space_map(
-            &space, NOVOS_USER_VIRTUAL_BASE + 4 * NOVOS_PAGE_SIZE,
+            &space, USER_VIRTUAL_BASE + 4 * PAGE_SIZE,
             blocked_write_physical, true, false))
         for (;;) asm volatile("cli; hlt");
     pmm_free_page(blocked_write_physical);
     pml4[user_pml4_index] = saved_pml4_entry;
 
-    pml4[user_pml4_index] = saved_pml4_entry | NOVOS_PAGE_NO_EXECUTE;
+    pml4[user_pml4_index] = saved_pml4_entry | PAGE_NO_EXECUTE;
     const u64 blocked_exec_physical = pmm_alloc_page();
     if (!blocked_exec_physical ||
         address_space_map(
-            &space, NOVOS_USER_VIRTUAL_BASE + 3 * NOVOS_PAGE_SIZE,
+            &space, USER_VIRTUAL_BASE + 3 * PAGE_SIZE,
             blocked_exec_physical, false, true))
         for (;;) asm volatile("cli; hlt");
     pmm_free_page(blocked_exec_physical);

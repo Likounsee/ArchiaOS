@@ -4,7 +4,7 @@
 #include <stddef.h>
 
 /*
- * Stable UEFI -> ArchiaOS handoff contract.
+ * Stable UEFI -> OS handoff contract.
  *
  * ABI rules:
  *   - fixed-width integer fields only;
@@ -51,9 +51,9 @@ struct BootInfo
     uint64_t pmm_bitmap_size;
 };
 
-static constexpr uint32_t NOVOS_BOOT_INFO_MAGIC = 0x4F564F4E;
-static constexpr uint32_t NOVOS_BOOT_INFO_VERSION = 3;
-static constexpr uint64_t NOVOS_BOOTLOADER_VERSION = 0x00020000ULL;
+static constexpr uint32_t BOOT_INFO_MAGIC = 0x4F564F4E;
+static constexpr uint32_t BOOT_INFO_VERSION = 3;
+static constexpr uint64_t BOOTLOADER_VERSION = 0x00020000ULL;
 
 static_assert(sizeof(BootInfo) == 176, "BootInfo ABI size changed");
 static_assert(offsetof(BootInfo, memory_map_address) == 16, "BootInfo ABI offset changed");

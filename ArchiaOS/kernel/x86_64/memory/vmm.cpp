@@ -9,15 +9,15 @@ static bool initialized = false;
 
 static bool valid_range(u64 base, u64 pages)
 {
-    if (pages == 0 || (base & (NOVOS_PAGE_SIZE - 1ULL)) != 0)
+    if (pages == 0 || (base & (PAGE_SIZE - 1ULL)) != 0)
         return false;
-    if (base < NOVOS_KERNEL_HEAP_BASE ||
-        base >= NOVOS_KERNEL_HEAP_BASE + NOVOS_KERNEL_HEAP_SIZE)
+    if (base < KERNEL_HEAP_BASE ||
+        base >= KERNEL_HEAP_BASE + KERNEL_HEAP_SIZE)
         return false;
-    if (pages > (NOVOS_KERNEL_HEAP_SIZE / NOVOS_PAGE_SIZE))
+    if (pages > (KERNEL_HEAP_SIZE / PAGE_SIZE))
         return false;
-    const u64 bytes = pages * NOVOS_PAGE_SIZE;
-    return base <= NOVOS_KERNEL_HEAP_BASE + NOVOS_KERNEL_HEAP_SIZE - bytes;
+    const u64 bytes = pages * PAGE_SIZE;
+    return base <= KERNEL_HEAP_BASE + KERNEL_HEAP_SIZE - bytes;
 }
 
 static bool overlaps(u64 a, u64 pages, const VmmRegion& b)
@@ -25,12 +25,12 @@ static bool overlaps(u64 a, u64 pages, const VmmRegion& b)
     if (!b.used ||
         pages == 0 ||
         b.pages == 0 ||
-        pages > UINT64_MAX / NOVOS_PAGE_SIZE ||
-        b.pages > UINT64_MAX / NOVOS_PAGE_SIZE)
+        pages > UINT64_MAX / PAGE_SIZE ||
+        b.pages > UINT64_MAX / PAGE_SIZE)
         return false;
 
-    const u64 bytes = pages * NOVOS_PAGE_SIZE;
-    const u64 other_bytes = b.pages * NOVOS_PAGE_SIZE;
+    const u64 bytes = pages * PAGE_SIZE;
+    const u64 other_bytes = b.pages * PAGE_SIZE;
 
     /* Treat corrupted metadata as non-overlapping only after proving both
        half-open ranges can be represented without wrapping. */
@@ -56,10 +56,10 @@ extern "C" u64 vmm_alloc_pages(
 {
     if (!initialized || pages == 0 || user || (writable && executable))
         return 0;
-    if (pages > (NOVOS_KERNEL_HEAP_SIZE / NOVOS_PAGE_SIZE))
+    if (pages > (KERNEL_HEAP_SIZE / PAGE_SIZE))
         return 0;
 
-    u64 cursor = NOVOS_KERNEL_HEAP_BASE;
+    u64 cursor = KERNEL_HEAP_BASE;
     for (unsigned int slot = 0; slot < VMM_MAX_REGIONS; ++slot)
     {
         bool conflict = false;
@@ -70,7 +70,7 @@ extern "C" u64 vmm_alloc_pages(
             if (overlaps(cursor, pages, regions[i]))
             {
                 conflict = true;
-                const u64 end = regions[i].base + regions[i].pages * NOVOS_PAGE_SIZE;
+                const u64 end = regions[i].base + regions[i].pages * PAGE_SIZE;
                 if (end > next) next = end;
             }
         }
@@ -81,7 +81,7 @@ extern "C" u64 vmm_alloc_pages(
 
             for (u64 page = 0; page < pages; ++page)
             {
-                const u64 va = cursor + page * NOVOS_PAGE_SIZE;
+                const u64 va = cursor + page * PAGE_SIZE;
                 if (paging_translate(va) != 0 || paging_get_4k_entry(va) != 0)
                     return 0;
             }
@@ -106,7 +106,7 @@ extern "C" u64 vmm_alloc_pages(
                 {
                     for (u64 j = 0; j < mapped; ++j)
                     {
-                        const u64 va = cursor + j * NOVOS_PAGE_SIZE;
+                        const u64 va = cursor + j * PAGE_SIZE;
                         const u64 pa = paging_translate(va);
                         paging_unmap_4k(va);
                         if (pa)
@@ -114,13 +114,13 @@ extern "C" u64 vmm_alloc_pages(
                     }
                     return 0;
                 }
-                if (!paging_map_4k(cursor + mapped * NOVOS_PAGE_SIZE,
+                if (!paging_map_4k(cursor + mapped * PAGE_SIZE,
                     physical, PagingFlags{writable, user, executable, false, false}))
                 {
                     pmm_free_page(physical);
                     for (u64 j = 0; j < mapped; ++j)
                     {
-                        const u64 va = cursor + j * NOVOS_PAGE_SIZE;
+                        const u64 va = cursor + j * PAGE_SIZE;
                         const u64 pa = paging_translate(va);
                         paging_unmap_4k(va);
                         if (pa)
@@ -149,7 +149,7 @@ extern "C" bool vmm_free_pages(u64 base, u64 pages)
             continue;
         for (u64 page = 0; page < pages; ++page)
         {
-            const u64 va = base + page * NOVOS_PAGE_SIZE;
+            const u64 va = base + page * PAGE_SIZE;
             if (paging_translate(va) == 0 ||
                 paging_get_4k_entry(va) == 0)
                 return false;
@@ -157,7 +157,7 @@ extern "C" bool vmm_free_pages(u64 base, u64 pages)
 
         for (u64 page = 0; page < pages; ++page)
         {
-            const u64 va = base + page * NOVOS_PAGE_SIZE;
+            const u64 va = base + page * PAGE_SIZE;
             const u64 pa = paging_translate(va);
             if (!paging_unmap_4k(va))
                 return false;
@@ -187,7 +187,7 @@ extern "C" bool vmm_reserve(u64 base, u64 pages, bool user)
      */
     for (u64 page = 0; page < pages; ++page)
     {
-        const u64 va = base + page * NOVOS_PAGE_SIZE;
+        const u64 va = base + page * PAGE_SIZE;
         if (paging_translate(va) != 0 || paging_get_4k_entry(va) != 0)
             return false;
     }
@@ -231,7 +231,7 @@ extern "C" void vmm_run_tests()
 {
     const u64 before = vmm_allocated_pages();
     if (vmm_alloc_pages(1, true, true, false) != 0 ||
-        vmm_reserve(NOVOS_KERNEL_HEAP_BASE, 1, true) ||
+        vmm_reserve(KERNEL_HEAP_BASE, 1, true) ||
         vmm_allocated_pages() != before)
         for (;;) asm volatile("cli; hlt");
     if (vmm_alloc_pages(1, false, true, true) != 0)
@@ -241,16 +241,16 @@ extern "C" void vmm_run_tests()
         for (;;) asm volatile("cli; hlt");
     const u64 occupiedPhysical = pmm_alloc_page();
     if (occupiedPhysical == 0 ||
-        !paging_map_4k(NOVOS_KERNEL_HEAP_BASE, occupiedPhysical,
+        !paging_map_4k(KERNEL_HEAP_BASE, occupiedPhysical,
                        PagingFlags{true, false, false, false, false}) ||
         vmm_alloc_pages(1, false, true, false) != 0 ||
-        vmm_reserve(NOVOS_KERNEL_HEAP_BASE, 1, false))
+        vmm_reserve(KERNEL_HEAP_BASE, 1, false))
         for (;;) asm volatile("cli; hlt");
-    if (!paging_unmap_4k(NOVOS_KERNEL_HEAP_BASE))
+    if (!paging_unmap_4k(KERNEL_HEAP_BASE))
         for (;;) asm volatile("cli; hlt");
     pmm_free_page(occupiedPhysical);
 
-    const u64 reserved = NOVOS_KERNEL_HEAP_BASE;
+    const u64 reserved = KERNEL_HEAP_BASE;
     if (!vmm_reserve(reserved, 2, false))
         for (;;) asm volatile("cli; hlt");
     const u64 allocation_around_reservation =
@@ -265,12 +265,12 @@ extern "C" void vmm_run_tests()
         for (;;) asm volatile("cli; hlt");
 
     const u64 base = vmm_alloc_pages(2, false, true, false);
-    if (base == 0 || !vmm_is_mapped(base) || !vmm_is_mapped(base + NOVOS_PAGE_SIZE))
+    if (base == 0 || !vmm_is_mapped(base) || !vmm_is_mapped(base + PAGE_SIZE))
         for (;;) asm volatile("cli; hlt");
     auto* bytes = reinterpret_cast<volatile unsigned char*>(base);
     bytes[0] = 0xA5;
-    bytes[NOVOS_PAGE_SIZE] = 0x5A;
-    if (bytes[0] != 0xA5 || bytes[NOVOS_PAGE_SIZE] != 0x5A)
+    bytes[PAGE_SIZE] = 0x5A;
+    if (bytes[0] != 0xA5 || bytes[PAGE_SIZE] != 0x5A)
         for (;;) asm volatile("cli; hlt");
     if (!vmm_free_pages(base, 2) || vmm_allocated_pages() != before)
         for (;;) asm volatile("cli; hlt");

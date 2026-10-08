@@ -37,14 +37,14 @@ void boot_debug_init(EFI_SYSTEM_TABLE* systemTable)
 
 void boot_debug(const char* text)
 {
-#if NOVOS_BOOT_DEBUG
+#if BOOT_DEBUG
     output_ascii(text);
 #endif
 }
 
 void boot_debug_hex(UINT64 value)
 {
-#if NOVOS_BOOT_DEBUG
+#if BOOT_DEBUG
     const char* digits = "0123456789ABCDEF";
     char text[19];
     text[0] = '0';

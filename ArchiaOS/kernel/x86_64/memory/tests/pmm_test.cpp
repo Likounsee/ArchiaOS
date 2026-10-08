@@ -52,7 +52,7 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
     if (bootInfo->kernel_image_base != 0)
     {
         const u64 reserved_page =
-            bootInfo->kernel_image_base & ~(NOVOS_PAGE_SIZE - 1ULL);
+            bootInfo->kernel_image_base & ~(PAGE_SIZE - 1ULL);
         pmm_free_page(reserved_page);
         if (pmm_free_page_count() != free_before)
         {
@@ -77,7 +77,7 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
 
     u64 above_page = pmm_alloc_page_above(0x00200000ULL);
     if (above_page == 0 ||
-        (above_page & (NOVOS_PAGE_SIZE - 1ULL)) != 0 ||
+        (above_page & (PAGE_SIZE - 1ULL)) != 0 ||
         above_page < 0x00200000ULL)
     {
         debug_str("PMM TEST FAIL: ABOVE ALLOCATION\n");
@@ -89,7 +89,7 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
     const u64 unaligned_limit = 0x00200001ULL;
     const u64 below_page = pmm_alloc_page_below(unaligned_limit);
     if (below_page == 0 || below_page >= unaligned_limit ||
-        (below_page & (NOVOS_PAGE_SIZE - 1ULL)) != 0)
+        (below_page & (PAGE_SIZE - 1ULL)) != 0)
     {
         debug_str("PMM TEST FAIL: UNALIGNED BELOW LIMIT\n");
         for (;;) asm volatile ("cli; hlt");
@@ -162,11 +162,11 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
      */
     for (u64 i = 0; i < 4; ++i)
     {
-        const u64 page = contiguous + i * NOVOS_PAGE_SIZE;
+        const u64 page = contiguous + i * PAGE_SIZE;
 
-        if ((page & (NOVOS_PAGE_SIZE - 1ULL)) != 0 ||
+        if ((page & (PAGE_SIZE - 1ULL)) != 0 ||
             page == 0 ||
-            page >= NOVOS_PMM_MAX_PHYSICAL_ADDRESS)
+            page >= PMM_MAX_PHYSICAL_ADDRESS)
         {
             debug_str("PMM TEST FAIL: CONTIGUOUS RANGE\n");
             for (;;) asm volatile ("cli; hlt");
@@ -176,7 +176,7 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
     debug_str("PMM CONTIGUOUS PASS\n");
 
     for (u64 i = 0; i < 4; ++i)
-        pmm_free_page(contiguous + i * NOVOS_PAGE_SIZE);
+        pmm_free_page(contiguous + i * PAGE_SIZE);
 
     if (pmm_free_page_count() != free_before_contiguous)
     {

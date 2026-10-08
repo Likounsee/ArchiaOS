@@ -56,7 +56,7 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo);
 
 extern "C" void kernel_main(BootInfo* bootInfo)
 {
-    debug_str("ARCHIAOS KERNEL STARTED\n");
+    debug_str("KERNEL STARTED\n");
     debug_str("Architecture: x86_64\n");
 
     if (!bootInfo)
@@ -65,14 +65,14 @@ extern "C" void kernel_main(BootInfo* bootInfo)
         halt();
     }
 
-    if (bootInfo->magic != NOVOS_BOOT_INFO_MAGIC)
+    if (bootInfo->magic != BOOT_INFO_MAGIC)
     {
         debug_str("[KERNEL] BootInfo BAD MAGIC\n");
         halt();
     }
 
     if (bootInfo->version == 0 ||
-        bootInfo->version > NOVOS_BOOT_INFO_VERSION ||
+        bootInfo->version > BOOT_INFO_VERSION ||
         bootInfo->size < sizeof(BootInfo))
     {
         debug_str("[KERNEL] BootInfo BAD VERSION/SIZE\n");

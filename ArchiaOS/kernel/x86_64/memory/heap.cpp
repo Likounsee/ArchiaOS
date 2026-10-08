@@ -25,7 +25,7 @@ extern "C" bool heap_initialize()
 extern "C" void* kmalloc(u64 size)
 {
     if (size == 0 ||
-        size > UINT64_MAX - (NOVOS_PAGE_SIZE - 1ULL))
+        size > UINT64_MAX - (PAGE_SIZE - 1ULL))
         return nullptr;
 
     HeapBlock* free_block = nullptr;
@@ -40,11 +40,11 @@ extern "C" void* kmalloc(u64 size)
     if (!free_block)
         return nullptr;
 
-    const u64 pages = (size + NOVOS_PAGE_SIZE - 1ULL) / NOVOS_PAGE_SIZE;
+    const u64 pages = (size + PAGE_SIZE - 1ULL) / PAGE_SIZE;
     const u64 base = vmm_alloc_pages(pages, false, true, false);
     if (!base) return nullptr;
 
-    *free_block = {base, pages * NOVOS_PAGE_SIZE, size, true};
+    *free_block = {base, pages * PAGE_SIZE, size, true};
     used_bytes += size;
     return reinterpret_cast<void*>(base);
 }
@@ -57,7 +57,7 @@ extern "C" void kfree(void* pointer)
     {
         if (block.used && block.base == base)
         {
-            const u64 pages = block.size / NOVOS_PAGE_SIZE;
+            const u64 pages = block.size / PAGE_SIZE;
             if (vmm_free_pages(base, pages))
             {
                 block.used = false;

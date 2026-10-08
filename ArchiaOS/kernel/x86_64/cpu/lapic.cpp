@@ -271,7 +271,7 @@ extern "C" bool lapic_initialize()
     if (!x2apic_mode)
     {
         const u64 physical = apic_base & APIC_BASE_MASK;
-        if (physical >= NOVOS_PMM_MAX_PHYSICAL_ADDRESS ||
+        if (physical >= PMM_MAX_PHYSICAL_ADDRESS ||
             !paging_map_4k(physical, physical, PagingFlags{
                 true, false, false, true, true}))
             return false;
