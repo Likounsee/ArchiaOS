@@ -375,7 +375,7 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     debug_str("ACPI: CPU/IOAPIC tables parsed\n");
 
     debug_str("IOAPIC: initializing redirection table\n");
-    if (!ioapic_initialize(acpi))
+    if (!ioapic_initialize(acpi) || !ioapic_initialize(acpi))
     {
         debug_str("[KERNEL] IOAPIC INIT FAILED\n");
         halt();
