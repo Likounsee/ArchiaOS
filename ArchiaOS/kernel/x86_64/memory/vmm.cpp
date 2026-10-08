@@ -44,6 +44,14 @@ static bool overlaps(u64 a, u64 pages, const VmmRegion& b)
 
 extern "C" bool vmm_initialize()
 {
+    /*
+     * Initialization is not a reset operation. Re-running it must not discard
+     * metadata for already mapped/reserved regions while leaving their page
+     * tables and physical allocations alive.
+     */
+    if (initialized)
+        return true;
+
     for (auto& region : regions)
         region = {};
     allocated_pages = 0;
@@ -267,6 +275,13 @@ extern "C" void vmm_run_tests()
     const u64 base = vmm_alloc_pages(2, false, true, false);
     if (base == 0 || !vmm_is_mapped(base) || !vmm_is_mapped(base + PAGE_SIZE))
         for (;;) asm volatile("cli; hlt");
+
+    if (!vmm_initialize() ||
+        vmm_allocated_pages() != before + 2 ||
+        !vmm_is_mapped(base) ||
+        !vmm_is_mapped(base + PAGE_SIZE))
+        for (;;) asm volatile("cli; hlt");
+
     auto* bytes = reinterpret_cast<volatile unsigned char*>(base);
     bytes[0] = 0xA5;
     bytes[PAGE_SIZE] = 0x5A;
