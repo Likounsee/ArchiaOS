@@ -161,5 +161,19 @@ extern "C" bool ipc_test()
             return false;
     }
 
+    int extra_endpoints[IPC_MAX_ENDPOINTS - 1] = {};
+    for (unsigned int i = 0; i < IPC_MAX_ENDPOINTS - 1; ++i)
+    {
+        extra_endpoints[i] = ipc_create(1);
+        if (extra_endpoints[i] < 0)
+            return false;
+    }
+    if (ipc_create(1) >= 0)
+        return false;
+
+    for (unsigned int i = 0; i < IPC_MAX_ENDPOINTS - 1; ++i)
+        if (!ipc_destroy(extra_endpoints[i], 1))
+            return false;
+
     return ipc_destroy(endpoint, 1);
 }
