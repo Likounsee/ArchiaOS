@@ -12,6 +12,10 @@
 static constexpr uint64_t TRAMPOLINE_LIMIT = 0x100000ULL;
 static constexpr uint64_t TRAMPOLINE_MAILBOX_OFFSET = 0x400ULL;
 
+static_assert(
+    TRAMPOLINE_MAILBOX_OFFSET + sizeof(SmpTrampolineMailbox) <= NOVOS_PAGE_SIZE,
+    "SMP trampoline mailbox must fit inside its mapped page");
+
 extern "C" unsigned char smp_trampoline_start[];
 extern "C" unsigned char smp_trampoline_end[];
 
