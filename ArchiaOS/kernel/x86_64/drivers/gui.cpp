@@ -8,6 +8,9 @@ static bool initialized = false;
 
 extern "C" bool gui_initialize()
 {
+    if (initialized)
+        return true;
+
     for (auto& window : windows) window = {};
     next_id = 1;
     count = 0;
