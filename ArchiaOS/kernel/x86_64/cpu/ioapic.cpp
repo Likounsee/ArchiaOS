@@ -47,11 +47,15 @@ extern "C" bool ioapic_initialize(const AcpiInfo* acpi)
     if (acpi == nullptr || acpi->ioapic_address == 0 || acpi->ioapic_count == 0)
         return false;
     const unsigned long long base = acpi->ioapic_address & ~(PAGE_SIZE - 1ULL);
-    if (base >= PMM_MAX_PHYSICAL_ADDRESS ||
-        !paging_map_4k(base, base, PagingFlags{true, false, false, true, true}))
+    if (base >= PMM_MAX_PHYSICAL_ADDRESS)
         return false;
 
-    ioapic_base = reinterpret_cast<volatile unsigned int*>(base);
+    const unsigned long long mapped_base = paging_physical_to_virtual(base);
+    if (!mapped_base)
+        return false;
+
+    ioapic_base = reinterpret_cast<volatile unsigned int*>(
+        mapped_base + (acpi->ioapic_address & (PAGE_SIZE - 1ULL)));
     unsigned int version = ioapic_read_register(IOAPIC_VERSION);
     unsigned int count = ((version >> 16) & 0xFFU) + 1U;
     if (count == 0 || count > 256)
