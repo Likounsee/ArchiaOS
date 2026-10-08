@@ -169,7 +169,24 @@ extern "C" bool gpt_test() {
     for(unsigned int i=0;i<sizeof(h);++i)disk[SS+i]=reinterpret_cast<const uint8_t*>(&h)[i];
     GptPartition p[4]={};uint32_t n=0;
     if(!gpt_read_partitions(&d,p,4,&n)||n!=1||p[0].index!=1||p[0].first_lba!=2048||p[0].last_lba!=3071) return false;
-    disk[SS+24]^=1; return !gpt_read_partitions(&d,p,4,&n);
+    disk[SS+24]^=1;
+    if (gpt_read_partitions(&d,p,4,&n))
+        return false;
+
+    /* Partition I/O must reject lba == sector_count before subtraction;
+       otherwise an unsigned underflow can bypass the range check. */
+    GptBlockContext partition_ctx{&d,100,10,{}};
+    BlockDevice partition{
+        0,BLOCK_DEVICE_PARTITION,SS,10,
+        gpt_partition_read,gpt_partition_write,gpt_partition_flush,
+        &partition_ctx
+    };
+    uint8_t io_buffer[SS]{};
+    if (gpt_partition_read(&partition,10,1,io_buffer) ||
+        gpt_partition_write(&partition,10,1,io_buffer))
+        return false;
+
+    return gpt_partition_read(&partition,9,1,io_buffer);
 }
 
 extern "C" bool gpt_partition_is_system(const BlockDevice* d)
