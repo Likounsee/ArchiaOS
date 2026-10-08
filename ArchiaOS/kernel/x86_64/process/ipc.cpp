@@ -27,6 +27,7 @@ static inline uint64_t ipc_enter_critical()
 
 static inline void ipc_leave_critical(uint64_t flags)
 {
+    __atomic_clear(&ipc_lock, __ATOMIC_RELEASE);
     if (flags & (1ULL << 9))
         asm volatile("sti" : : : "memory");
 }
