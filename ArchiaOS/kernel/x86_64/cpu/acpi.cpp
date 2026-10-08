@@ -181,7 +181,7 @@ static unsigned long long find_madt(
                 ? read64(entry)
                 : static_cast<unsigned long long>(read32(entry));
 
-        if (!address_is_mapped(table_address))
+        if (!range_is_mapped(table_address, 36))
             continue;
 
         if (signature4(table_address, "APIC"))
@@ -339,7 +339,7 @@ extern "C" bool acpi_initialize(unsigned long long rsdp_address)
     {
         unsigned long long candidate = read64(rsdp + 24);
 
-        if (address_is_mapped(candidate) &&
+        if (range_is_mapped(candidate, 36) &&
             signature4(candidate, "XSDT"))
         {
             root_address = candidate;
@@ -352,7 +352,7 @@ extern "C" bool acpi_initialize(unsigned long long rsdp_address)
         unsigned long long candidate =
             static_cast<unsigned long long>(read32(rsdp + 16));
 
-        if (address_is_mapped(candidate) &&
+        if (range_is_mapped(candidate, 36) &&
             signature4(candidate, "RSDT"))
         {
             root_address = candidate;
@@ -399,7 +399,7 @@ extern "C" bool acpi_initialize(unsigned long long rsdp_address)
         unsigned long long rsdt =
             static_cast<unsigned long long>(read32(rsdp + 16));
 
-        if (address_is_mapped(rsdt) &&
+        if (range_is_mapped(rsdt, 36) &&
             signature4(rsdt, "RSDT"))
         {
             acpi_info.root_table_address = rsdt;
