@@ -287,7 +287,8 @@ extern "C" bool process_unregister(Process* process)
 
 extern "C" bool process_destroy(Process* process)
 {
-    if (!process || process == current_process || !process->pid)
+    if (!process || process == current_process || !process->pid ||
+        process->state != PROCESS_READY)
         return false;
 
     unsigned int table_slot = PROCESS_MAX;
@@ -563,6 +564,17 @@ extern "C" bool process_run_ring3_test()
     Process forged_running = process;
     forged_running.state = PROCESS_RUNNING;
     if (process_register(&forged_running))
+        return false;
+
+    static Process destroy_state{};
+    if (!process_create_elf(&destroy_state, image, sizeof(image)) ||
+        !process_register(&destroy_state))
+        return false;
+    destroy_state.state = PROCESS_RUNNING;
+    if (process_destroy(&destroy_state))
+        return false;
+    destroy_state.state = PROCESS_READY;
+    if (!process_destroy(&destroy_state))
         return false;
 
     if (!process_unregister(&process) || process_registered_count() != 0)
