@@ -86,8 +86,9 @@ static bool gpt_partition_read(const BlockDevice* d,uint64_t lba,uint32_t count,
     if(!d||!out||!d->context||lba>=d->sector_count||!count||static_cast<uint64_t>(count)>d->sector_count-lba)
         return false;
     auto* c=static_cast<GptBlockContext*>(d->context);
-    if(!c->parent||lba>UINT64_MAX-c->first_lba||
-       static_cast<uint64_t>(count)>c->sector_count-lba)
+    if(!c->parent || lba >= c->sector_count ||
+       lba > UINT64_MAX - c->first_lba ||
+       static_cast<uint64_t>(count) > c->sector_count - lba)
         return false;
     return block_read(c->parent,c->first_lba+lba,count,out);
 }
