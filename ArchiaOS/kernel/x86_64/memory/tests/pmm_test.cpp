@@ -68,6 +68,22 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
     }
     pmm_free_page(above_page);
 
+    const u64 free_before_unaligned_below = pmm_free_page_count();
+    const u64 unaligned_limit = 0x00200001ULL;
+    const u64 below_page = pmm_alloc_page_below(unaligned_limit);
+    if (below_page == 0 || below_page >= unaligned_limit ||
+        (below_page & (NOVOS_PAGE_SIZE - 1ULL)) != 0)
+    {
+        debug_str("PMM TEST FAIL: UNALIGNED BELOW LIMIT\n");
+        for (;;) asm volatile ("cli; hlt");
+    }
+    pmm_free_page(below_page);
+    if (pmm_free_page_count() != free_before_unaligned_below)
+    {
+        debug_str("PMM TEST FAIL: UNALIGNED BELOW COUNT\n");
+        for (;;) asm volatile ("cli; hlt");
+    }
+
     u64 page_a = pmm_alloc_page();
     u64 page_b = pmm_alloc_page();
 
