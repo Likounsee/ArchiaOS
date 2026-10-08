@@ -62,6 +62,9 @@ extern "C" bool scheduler_initialize(unsigned int cpu_count)
             reinterpret_cast<uint64_t>(task_stacks[cpu][1]) + SCHEDULER_TASK_STACK_SIZE
         };
 
+        /* task_count covers every live task, including the idle task (0). */
+        cpus[cpu].task_count = 2;
+
         task1_counters[cpu] = 0;
         kernel_thread_counters[cpu][0] = 0;
         kernel_thread_counters[cpu][1] = 0;
