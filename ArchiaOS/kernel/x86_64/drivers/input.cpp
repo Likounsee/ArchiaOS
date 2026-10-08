@@ -69,6 +69,8 @@ extern "C" bool input_test()
     const InputEvent event{INPUT_EVENT_KEYBOARD, 0x1E, 1};
     if (!input_push(&event) || input_pending() != 1)
         return false;
+    if (!input_initialize() || input_pending() != 1)
+        return false;
     InputEvent received{};
     return input_pop(&received) &&
            received.type == event.type &&
