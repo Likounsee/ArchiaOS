@@ -184,6 +184,9 @@ extern "C" bool pmm_initialize(BootInfo* bootInfo)
         bootInfo->memory_map_size /
         bootInfo->memory_descriptor_size;
 
+    if (bootInfo->memory_descriptor_count != entry_count)
+        return false;
+
     for (u64 i = 0; i < entry_count; ++i)
     {
         auto* descriptor =
