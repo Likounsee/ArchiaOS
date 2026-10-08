@@ -55,7 +55,7 @@ extern "C" ExceptionFrame* irq_dispatch(ExceptionFrame* frame)
     }
     else if (vector == 0x21)
     {
-        keyboard_last_scancode = io_in8(0x60);
+        __atomic_store_n(&keyboard_last_scancode, io_in8(0x60), __ATOMIC_RELEASE);
         __atomic_fetch_add(&keyboard_irq_count, 1ULL, __ATOMIC_RELAXED);
         const InputEvent event{INPUT_EVENT_KEYBOARD, keyboard_last_scancode, 1};
         input_push(&event);
@@ -125,5 +125,5 @@ extern "C" unsigned long long irq_keyboard_count_get()
 
 extern "C" unsigned char irq_keyboard_last_scancode()
 {
-    return keyboard_last_scancode;
+    return __atomic_load_n(&keyboard_last_scancode, __ATOMIC_ACQUIRE);
 }
