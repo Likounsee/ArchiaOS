@@ -149,7 +149,10 @@ extern "C" bool pmm_initialize(BootInfo* bootInfo)
     pmm_bitmap = reinterpret_cast<u64*>(bootInfo->pmm_bitmap_base);
     pmm_bitmap_words = (bootInfo->pmm_bitmap_size / 2ULL) / sizeof(u64);
     pmm_reserved_bitmap = pmm_bitmap + pmm_bitmap_words;
-    pmm_max_frames = pmm_bitmap_words * 64ULL;
+    const u64 bitmap_frames = pmm_bitmap_words * 64ULL;
+    pmm_max_frames = bitmap_frames < NOVOS_PMM_MAX_FRAMES
+        ? bitmap_frames
+        : NOVOS_PMM_MAX_FRAMES;
 
     for (u64 i = 0; i < pmm_bitmap_words; ++i)
     {
