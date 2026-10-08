@@ -300,6 +300,10 @@ extern "C" bool scheduler_run_test()
 
     if (!scheduler_set_ready_for_kernel())
         return false;
+    if (scheduler_set_local_cpu_index(1))
+        return false;
+    if (!scheduler_set_local_cpu_index(0))
+        return false;
     ExceptionFrame test_frame = {};
 
     for (unsigned int i = 0; i < SCHEDULER_QUANTUM_TICKS; ++i)
@@ -465,7 +469,7 @@ extern "C" bool scheduler_set_ready_for_kernel()
 
 extern "C" bool scheduler_set_local_cpu_index(unsigned int cpu_index)
 {
-    if (cpu_index >= SCHEDULER_MAX_CPUS)
+    if (cpu_index >= scheduler_cpu_count)
         return false;
 
     const unsigned long long value = static_cast<unsigned long long>(cpu_index) + 1ULL;
