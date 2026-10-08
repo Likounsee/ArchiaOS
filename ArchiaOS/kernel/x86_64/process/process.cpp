@@ -391,7 +391,7 @@ extern "C" bool process_handle_syscall(ExceptionFrame* frame)
         frame->user_rsp > current_process->user_stack_top ||
         (frame->user_rsp < current_process->user_stack_top &&
          !address_space_is_user_mapped(
-             &current_process->address_space, frame->user_rsp - 1ULL)))
+             &current_process->address_space, frame->user_rsp)))
         return false;
 
     if (frame->rip > UINT64_MAX - 2ULL ||
@@ -727,6 +727,21 @@ extern "C" bool process_run_ring3_test()
     invalid_user_iopl_frame.user_rsp = process.user_stack_top;
     invalid_user_iopl_frame.rip = process.entry;
     if (process_handle_syscall(&invalid_user_iopl_frame))
+        return false;
+
+    ExceptionFrame valid_low_stack_frame{};
+    valid_low_stack_frame.cs = 0x1B;
+    valid_low_stack_frame.user_ss = 0x23;
+    valid_low_stack_frame.rflags = 0x202ULL;
+    valid_low_stack_frame.user_rsp =
+        process.user_stack_top - 2ULL * NOVOS_PAGE_SIZE;
+    valid_low_stack_frame.rip = process.entry + 5ULL;
+    valid_low_stack_frame.rax = 1;
+    const unsigned long long low_stack_syscall_count =
+        process_syscall_count();
+    if (!process_handle_syscall(&valid_low_stack_frame) ||
+        valid_low_stack_frame.rax != process.pid ||
+        process_syscall_count() != low_stack_syscall_count + 1ULL)
         return false;
 
     ExceptionFrame invalid_user_stack_frame{};
