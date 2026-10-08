@@ -317,10 +317,14 @@ extern "C" bool scheduler_run_test()
     ExceptionFrame test_frame = {};
 
     const unsigned int saved_task_cpu = tasks[0][0].cpu;
+    const unsigned int saved_task_quantum = tasks[0][0].remaining_quantum;
     tasks[0][0].cpu = 1;
-    if (scheduler_timer_tick(0, &test_frame) != &test_frame)
+    tasks[0][0].remaining_quantum = 0;
+    if (scheduler_timer_tick(0, &test_frame) != &test_frame ||
+        scheduler_current_task(0) != 0)
         return false;
     tasks[0][0].cpu = saved_task_cpu;
+    tasks[0][0].remaining_quantum = saved_task_quantum;
 
     for (unsigned int i = 0; i < SCHEDULER_QUANTUM_TICKS; ++i)
         scheduler_timer_tick(0, &test_frame);
