@@ -119,6 +119,14 @@ extern "C" bool process_create_elf(
         process->pid != 0 || process->address_space.pml4_physical != 0)
         return false;
 
+    /*
+     * A successfully created process must have a registration slot available.
+     * Otherwise creation could consume an address space and physical pages
+     * while process_register() later has no way to publish or destroy it.
+     */
+    if (process_table_count >= PROCESS_MAX)
+        return false;
+
     const auto* header = reinterpret_cast<const Elf64Header*>(image);
     if (header->ident[0] != 0x7F || header->ident[1] != 'E' ||
         header->ident[2] != 'L' || header->ident[3] != 'F' ||
@@ -500,6 +508,13 @@ extern "C" bool process_run_ring3_test()
     };
     for (unsigned int i = 0; i < sizeof(user_code); ++i)
         image[0x100 + i] = user_code[i];
+
+    static Process full_table_process{};
+    const unsigned int saved_process_table_count = process_table_count;
+    process_table_count = PROCESS_MAX;
+    if (process_create_elf(&full_table_process, image, sizeof(image)))
+        return false;
+    process_table_count = saved_process_table_count;
 
     static Process invalid_wx{};
     put32(image + 68, 7);
