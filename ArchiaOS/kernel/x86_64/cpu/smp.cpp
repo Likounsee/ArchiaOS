@@ -298,6 +298,13 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
         if (!lapic_startup_cpu(apicId, startupVector))
         {
             smp_debug("SMP: AP STARTUP IPI FAILED\\n");
+            /*
+             * The AP did not receive a startup sequence, so this iteration's
+             * private stack cannot be consumed by an AP. Release it while
+             * retaining the trampoline for any AP already started.
+             */
+            (void)paging_unmap_4k(stackVirtual);
+            pmm_free_page(stackPhysical);
             return false;
         }
 
