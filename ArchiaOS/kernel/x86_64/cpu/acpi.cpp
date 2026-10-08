@@ -84,10 +84,21 @@ static unsigned long long find_rsdp_in_range(
     unsigned long long start,
     unsigned long long end)
 {
+    constexpr unsigned long long mappedLimit = 0x8000000000ULL;
+
+    if (start >= mappedLimit || end <= start)
+        return 0;
+
+    if (end > mappedLimit)
+        end = mappedLimit;
+
     start &= ~0xFULL;
 
+    if (start >= end || end - start < 36)
+        return 0;
+
     for (unsigned long long address = start;
-         address + 36 <= end;
+         address <= end - 36;
          address += 16)
     {
         if (!signature8(address, "RSD PTR "))
@@ -102,7 +113,8 @@ static unsigned long long find_rsdp_in_range(
         {
             unsigned int length = read32(address + 20);
 
-            if (length < 36 || length > 4096)
+            if (length < 36 || length > 4096 ||
+                !range_is_mapped(address, length))
                 continue;
 
             if (!checksum_ok(address, length))
