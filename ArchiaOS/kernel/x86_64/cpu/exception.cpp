@@ -66,6 +66,9 @@ extern "C" unsigned char tss_ist1_stack_top[];
 
 extern "C" ExceptionFrame* exception_dispatch(ExceptionFrame* frame)
 {
+    if (!frame)
+        return nullptr;
+
     const bool scheduler_timer_irq =
         frame->vector == 0x20 && scheduler_ready();
 
