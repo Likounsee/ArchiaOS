@@ -378,7 +378,18 @@ static bool ahci_prepare_port(uint64_t hba_base, uint32_t port_number,
     port.dma_physical = pmm_alloc_contiguous(2);
     if (!port.command_list_physical || !port.fis_physical ||
         !port.table_physical || !port.dma_physical)
+    {
+        if (port.command_list_physical)
+            pmm_free_page(port.command_list_physical);
+        if (port.fis_physical)
+            pmm_free_page(port.fis_physical);
+        if (port.table_physical)
+            pmm_free_page(port.table_physical);
+        if (port.dma_physical)
+            pmm_free_page(port.dma_physical);
+        port = {};
         return false;
+    }
 
     port.command_list = reinterpret_cast<uint8_t*>(
         paging_physical_to_virtual(port.command_list_physical));
@@ -389,7 +400,14 @@ static bool ahci_prepare_port(uint64_t hba_base, uint32_t port_number,
     port.dma = reinterpret_cast<uint8_t*>(
         paging_physical_to_virtual(port.dma_physical));
     if (!port.command_list || !port.fis || !port.table || !port.dma)
+    {
+        pmm_free_page(port.command_list_physical);
+        pmm_free_page(port.fis_physical);
+        pmm_free_page(port.table_physical);
+        pmm_free_page(port.dma_physical);
+        port = {};
         return false;
+    }
 
     zero_bytes(port.command_list, 1024);
     zero_bytes(port.fis, 256);
