@@ -158,6 +158,9 @@ extern "C" ExceptionFrame* scheduler_timer_tick(
         return current_frame;
 
     SchedulerCpu& cpu = cpus[cpu_index];
+    if (cpu.current_task >= SCHEDULER_MAX_TASKS)
+        return current_frame;
+
     SchedulerTask& current = tasks[cpu_index][cpu.current_task];
     current.saved_frame = current_frame;
 
@@ -278,6 +281,13 @@ extern "C" bool scheduler_run_test()
     if (!scheduler_set_cpu_apic_ids(&apic_id, 1))
         return false;
     if (scheduler_set_cpu_apic_ids(nullptr, 0))
+        return false;
+
+    cpus[0].current_task = SCHEDULER_MAX_TASKS;
+    if (!scheduler_set_ready_for_kernel())
+        return false;
+    ExceptionFrame invalid_task_frame = {};
+    if (scheduler_timer_tick(0, &invalid_task_frame) != &invalid_task_frame)
         return false;
 
     if (!scheduler_initialize(2))
