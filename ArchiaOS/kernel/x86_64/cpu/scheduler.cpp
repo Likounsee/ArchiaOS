@@ -295,8 +295,10 @@ static void scheduler_test_debug(unsigned int stage)
 extern "C" bool scheduler_run_test()
 {
     if (!scheduler_initialize(1))
+    {
         scheduler_test_debug(1);
         return false;
+    }
     if (scheduler_set_ready_for_kernel())
     {
         scheduler_test_debug(2);
