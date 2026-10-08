@@ -100,8 +100,20 @@ extern "C" bool scheduler_set_cpu_apic_ids(
 
 extern "C" void scheduler_cpu_start(unsigned int cpu_index)
 {
-    if (cpu_index < scheduler_cpu_count)
-        cpus[cpu_index].current_task = 0;
+    if (cpu_index >= scheduler_cpu_count)
+        return;
+
+    SchedulerCpu& cpu = cpus[cpu_index];
+    for (unsigned int id = 1; id < SCHEDULER_MAX_TASKS; ++id)
+    {
+        if (tasks[cpu_index][id].state == SCHEDULER_TASK_RUNNING)
+            tasks[cpu_index][id].state = SCHEDULER_TASK_READY;
+    }
+
+    cpu.current_task = 0;
+    cpu.next_task = 0;
+    tasks[cpu_index][0].state = SCHEDULER_TASK_RUNNING;
+    tasks[cpu_index][0].remaining_quantum = SCHEDULER_QUANTUM_TICKS;
 }
 
 extern "C" bool scheduler_ready()
@@ -398,6 +410,13 @@ extern "C" bool scheduler_run_test()
     tasks[0][2].state = SCHEDULER_TASK_STOPPED;
     if (cpus[0].task_count > 0)
         --cpus[0].task_count;
+
+    scheduler_cpu_start(0);
+    if (scheduler_current_task(0) != 0 ||
+        tasks[0][0].state != SCHEDULER_TASK_RUNNING ||
+        tasks[0][1].state != SCHEDULER_TASK_READY ||
+        tasks[0][2].state != SCHEDULER_TASK_STOPPED)
+        return false;
 
     unsigned int reused_id = 0;
     const bool reused = scheduler_create_kernel_thread(
