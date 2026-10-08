@@ -286,7 +286,11 @@ extern "C" void paging_run_tests()
         false
     };
 
-    if (!paging_map_4k(USER_VIRTUAL_BASE + 0x100000000ULL,
+    const u64 userVirtual = USER_VIRTUAL_BASE + 0x0000080000000000ULL;
+    const unsigned int userPml4Index =
+        static_cast<unsigned int>((userVirtual >> 39) & 0x1FFULL);
+
+    if (!paging_map_4k(userVirtual,
                        userPage,
                        userReadOnly))
         fail("PAGING TEST FAIL: USER MAP\n");
@@ -310,11 +314,11 @@ extern "C" void paging_run_tests()
     auto* pml4Table =
         reinterpret_cast<volatile u64*>(pml4Virtual);
 
-    if ((pml4Table[0] & PAGE_USER) == 0 ||
+    if ((pml4Table[userPml4Index] & PAGE_USER) == 0 ||
         (pml4Table[256] & PAGE_USER) != 0)
         fail("PAGING TEST FAIL: USER/HHDM ISOLATION\n");
 
-    if (!paging_unmap_4k(USER_VIRTUAL_BASE + 0x100000000ULL))
+    if (!paging_unmap_4k(userVirtual))
         fail("PAGING TEST FAIL: USER UNMAP\n");
 
     pmm_free_page(userPage);
