@@ -23,7 +23,11 @@ extern "C" bool device_manager_register(
     {
         if (!devices[i].id)
         {
-            devices[i] = {next_id++, static_cast<uint32_t>(type), 1, resource0, resource1};
+            const uint32_t id_value = next_id ? next_id : 1U;
+            next_id = id_value + 1U;
+            if (!next_id)
+                next_id = 1U;
+            devices[i] = {id_value, static_cast<uint32_t>(type), 1, resource0, resource1};
             *id = devices[i].id;
             ++count;
             return true;
