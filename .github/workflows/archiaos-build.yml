@@ -26,7 +26,7 @@ jobs:
           echo "clang=$CLANG"
           echo "lld=$LLD"
           echo "lld-link=$LLD_LINK"
-          cmake -S ArchiaOS -B ArchiaOS/build -G Ninja -DARCHIAOS_CLANG="$CLANG" -DARCHIAOS_LLD="$LLD" -DARCHIAOS_LLD_LINK="$LLD_LINK"
+          cmake -S ArchiaOS -B ArchiaOS/build -G Ninja -DOS_CLANG="$CLANG" -DOS_LLD="$LLD" -DOS_LLD_LINK="$LLD_LINK"
 
       - name: Build
         run: cmake --build ArchiaOS/build --config Release
