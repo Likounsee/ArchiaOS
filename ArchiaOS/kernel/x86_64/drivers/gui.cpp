@@ -100,5 +100,10 @@ extern "C" bool gui_test()
     if (!gui_dispatch_input(&event) || !gui_destroy_window(static_cast<uint32_t>(first)))
         return false;
 
+    next_id = UINT32_MAX;
+    const int wrapped = gui_create_window(50, 50, 40, 40);
+    if (wrapped <= 0)
+        return false;
+
     return gui_window_count() == 1;
 }
