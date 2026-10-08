@@ -29,6 +29,47 @@ static u64* table(u64 physical)
     return reinterpret_cast<u64*>(paging_physical_to_virtual(physical));
 }
 
+static bool physical_mapped_in_level(
+    u64 physical, u64 table_physical, unsigned int level)
+{
+    auto* entries = table(table_physical);
+    if (!entries)
+        return false;
+
+    const unsigned int limit = level == 4 ? 256 : 512;
+    for (unsigned int i = 0; i < limit; ++i)
+    {
+        const u64 entry = entries[i];
+        if (!(entry & PAGE_PRESENT))
+            continue;
+
+        const u64 entry_physical = entry & ~0xFFFULL;
+        if (level == 1)
+        {
+            if (entry_physical == physical)
+                return true;
+            continue;
+        }
+
+        if (entry & PAGE_HUGE)
+            continue;
+
+        if (physical_mapped_in_level(
+                physical, entry_physical, level - 1))
+            return true;
+    }
+
+    return false;
+}
+
+static bool physical_mapped_in_address_space(
+    const AddressSpace* space, u64 physical)
+{
+    return space && space->pml4_physical &&
+           physical_mapped_in_level(
+               physical, space->pml4_physical, 4);
+}
+
 extern "C" bool address_space_create(AddressSpace* space)
 {
     if (!space || space->pml4_physical != 0 || space->active)
@@ -73,6 +114,14 @@ extern "C" bool address_space_map(
         (writable && executable) ||
         virtual_address < USER_VIRTUAL_BASE ||
         virtual_address >= USER_VIRTUAL_TOP)
+        return false;
+
+    /*
+     * Address-space mappings own their physical pages. Reject aliases so
+     * destroying the address space cannot leave another virtual mapping
+     * pointing at a page returned to the PMM.
+     */
+    if (physical_mapped_in_address_space(space, physical_address))
         return false;
 
     auto* pml4 = table(space->pml4_physical);
@@ -441,6 +490,13 @@ extern "C" void address_space_run_tests()
 
     if (address_space_map(
             &space, USER_VIRTUAL_BASE, physical, true, false))
+        for (;;) asm volatile("cli; hlt");
+
+    if (address_space_map(
+            &space, USER_VIRTUAL_BASE + PAGE_SIZE,
+            physical, false, false) ||
+        address_space_is_user_mapped(
+            &space, USER_VIRTUAL_BASE + PAGE_SIZE))
         for (;;) asm volatile("cli; hlt");
 
     if (address_space_map(
