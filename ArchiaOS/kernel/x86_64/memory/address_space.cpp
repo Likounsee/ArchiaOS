@@ -570,7 +570,7 @@ extern "C" void address_space_run_tests()
     pmm_free_page(blocked_exec_physical);
     pml4[user_pml4_index] = saved_pml4_entry;
 
-    const active_map_physical = pmm_alloc_page();
+    const u64 active_map_physical = pmm_alloc_page();
     if (!active_map_physical ||
         !address_space_activate(&space) ||
         !address_space_map(
