@@ -570,6 +570,19 @@ extern "C" void address_space_run_tests()
     pmm_free_page(blocked_exec_physical);
     pml4[user_pml4_index] = saved_pml4_entry;
 
+    const active_map_physical = pmm_alloc_page();
+    if (!active_map_physical ||
+        !address_space_activate(&space) ||
+        !address_space_map(
+            &space, USER_VIRTUAL_BASE + 5 * PAGE_SIZE,
+            active_map_physical, true, false) ||
+        !address_space_is_user_mapped(
+            &space, USER_VIRTUAL_BASE + 5 * PAGE_SIZE))
+        for (;;) asm volatile("cli; hlt");
+
+    asm volatile("mov %0, %%cr3" : : "r"(test_cr3) : "memory");
+    space.active = false;
+
     if (!address_space_destroy(&space) || space.pml4_physical != 0)
         for (;;) asm volatile("cli; hlt");
 }
