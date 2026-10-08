@@ -364,6 +364,12 @@ extern "C" bool address_space_activate(AddressSpace* space)
     if (!space || !space->pml4_physical || space->active)
         return false;
 
+    u64 current_cr3 = 0;
+    asm volatile("mov %%cr3, %0" : "=r"(current_cr3));
+    current_cr3 &= ~0xFFFULL;
+    if (current_cr3 == space->pml4_physical)
+        return false;
+
     asm volatile("mov %0, %%cr3" : : "r"(space->pml4_physical) : "memory");
     space->active = true;
     return true;
@@ -464,6 +470,7 @@ extern "C" void address_space_run_tests()
     space.active = true;
     if (address_space_destroy(&space))
         for (;;) asm volatile("cli; hlt");
+    space.active = false;
 
     u64 test_cr3 = 0;
     asm volatile("mov %%cr3, %0" : "=r"(test_cr3));
