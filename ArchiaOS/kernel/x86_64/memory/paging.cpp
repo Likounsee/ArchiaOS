@@ -233,8 +233,27 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
     {
         if (!split_huge)
             return nullptr;
+
+        const u64 oldPdpte = pdpte;
         if (!split_1g_pdpte(&pdpte))
             return nullptr;
+
+        /*
+         * Splitting 1 GiB creates a new PD, but the requested 4 KiB leaf
+         * still requires splitting the selected 2 MiB PDE. If that second
+         * allocation fails, restore the original huge mapping and release
+         * the temporary PD so a failed map is observationally atomic.
+         */
+        auto* splitPd = table_pointer(pdpte & ~0xFFFULL);
+        const unsigned int splitIndex = (virtualAddress >> 21) & 0x1FF;
+        if ((splitPd[splitIndex] & NOVOS_PAGE_HUGE) != 0 &&
+            !split_2m_pde(&splitPd[splitIndex]))
+        {
+            const u64 splitPdPhysical = pdpte & ~0xFFFULL;
+            pdpte = oldPdpte;
+            pmm_free_page(splitPdPhysical);
+            return nullptr;
+        }
     }
 
     auto* table2 = table_pointer(pdpte & ~0xFFFULL);
