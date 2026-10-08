@@ -206,12 +206,19 @@ extern "C" bool pmm_initialize(BootInfo* bootInfo)
                 bootInfo->memory_map_address +
                 i * bootInfo->memory_descriptor_size);
 
-        if (!reclaimable_efi_type(descriptor->type))
-            continue;
-
-        release_range(
-            descriptor->physical_start,
-            descriptor->number_of_pages);
+        if (reclaimable_efi_type(descriptor->type))
+        {
+            release_range(
+                descriptor->physical_start,
+                descriptor->number_of_pages);
+        }
+        else
+        {
+            /* Firmware-reserved pages must remain non-releasable after boot. */
+            reserve_range(
+                descriptor->physical_start,
+                descriptor->number_of_pages);
+        }
     }
 
     /*
