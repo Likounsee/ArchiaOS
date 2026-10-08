@@ -243,7 +243,7 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
         if (apicId == currentApicId)
             continue;
 
-        const uint64_t stackPhysical = pmm_alloc_page();
+            const uint64_t stackPhysical = pmm_alloc_page();
         if (stackPhysical == 0)
             return false;
 
