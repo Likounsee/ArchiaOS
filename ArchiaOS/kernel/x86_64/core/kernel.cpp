@@ -314,7 +314,7 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     debug_str("CPU: INVALID OPCODE HANDLER OK\n");
 
     debug_str("IRQ: initializing LAPIC\n");
-    if (!irq_initialize())
+    if (!irq_initialize() || !irq_initialize())
     {
         debug_str("[KERNEL] IRQ/LAPIC INIT FAILED\n");
         halt();
