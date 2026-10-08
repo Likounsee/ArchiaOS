@@ -217,6 +217,7 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
         return nullptr;
 
     u64& pml4e = pml4[(virtualAddress >> 39) & 0x1FF];
+    const u64 original_pml4e = pml4e;
     bool created_pml4_table = false;
     bool created_pdpt_table = false;
     bool created_pd_table = false;
@@ -234,7 +235,7 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
 
         if (created_pdpt_table)
         {
-            pml4e = 0;
+            pml4e = created_pml4_table ? 0 : original_pml4e;
             pmm_free_page(pdpt_physical);
         }
 
