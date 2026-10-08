@@ -183,16 +183,22 @@ extern "C" bool ipc_test()
         return false;
 
     const int owner_endpoint = ipc_create(77);
-    if (owner_endpoint < 0 ||
-        !ipc_send(owner_endpoint, 42, 0x55U, 0xAAULL))
+    const int owner_endpoint2 = ipc_create(77);
+    if (owner_endpoint < 0 || owner_endpoint2 < 0 ||
+        !ipc_send(owner_endpoint, 42, 0x55U, 0xAAULL) ||
+        !ipc_send(owner_endpoint2, 42, 0x66U, 0xCCULL))
         return false;
 
     ipc_destroy_owner(77);
 
     IpcMessage destroyed_message{};
+    IpcMessage destroyed_message2{};
     if (ipc_send(owner_endpoint, 42, 0x56U, 0xBBULL) ||
+        ipc_send(owner_endpoint2, 42, 0x67U, 0xDDULL) ||
         ipc_receive(owner_endpoint, 77, &destroyed_message) ||
-        ipc_destroy(owner_endpoint, 77))
+        ipc_receive(owner_endpoint2, 77, &destroyed_message2) ||
+        ipc_destroy(owner_endpoint, 77) ||
+        ipc_destroy(owner_endpoint2, 77))
         return false;
 
     return true;
