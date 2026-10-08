@@ -415,6 +415,7 @@ extern "C" void address_space_run_tests()
     space.active = true;
     if (address_space_activate(&space))
         for (;;) asm volatile("cli; hlt");
+    asm volatile("mov %0, %%cr3" : : "r"(test_cr3) : "memory");
     space.active = false;
 
     if (address_space_map(
