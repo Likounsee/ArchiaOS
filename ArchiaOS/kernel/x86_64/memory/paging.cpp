@@ -220,6 +220,7 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
     bool created_pml4_table = false;
     bool created_pdpt_table = false;
     bool created_pd_table = false;
+    u64 pml4_table_physical = 0;
     u64 pdpt_physical = 0;
     u64 pd_physical = 0;
     u64 pt_physical = 0;
@@ -239,7 +240,10 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
         }
 
         if (created_pml4_table)
+        {
             pml4e = 0;
+            pmm_free_page(pml4_table_physical);
+        }
     };
 
     if ((pml4e & NOVOS_PAGE_PRESENT) == 0)
@@ -249,6 +253,7 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
         if (!table) return nullptr;
         pml4e = table | NOVOS_PAGE_PRESENT | NOVOS_PAGE_WRITE |
                 (user ? NOVOS_PAGE_USER : 0);
+        pml4_table_physical = table;
         created_pml4_table = true;
     }
     else if (user)
