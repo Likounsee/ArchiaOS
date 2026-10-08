@@ -380,6 +380,44 @@ extern "C" bool address_space_activate(AddressSpace* space)
     return true;
 }
 
+static u64 address_space_translate_test(const AddressSpace* space, u64 virtual_address)
+{
+    if (!space || !space->pml4_physical)
+        return 0;
+    auto* pml4 = table(space->pml4_physical);
+    if (!pml4)
+        return 0;
+    u64 entry = pml4[(virtual_address >> 39) & 0x1FFULL];
+    if (!(entry & PAGE_PRESENT) || (entry & PAGE_HUGE))
+        return 0;
+    auto* pdpt = table(entry & ~0xFFFULL);
+    if (!pdpt)
+        return 0;
+    entry = pdpt[(virtual_address >> 30) & 0x1FFULL];
+    if (!(entry & PAGE_PRESENT))
+        return 0;
+    if (entry & PAGE_HUGE)
+        return (entry & 0x000FFFFFC0000000ULL) |
+               (virtual_address & 0x3FFFFFFFULL);
+    auto* pd = table(entry & ~0xFFFULL);
+    if (!pd)
+        return 0;
+    entry = pd[(virtual_address >> 21) & 0x1FFULL];
+    if (!(entry & PAGE_PRESENT))
+        return 0;
+    if (entry & PAGE_HUGE)
+        return (entry & 0x000FFFFFFFE00000ULL) |
+               (virtual_address & 0x1FFFFFULL);
+    auto* pt = table(entry & ~0xFFFULL);
+    if (!pt)
+        return 0;
+    entry = pt[(virtual_address >> 12) & 0x1FFULL];
+    if (!(entry & PAGE_PRESENT))
+        return 0;
+    return (entry & 0x000FFFFFFFFFF000ULL) |
+           (virtual_address & 0xFFFULL);
+}
+
 extern "C" bool address_space_is_user_mapped(
     const AddressSpace* space, u64 virtual_address)
 {
@@ -480,6 +518,13 @@ extern "C" void address_space_run_tests()
         for (;;) asm volatile("cli; hlt");
 
     address_space_test_marker('D');
+    u64 current_rsp = 0;
+    asm volatile("mov %%rsp, %0" : "=r"(current_rsp));
+    if (!address_space_translate_test(&space, current_rsp) ||
+        !address_space_translate_test(
+            &space, reinterpret_cast<u64>(&address_space_activate)))
+        for (;;) asm volatile("cli; hlt");
+    address_space_test_marker('J');
     u64 test_cr3 = 0;
     asm volatile("mov %%cr3, %0" : "=r"(test_cr3));
     test_cr3 &= ~0xFFFULL;
