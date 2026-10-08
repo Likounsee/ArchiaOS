@@ -496,6 +496,7 @@ extern "C" void address_space_run_tests()
             true, false))
         for (;;) asm volatile("cli; hlt");
 
+    address_space_test_marker('E');
     const u64 paging_limit = paging_max_physical_address();
     if (paging_limit == 0 ||
         address_space_map(
@@ -503,6 +504,7 @@ extern "C" void address_space_run_tests()
             paging_limit, true, false))
         for (;;) asm volatile("cli; hlt");
 
+    address_space_test_marker('F');
     const u64 physical = pmm_alloc_page();
     if (!physical ||
         !address_space_map(&space, USER_VIRTUAL_BASE, physical, true, false) ||
