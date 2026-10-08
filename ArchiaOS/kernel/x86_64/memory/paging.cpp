@@ -223,7 +223,6 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
     u64 pml4_table_physical = 0;
     u64 pdpt_physical = 0;
     u64 pd_physical = 0;
-    u64 pt_physical = 0;
 
     auto rollback_created_tables = [&]() {
         if (created_pd_table)
