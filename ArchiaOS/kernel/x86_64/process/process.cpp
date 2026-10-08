@@ -662,6 +662,8 @@ extern "C" bool process_run_ring3_test()
     ExceptionFrame invalid_syscall_frame{};
     invalid_syscall_frame.user_rsp = process.user_stack_top;
     invalid_syscall_frame.cs = 0x1B;
+    invalid_syscall_frame.user_ss = 0x23;
+    invalid_syscall_frame.rflags = 0x202ULL;
     invalid_syscall_frame.rip = process.user_stack_top - NOVOS_PAGE_SIZE;
     if (process_handle_syscall(&invalid_syscall_frame))
         return false;
@@ -674,6 +676,8 @@ extern "C" bool process_run_ring3_test()
     ExceptionFrame overflow_syscall_frame{};
     overflow_syscall_frame.user_rsp = process.user_stack_top;
     overflow_syscall_frame.cs = 0x1B;
+    overflow_syscall_frame.user_ss = 0x23;
+    overflow_syscall_frame.rflags = 0x202ULL;
     overflow_syscall_frame.rip = UINT64_MAX - 1ULL;
     if (process_handle_syscall(&overflow_syscall_frame))
         return false;
@@ -682,6 +686,8 @@ extern "C" bool process_run_ring3_test()
     process.user_stack_top = NOVOS_PAGE_SIZE;
     ExceptionFrame malformed_stack_layout{};
     malformed_stack_layout.cs = 0x1B;
+    malformed_stack_layout.user_ss = 0x23;
+    malformed_stack_layout.rflags = 0x202ULL;
     malformed_stack_layout.user_rsp = NOVOS_PAGE_SIZE;
     malformed_stack_layout.rip = process.entry;
     if (process_handle_syscall(&malformed_stack_layout))
@@ -690,6 +696,8 @@ extern "C" bool process_run_ring3_test()
 
     ExceptionFrame invalid_user_stack_frame{};
     invalid_user_stack_frame.cs = 0x1B;
+    invalid_user_stack_frame.user_ss = 0x23;
+    invalid_user_stack_frame.rflags = 0x202ULL;
     invalid_user_stack_frame.user_rsp =
         process.user_stack_top - 3ULL * NOVOS_PAGE_SIZE;
     invalid_user_stack_frame.rip = process.entry + 5ULL;
@@ -704,6 +712,8 @@ extern "C" bool process_run_ring3_test()
     non_syscall_instruction.user_rsp = process.user_stack_top;
     non_syscall_instruction.user_rsp = process.user_stack_top;
     non_syscall_instruction.cs = 0x1B;
+    non_syscall_instruction.user_ss = 0x23;
+    non_syscall_instruction.rflags = 0x202ULL;
     non_syscall_instruction.rip = process.entry;
     non_syscall_instruction.rax = 1;
     if (process_handle_syscall(&non_syscall_instruction))
@@ -712,6 +722,8 @@ extern "C" bool process_run_ring3_test()
     ExceptionFrame valid_syscall_frame{};
     valid_syscall_frame.user_rsp = process.user_stack_top;
     valid_syscall_frame.cs = 0x1B;
+    valid_syscall_frame.user_ss = 0x23;
+    valid_syscall_frame.rflags = 0x202ULL;
     valid_syscall_frame.rip = process.entry + 5ULL;
     valid_syscall_frame.rax = 1;
     const unsigned long long syscall_before =
@@ -725,6 +737,8 @@ extern "C" bool process_run_ring3_test()
     ExceptionFrame create_endpoint_frame{};
     create_endpoint_frame.user_rsp = process.user_stack_top;
     create_endpoint_frame.cs = 0x1B;
+    create_endpoint_frame.user_ss = 0x23;
+    create_endpoint_frame.rflags = 0x202ULL;
     create_endpoint_frame.rip = process.entry + 7ULL;
     create_endpoint_frame.rax = 3;
     if (!process_handle_syscall(&create_endpoint_frame) ||
@@ -735,6 +749,8 @@ extern "C" bool process_run_ring3_test()
     ExceptionFrame destroy_endpoint_frame{};
     destroy_endpoint_frame.user_rsp = process.user_stack_top;
     destroy_endpoint_frame.cs = 0x1B;
+    destroy_endpoint_frame.user_ss = 0x23;
+    destroy_endpoint_frame.rflags = 0x202ULL;
     destroy_endpoint_frame.rip = process.entry + 7ULL;
     destroy_endpoint_frame.rax = 6;
     destroy_endpoint_frame.rbx = endpoint;
@@ -745,6 +761,8 @@ extern "C" bool process_run_ring3_test()
     ExceptionFrame destroyed_endpoint_frame{};
     destroyed_endpoint_frame.user_rsp = process.user_stack_top;
     destroyed_endpoint_frame.cs = 0x1B;
+    destroyed_endpoint_frame.user_ss = 0x23;
+    destroyed_endpoint_frame.rflags = 0x202ULL;
     destroyed_endpoint_frame.rip = process.entry + 7ULL;
     destroyed_endpoint_frame.rax = 6;
     destroyed_endpoint_frame.rbx = endpoint;
@@ -755,6 +773,8 @@ extern "C" bool process_run_ring3_test()
     ExceptionFrame invalid_endpoint_frame{};
     invalid_endpoint_frame.user_rsp = process.user_stack_top;
     invalid_endpoint_frame.cs = 0x1B;
+    invalid_endpoint_frame.user_ss = 0x23;
+    invalid_endpoint_frame.rflags = 0x202ULL;
     invalid_endpoint_frame.rip = process.entry + 7ULL;
     invalid_endpoint_frame.rax = 6;
     invalid_endpoint_frame.rbx = 32ULL;
