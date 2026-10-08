@@ -8,6 +8,9 @@ static bool initialized = false;
 
 extern "C" bool input_initialize()
 {
+    if (initialized)
+        return true;
+
     head = 0;
     tail = 0;
     initialized = true;
