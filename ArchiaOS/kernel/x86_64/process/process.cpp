@@ -375,6 +375,10 @@ extern "C" bool process_handle_syscall(ExceptionFrame* frame)
         (frame->cs & 3ULL) != 3ULL)
         return false;
 
+    if (current_process->user_stack_top < 2ULL * NOVOS_PAGE_SIZE ||
+        current_process->user_stack_top > NOVOS_USER_VIRTUAL_TOP)
+        return false;
+
     const uint64_t stack_base =
         current_process->user_stack_top - 2ULL * NOVOS_PAGE_SIZE;
     if (frame->user_rsp < stack_base ||
