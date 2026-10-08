@@ -289,7 +289,8 @@ extern "C" bool address_space_is_user_executable(
     if (!pml4) return false;
 
     const u64 e4 = pml4[(virtual_address >> 39) & 0x1FF];
-    if (!(e4 & NOVOS_PAGE_PRESENT) || !(e4 & NOVOS_PAGE_USER))
+    if (!(e4 & NOVOS_PAGE_PRESENT) || !(e4 & NOVOS_PAGE_USER) ||
+        (e4 & NOVOS_PAGE_NO_EXECUTE))
         return false;
 
     auto* pdpt = table(e4 & ~0xFFFULL);
@@ -357,6 +358,18 @@ extern "C" void address_space_run_tests()
         address_space_is_user_executable(
             &space, NOVOS_USER_VIRTUAL_BASE))
         for (;;) asm volatile("cli; hlt");
+
+    auto* pml4 = table(space.pml4_physical);
+    const unsigned int user_pml4_index =
+        (NOVOS_USER_VIRTUAL_BASE >> 39) & 0x1FF;
+    if (!pml4)
+        for (;;) asm volatile("cli; hlt");
+    const u64 saved_pml4_entry = pml4[user_pml4_index];
+    pml4[user_pml4_index] = saved_pml4_entry | NOVOS_PAGE_NO_EXECUTE;
+    if (address_space_is_user_executable(
+            &space, NOVOS_USER_VIRTUAL_BASE + 2 * NOVOS_PAGE_SIZE))
+        for (;;) asm volatile("cli; hlt");
+    pml4[user_pml4_index] = saved_pml4_entry;
 
     if (!address_space_destroy(&space) || space.pml4_physical != 0)
         for (;;) asm volatile("cli; hlt");
