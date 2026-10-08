@@ -161,6 +161,27 @@ extern "C" void paging_run_tests()
     if (!paging_map_identity(0x0000000000200000ULL))
         fail("PAGING TEST FAIL: MAP API\n");
 
+    /*
+     * An existing supervisor mapping must never be promoted to USER merely
+     * because a caller repeats paging_map_4k with user=true.
+     */
+    const identityPhysical = paging_translate(0x0000000000201000ULL);
+    if (identityPhysical == 0 ||
+        paging_map_4k(
+            0x0000000000201000ULL,
+            identityPhysical,
+            PagingFlags{false, true, false, false, false}))
+    {
+        fail("PAGING TEST FAIL: EXISTING MAP PROMOTION\n");
+    }
+
+    const identityPml4Virtual = paging_physical_to_virtual(
+        paging_pml4_physical());
+    auto* identityPml4Table =
+        reinterpret_cast<volatile u64*>(identityPml4Virtual);
+    if ((identityPml4Table[0] & PAGE_USER) != 0)
+        fail("PAGING TEST FAIL: IDENTITY USER PROMOTION\n");
+
     if (paging_translate(0x0000800000000000ULL) != 0 ||
         paging_translate(0xFFFF000000000000ULL) != 0)
         fail("PAGING TEST FAIL: NONCANONICAL TRANSLATE\n");
