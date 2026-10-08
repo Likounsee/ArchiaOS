@@ -90,8 +90,8 @@ static bool map_stack(AddressSpace* space, uint64_t* top)
     const uint64_t stack_top = NOVOS_USER_VIRTUAL_TOP;
     const uint64_t stack_base = stack_top - 3ULL * NOVOS_PAGE_SIZE;
 
-    /* Keep one unmapped guard page below the user stack. */
-    for (uint64_t va = stack_base; va < stack_top; va += NOVOS_PAGE_SIZE)
+    /* Keep the lowest page unmapped as a guard page below the user stack. */
+    for (uint64_t va = stack_base + NOVOS_PAGE_SIZE; va < stack_top; va += NOVOS_PAGE_SIZE)
     {
         const uint64_t physical = pmm_alloc_page_above(0x01000000ULL);
         if (!physical)
@@ -517,6 +517,13 @@ extern "C" bool process_run_ring3_test()
 
     static Process process{};
     if (!process_create_elf(&process, image, sizeof(image)))
+        return false;
+    const uint64_t stack_guard =
+        process.user_stack_top - 3ULL * NOVOS_PAGE_SIZE;
+    if (address_space_is_user_mapped(&process.address_space, stack_guard) ||
+        !address_space_is_user_mapped(
+            &process.address_space,
+            process.user_stack_top - NOVOS_PAGE_SIZE))
         return false;
 
     Process busy_state{};
