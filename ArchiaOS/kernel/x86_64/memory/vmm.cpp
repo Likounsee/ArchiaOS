@@ -202,7 +202,8 @@ extern "C" void vmm_run_tests()
     if (occupiedPhysical == 0 ||
         !paging_map_4k(NOVOS_KERNEL_HEAP_BASE, occupiedPhysical,
                        PagingFlags{true, false, false, false, false}) ||
-        vmm_alloc_pages(1, false, true, false) != 0)
+        vmm_alloc_pages(1, false, true, false) != 0 ||
+        vmm_reserve(NOVOS_KERNEL_HEAP_BASE, 1, false))
         for (;;) asm volatile("cli; hlt");
     if (!paging_unmap_4k(NOVOS_KERNEL_HEAP_BASE))
         for (;;) asm volatile("cli; hlt");
