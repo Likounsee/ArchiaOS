@@ -410,8 +410,21 @@ extern "C" void kernel_main(BootInfo* bootInfo)
     }
 
     unsigned int scheduler_apic_ids[SCHEDULER_MAX_CPUS] = {};
-    for (unsigned int cpu = 0; cpu < scheduler_cpu_count; ++cpu)
-        scheduler_apic_ids[cpu] = acpi->processor_apic_ids[cpu];
+    unsigned int scheduler_cpu = 0;
+    scheduler_apic_ids[scheduler_cpu++] = bspApicId;
+    for (unsigned int index = 0;
+         index < scheduler_cpu_count && scheduler_cpu < scheduler_cpu_count;
+         ++index)
+    {
+        const unsigned int apic_id = acpi->processor_apic_ids[index];
+        if (apic_id != bspApicId)
+            scheduler_apic_ids[scheduler_cpu++] = apic_id;
+    }
+    if (scheduler_cpu != scheduler_cpu_count)
+    {
+        debug_str("[KERNEL] SCHEDULER APIC TOPOLOGY INCOMPLETE\\n");
+        halt();
+    }
 
     if (!scheduler_set_cpu_apic_ids(scheduler_apic_ids, scheduler_cpu_count))
     {
