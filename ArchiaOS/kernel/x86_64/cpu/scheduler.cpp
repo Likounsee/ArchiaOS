@@ -200,7 +200,7 @@ extern "C" ExceptionFrame* scheduler_timer_tick(
     for (unsigned int offset = 1; offset < SCHEDULER_MAX_TASKS; ++offset)
     {
         const unsigned int id = (old + offset) % SCHEDULER_MAX_TASKS;
-        if (task_ready(tasks[cpu_index][id]))
+        if (task_ready(tasks[cpu_index][id], cpu_index))
         {
             candidate = id;
             break;
