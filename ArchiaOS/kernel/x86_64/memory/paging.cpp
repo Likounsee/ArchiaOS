@@ -36,6 +36,10 @@ static inline void invalidate_page_aliases(u64 virtualAddress)
 
 static inline u64* table_pointer(u64 physicalAddress)
 {
+    if ((physicalAddress & (PAGE_SIZE - 1ULL)) != 0 ||
+        physicalAddress >= mapped_physical_limit)
+        return nullptr;
+
     /*
      * Before CR3 activation only the bootstrap identity map is guaranteed.
      * Once active, page-table pages must be reached through the HHDM so that
@@ -494,6 +498,8 @@ extern "C" u64 paging_translate(u64 virtualAddress)
 
     auto* table3 =
         table_pointer(pml4e & ~0xFFFULL);
+    if (!table3)
+        return 0;
 
     const u64 pdpte =
         table3[(virtualAddress >> 30) & 0x1FF];
@@ -507,6 +513,8 @@ extern "C" u64 paging_translate(u64 virtualAddress)
 
     auto* table2 =
         table_pointer(pdpte & ~0xFFFULL);
+    if (!table2)
+        return 0;
 
     const u64 pde =
         table2[(virtualAddress >> 21) & 0x1FF];
@@ -520,6 +528,8 @@ extern "C" u64 paging_translate(u64 virtualAddress)
 
     auto* table1 =
         table_pointer(pde & ~0xFFFULL);
+    if (!table1)
+        return 0;
 
     const u64 pte =
         table1[(virtualAddress >> 12) & 0x1FF];
