@@ -63,7 +63,8 @@ extern "C" bool ioapic_initialize(const AcpiInfo* acpi)
 extern "C" bool ioapic_route_isa_irq(const AcpiInfo* acpi, unsigned int isa_irq, unsigned char vector, unsigned int destination_apic_id)
 {
     if (ioapic_base == nullptr || acpi == nullptr || isa_irq > 15U ||
-        vector < 0x20U || vector == 0xFFU)
+        vector < 0x20U || vector == 0xFFU ||
+        destination_apic_id > 0xFFU)
         return false;
 
     unsigned int gsi = isa_irq;
