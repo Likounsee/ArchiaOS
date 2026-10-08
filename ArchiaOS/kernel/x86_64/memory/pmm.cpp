@@ -211,6 +211,13 @@ extern "C" bool pmm_initialize(BootInfo* bootInfo)
     if (pmm_max_frames == 0)
         return false;
 
+    const u64 supported_physical_limit =
+        pmm_max_frames * PAGE_SIZE;
+    if (bootInfo->pmm_bitmap_base >= supported_physical_limit ||
+        bootInfo->pmm_bitmap_size >
+            supported_physical_limit - bootInfo->pmm_bitmap_base)
+        return false;
+
     for (u64 i = 0; i < pmm_bitmap_words; ++i)
     {
         pmm_bitmap[i] = ~0ULL;
@@ -227,9 +234,9 @@ extern "C" bool pmm_initialize(BootInfo* bootInfo)
             sizeof(EfiMemoryDescriptor) ||
         bootInfo->memory_map_size %
             bootInfo->memory_descriptor_size != 0 ||
-        bootInfo->memory_map_address >= PMM_MAX_PHYSICAL_ADDRESS ||
+        bootInfo->memory_map_address >= supported_physical_limit ||
         bootInfo->memory_map_size >
-            PMM_MAX_PHYSICAL_ADDRESS - bootInfo->memory_map_address)
+            supported_physical_limit - bootInfo->memory_map_address)
     {
         return false;
     }
