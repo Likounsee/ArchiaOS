@@ -908,7 +908,7 @@ extern "C" bool process_run_ring3_test()
     valid_low_stack_frame.rflags = 0x202ULL;
     valid_low_stack_frame.user_rsp =
         process.user_stack_top - 2ULL * PAGE_SIZE;
-    valid_low_stack_frame.rip = process.entry + 5ULL;
+    valid_low_stack_frame.rip = process.entry + 7ULL;
     valid_low_stack_frame.rax = 1;
     const unsigned long long low_stack_syscall_count =
         process_syscall_count();
@@ -923,7 +923,7 @@ extern "C" bool process_run_ring3_test()
     invalid_user_stack_frame.rflags = 0x202ULL;
     invalid_user_stack_frame.user_rsp =
         process.user_stack_top - 3ULL * PAGE_SIZE;
-    invalid_user_stack_frame.rip = process.entry + 5ULL;
+    invalid_user_stack_frame.rip = process.entry + 7ULL;
     invalid_user_stack_frame.rax = 1;
     const unsigned long long rejected_user_stack_syscalls =
         process_syscall_count();
@@ -947,7 +947,7 @@ extern "C" bool process_run_ring3_test()
     valid_syscall_frame.cs = 0x1B;
     valid_syscall_frame.user_ss = 0x23;
     valid_syscall_frame.rflags = 0x202ULL;
-    valid_syscall_frame.rip = process.entry + 5ULL;
+    valid_syscall_frame.rip = process.entry + 7ULL;
     valid_syscall_frame.rax = 1;
     const unsigned long long syscall_before =
         process_syscall_count();
