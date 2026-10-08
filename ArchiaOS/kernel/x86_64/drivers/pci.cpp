@@ -91,6 +91,13 @@ static void read_bars(PciDevice* device)
 
 extern "C" bool pci_initialize()
 {
+    /*
+     * PciDevice pointers are retained by higher-level drivers. Re-enumerating
+     * the backing array would invalidate the discovered state underneath them.
+     */
+    if (initialized)
+        return device_count != 0;
+
     device_count = 0;
     for (unsigned int i = 0; i < PCI_MAX_DEVICES; ++i)
         devices[i] = {};
@@ -178,6 +185,14 @@ extern "C" bool pci_enable_bus_master(const PciDevice* device)
 extern "C" bool pci_test()
 {
     if (!pci_initialize())
+        return false;
+
+    const unsigned int saved_count = device_count;
+    const PciDevice* saved_first =
+        device_count ? &devices[0] : nullptr;
+    if (!pci_initialize() ||
+        device_count != saved_count ||
+        (device_count && &devices[0] != saved_first))
         return false;
 
     for (unsigned int i = 0; i < device_count; ++i)
