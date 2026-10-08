@@ -241,6 +241,7 @@ extern "C" bool address_space_destroy(AddressSpace* space)
 
     u64 current_cr3 = 0;
     asm volatile("mov %%cr3, %0" : "=r"(current_cr3));
+    current_cr3 &= ~0xFFFULL;
     if (current_cr3 == space->pml4_physical)
         return false;
 
