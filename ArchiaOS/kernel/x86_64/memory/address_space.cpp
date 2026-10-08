@@ -375,7 +375,7 @@ extern "C" void address_space_run_tests()
             &space, USER_VIRTUAL_BASE, 0,
             true, false) ||
         address_space_map(
-            &space, USER_VIRTUAL_BASE, NOVOS_PMM_MAX_PHYSICAL_ADDRESS,
+            &space, USER_VIRTUAL_BASE, PMM_MAX_PHYSICAL_ADDRESS,
             true, false))
         for (;;) asm volatile("cli; hlt");
 
