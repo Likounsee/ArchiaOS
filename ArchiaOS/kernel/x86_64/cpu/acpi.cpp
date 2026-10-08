@@ -278,6 +278,10 @@ static bool parse_madt(unsigned long long madt)
         current += entry_length;
     }
 
+    /* Every byte after the MADT header must belong to a complete entry. */
+    if (current != end)
+        return false;
+
     return acpi_info.local_apic_address != 0;
 }
 
