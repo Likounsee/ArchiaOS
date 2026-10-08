@@ -82,6 +82,8 @@ extern "C" bool scheduler_set_cpu_apic_ids(
 
     for (unsigned int cpu = 0; cpu < count; ++cpu)
     {
+        if (apic_ids[cpu] == 0xFFFFFFFFU)
+            return false;
         for (unsigned int previous = 0; previous < cpu; ++previous)
             if (apic_ids[previous] == apic_ids[cpu])
                 return false;
@@ -293,7 +295,9 @@ extern "C" bool scheduler_run_test()
     if (!scheduler_initialize(2))
         return false;
     const unsigned int duplicate_apic_ids[2] = {apic_id, apic_id};
-    if (scheduler_set_cpu_apic_ids(duplicate_apic_ids, 2) ||
+    const unsigned int invalid_apic_ids[2] = {apic_id, 0xFFFFFFFFU};
+    if (scheduler_set_cpu_apic_ids(invalid_apic_ids, 2) ||
+        scheduler_set_cpu_apic_ids(duplicate_apic_ids, 2) ||
         !scheduler_initialize(1) ||
         !scheduler_set_cpu_apic_ids(&apic_id, 1))
         return false;
