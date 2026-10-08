@@ -30,6 +30,9 @@ static inline void ipc_leave_critical(uint64_t flags)
 
 extern "C" int ipc_create(uint32_t owner_pid)
 {
+    if (!owner_pid)
+        return -1;
+
     const uint64_t flags = ipc_enter_critical();
     for (unsigned int i = 0; i < IPC_MAX_ENDPOINTS; ++i)
     {
@@ -63,7 +66,7 @@ extern "C" bool ipc_destroy(int endpoint, uint32_t owner_pid)
 extern "C" bool ipc_send(
     int endpoint, uint32_t sender_pid, uint32_t code, uint64_t value)
 {
-    if (endpoint < 0 || endpoint >= static_cast<int>(IPC_MAX_ENDPOINTS))
+    if (!sender_pid || endpoint < 0 || endpoint >= static_cast<int>(IPC_MAX_ENDPOINTS))
         return false;
 
     const uint64_t flags = ipc_enter_critical();
@@ -119,7 +122,10 @@ extern "C" void ipc_destroy_owner(uint32_t owner_pid)
 
 extern "C" bool ipc_test()
 {
-    const int endpoint = ipc_create(0);
+    if (ipc_create(0) >= 0)
+        return false;
+
+    const int endpoint = ipc_create(1);
     if (endpoint < 0)
         return false;
 
@@ -128,9 +134,12 @@ extern "C" bool ipc_test()
         ipc_destroy(endpoint, 42))
         return false;
 
+    if (ipc_send(endpoint, 0, 0x1234U, 0x1122334455667788ULL))
+        return false;
+
     const bool sent = ipc_send(endpoint, 42, 0x1234U, 0x1122334455667788ULL);
     IpcMessage message{};
-    const bool received = ipc_receive(endpoint, 0, &message);
+    const bool received = ipc_receive(endpoint, 1, &message);
     if (!sent || !received ||
         message.sender_pid != 42 ||
         message.code != 0x1234U ||
@@ -146,11 +155,11 @@ extern "C" bool ipc_test()
     for (unsigned int i = 0; i < IPC_QUEUE_DEPTH; ++i)
     {
         IpcMessage queued{};
-        if (!ipc_receive(endpoint, 0, &queued) ||
+        if (!ipc_receive(endpoint, 1, &queued) ||
             queued.code != i ||
             queued.value != i)
             return false;
     }
 
-    return ipc_destroy(endpoint, 0);
+    return ipc_destroy(endpoint, 1);
 }
