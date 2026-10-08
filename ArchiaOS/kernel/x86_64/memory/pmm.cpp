@@ -278,7 +278,8 @@ extern "C" u64 pmm_alloc_page_below(u64 exclusiveLimit)
     if (exclusiveLimit <= NOVOS_PAGE_SIZE)
         return 0;
 
-    u64 maxFrame = exclusiveLimit / NOVOS_PAGE_SIZE;
+    /* Include the frame containing exclusiveLimit - 1 even when the limit is unaligned. */
+    u64 maxFrame = (exclusiveLimit - 1ULL) / NOVOS_PAGE_SIZE + 1ULL;
     if (maxFrame > pmm_max_frames)
         maxFrame = pmm_max_frames;
 
