@@ -142,6 +142,7 @@ extern "C" bool process_create_elf(
         image + header->phoff);
 
     bool loaded = false;
+    bool entry_file_backed_executable = false;
     for (unsigned int i = 0; i < header->phnum; ++i)
     {
         const auto& ph = phdrs[i];
@@ -160,6 +161,11 @@ extern "C" bool process_create_elf(
             address_space_destroy(&space);
             return false;
         }
+
+        if ((ph.flags & 1U) != 0 &&
+            header->entry >= ph.vaddr &&
+            header->entry - ph.vaddr < ph.filesz)
+            entry_file_backed_executable = true;
 
         const uint64_t base = ph.vaddr & ~0xFFFULL;
         const uint64_t end = (ph.vaddr + ph.memsz + 0xFFFULL) & ~0xFFFULL;
@@ -216,6 +222,7 @@ extern "C" bool process_create_elf(
 
     if (header->entry < NOVOS_USER_VIRTUAL_BASE ||
         header->entry >= NOVOS_USER_VIRTUAL_TOP ||
+        !entry_file_backed_executable ||
         !address_space_is_user_executable(&space, header->entry))
     {
         address_space_destroy(&space);
