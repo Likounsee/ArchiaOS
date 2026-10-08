@@ -519,8 +519,10 @@ extern "C" void address_space_run_tests()
         !address_space_is_user_mapped(&space, USER_VIRTUAL_BASE))
         for (;;) asm volatile("cli; hlt");
 
-    if (address_space_map(
-            &space, USER_VIRTUAL_BASE, physical, true, false))
+    const bool duplicate_map =
+        address_space_map(&space, USER_VIRTUAL_BASE, physical, true, false);
+    address_space_test_marker(duplicate_map ? 'L' : 'M');
+    if (duplicate_map)
         for (;;) asm volatile("cli; hlt");
 
     if (address_space_map(
