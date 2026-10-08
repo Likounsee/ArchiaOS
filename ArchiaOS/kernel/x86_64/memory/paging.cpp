@@ -257,7 +257,15 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
         created_pml4_table = true;
     }
     else if (user)
+    {
+        if (virtualAddress >= NOVOS_KERNEL_HEAP_BASE &&
+            virtualAddress < NOVOS_KERNEL_HEAP_BASE + NOVOS_KERNEL_HEAP_SIZE)
+        {
+            rollback_created_tables();
+            return nullptr;
+        }
         pml4e |= NOVOS_PAGE_USER;
+    }
 
     auto* table3 = table_pointer(pml4e & ~0xFFFULL);
     if (!table3)
@@ -286,7 +294,15 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
         created_pdpt_table = true;
     }
     else if (user)
+    {
+        if (virtualAddress >= NOVOS_KERNEL_HEAP_BASE &&
+            virtualAddress < NOVOS_KERNEL_HEAP_BASE + NOVOS_KERNEL_HEAP_SIZE)
+        {
+            rollback_created_tables();
+            return nullptr;
+        }
         pdpte |= NOVOS_PAGE_USER;
+    }
 
     if ((pdpte & NOVOS_PAGE_HUGE) != 0)
     {
@@ -343,7 +359,15 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
         created_pd_table = true;
     }
     else if (user)
+    {
+        if (virtualAddress >= NOVOS_KERNEL_HEAP_BASE &&
+            virtualAddress < NOVOS_KERNEL_HEAP_BASE + NOVOS_KERNEL_HEAP_SIZE)
+        {
+            rollback_created_tables();
+            return nullptr;
+        }
         pde |= NOVOS_PAGE_USER;
+    }
 
     if ((pde & NOVOS_PAGE_HUGE) != 0)
     {
