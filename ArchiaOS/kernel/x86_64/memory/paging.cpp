@@ -40,6 +40,44 @@ static inline u64* table_pointer(u64 physicalAddress)
     return reinterpret_cast<u64*>(physicalAddress);
 }
 
+/*
+ * Inspect only an existing 4 KiB leaf. Huge mappings intentionally return
+ * zero here because paging_map_4k may split them before installing the new
+ * leaf. This helper never allocates or mutates page tables.
+ */
+static u64 existing_4k_entry(u64 virtualAddress)
+{
+    if (pml4 == nullptr ||
+        ((virtualAddress >> 48) != 0 && (virtualAddress >> 48) != 0xFFFFULL))
+        return 0;
+
+    const u64 e4 = pml4[(virtualAddress >> 39) & 0x1FF];
+    if (!(e4 & NOVOS_PAGE_PRESENT) || (e4 & NOVOS_PAGE_HUGE))
+        return 0;
+
+    auto* table3 = table_pointer(e4 & ~0xFFFULL);
+    if (!table3)
+        return 0;
+
+    const u64 e3 = table3[(virtualAddress >> 30) & 0x1FF];
+    if (!(e3 & NOVOS_PAGE_PRESENT) || (e3 & NOVOS_PAGE_HUGE))
+        return 0;
+
+    auto* table2 = table_pointer(e3 & ~0xFFFULL);
+    if (!table2)
+        return 0;
+
+    const u64 e2 = table2[(virtualAddress >> 21) & 0x1FF];
+    if (!(e2 & NOVOS_PAGE_PRESENT) || (e2 & NOVOS_PAGE_HUGE))
+        return 0;
+
+    auto* table1 = table_pointer(e2 & ~0xFFFULL);
+    if (!table1)
+        return 0;
+
+    return table1[(virtualAddress >> 12) & 0x1FF];
+}
+
 static inline void zero_page(u64 address)
 {
     auto* page = reinterpret_cast<volatile u64*>(table_pointer(address));
@@ -377,13 +415,13 @@ extern "C" bool paging_map_4k(
         return false;
 
     /*
-     * Do not silently replace an existing virtual-to-physical mapping with a
-     * different frame. Callers may intentionally remap the same frame to
-     * change permissions, but changing the backing frame here would leak the
-     * previous owner because paging has no ownership information.
+     * Do not silently replace an existing 4 KiB leaf with a different frame.
+     * Huge bootstrap mappings are deliberately excluded because find_4k_entry
+     * can split them before installing the requested fine-grained mapping.
      */
-    const u64 existingPhysical = paging_translate(virtualAddress) & ~0xFFFULL;
-    if (existingPhysical != 0 && existingPhysical != physicalAddress)
+    const u64 existingEntry = existing_4k_entry(virtualAddress);
+    if ((existingEntry & NOVOS_PAGE_PRESENT) &&
+        (existingEntry & 0x000FFFFFFFFFF000ULL) != physicalAddress)
         return false;
 
     const u64 flagsValue = page_entry_flags(flags);
