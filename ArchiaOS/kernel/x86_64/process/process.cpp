@@ -320,6 +320,7 @@ extern "C" bool process_destroy(Process* process)
 extern "C" bool process_activate(Process* process)
 {
     if (!process || !process->pid || !process->address_space.pml4_physical ||
+        process->state != PROCESS_READY ||
         process_find(process->pid) != process)
         return false;
     if (!address_space_activate(&process->address_space))
@@ -564,7 +565,8 @@ extern "C" bool process_run_ring3_test()
 
     Process forged_running = process;
     forged_running.state = PROCESS_RUNNING;
-    if (process_register(&forged_running))
+    if (process_register(&forged_running) ||
+        process_activate(&forged_running))
         return false;
 
     static Process destroy_state{};
