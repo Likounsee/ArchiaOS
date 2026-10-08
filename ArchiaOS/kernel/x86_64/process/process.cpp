@@ -783,8 +783,20 @@ extern "C" bool process_run_ring3_test()
 
     static Process next_process{};
     if (!process_create_elf(&next_process, image, sizeof(image)) ||
-        !process_register(&next_process) ||
-        !process_activate(&next_process) ||
+        !process_register(&next_process))
+        return false;
+
+    /*
+     * A current process must still own the CR3 recorded by its active flag.
+     * Corrupt that invariant and ensure activation refuses to switch away
+     * instead of publishing a second process as current.
+     */
+    process.address_space.active = false;
+    if (process_activate(&next_process))
+        return false;
+    process.address_space.active = true;
+
+    if (!process_activate(&next_process) ||
         process.state != PROCESS_READY ||
         process.address_space.active ||
         next_process.state != PROCESS_RUNNING ||
