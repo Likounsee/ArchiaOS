@@ -75,8 +75,16 @@ extern "C" bool scheduler_initialize(unsigned int cpu_count)
 extern "C" bool scheduler_set_cpu_apic_ids(
     const unsigned int* apic_ids, unsigned int count)
 {
-    if (!apic_ids || count == 0 || count > scheduler_cpu_count)
+    if (!apic_ids || count != scheduler_cpu_count)
         return false;
+
+    for (unsigned int cpu = 0; cpu < count; ++cpu)
+    {
+        for (unsigned int previous = 0; previous < cpu; ++previous)
+            if (apic_ids[previous] == apic_ids[cpu])
+                return false;
+    }
+
     for (unsigned int cpu = 0; cpu < count; ++cpu)
         scheduler_apic_ids[cpu] = apic_ids[cpu];
     return true;
