@@ -205,9 +205,16 @@ extern "C" void vmm_run_tests()
     if (!vmm_free_pages(base, 2) || vmm_allocated_pages() != before)
         for (;;) asm volatile("cli; hlt");
 
-    const reserved = NOVOS_KERNEL_HEAP_BASE + 8 * NOVOS_PAGE_SIZE;
+    const u64 reserved = NOVOS_KERNEL_HEAP_BASE + 8 * NOVOS_PAGE_SIZE;
     if (!vmm_reserve(reserved, 2, false) ||
-        vmm_reserve(reserved + NOVOS_PAGE_SIZE, 1, false) ||
-        vmm_alloc_pages(2, false, true, false) == reserved)
+        vmm_reserve(reserved + NOVOS_PAGE_SIZE, 1, false))
+        for (;;) asm volatile("cli; hlt");
+
+    const u64 allocated_around_reservation =
+        vmm_alloc_pages(2, false, true, false);
+    if (!allocated_around_reservation ||
+        allocated_around_reservation == reserved ||
+        !vmm_free_pages(allocated_around_reservation, 2) ||
+        vmm_allocated_pages() != before)
         for (;;) asm volatile("cli; hlt");
 }
