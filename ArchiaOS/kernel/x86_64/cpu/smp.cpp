@@ -218,7 +218,12 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
         static_cast<unsigned int>(trampolinePhysical >> 12);
 
     if (startupVector == 0 || startupVector > 0xFFU)
+    {
+        (void)paging_unmap_4k(trampolinePhysical);
+        (void)paging_unmap_4k(trampolineVirtual);
+        pmm_free_page(trampolinePhysical);
         return false;
+    }
 
     smp_debug_hex("SMP: TRAMPOLINE PHYS=", trampolinePhysical);
     smp_debug_hex("SMP: STARTUP VECTOR=", startupVector);
@@ -231,7 +236,12 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
 
     const uint64_t cr3 = paging_pml4_physical();
     if (cr3 == 0 || cr3 >= 0x100000000ULL)
+    {
+        (void)paging_unmap_4k(trampolinePhysical);
+        (void)paging_unmap_4k(trampolineVirtual);
+        pmm_free_page(trampolinePhysical);
         return false;
+    }
 
     const uint64_t cr0 = smp_read_cr0();
     const uint64_t cr4 = smp_read_cr4() & ~(1ULL << 17);
@@ -250,7 +260,7 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
         if (apicId == currentApicId)
             continue;
 
-            const uint64_t stackPhysical = pmm_alloc_page();
+        const uint64_t stackPhysical = pmm_alloc_page();
         if (stackPhysical == 0)
             return false;
 
@@ -306,6 +316,18 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
 
     if (__atomic_load_n(&online_count, __ATOMIC_ACQUIRE) != expectedOnline)
         return false;
+
+    /*
+     * With no APs to start, the trampoline is never consumed. Release both
+     * aliases so single-CPU systems do not retain a permanent low-memory
+     * allocation solely for SMP bootstrap.
+     */
+    if (expectedOnline == 1)
+    {
+        (void)paging_unmap_4k(trampolinePhysical);
+        (void)paging_unmap_4k(trampolineVirtual);
+        pmm_free_page(trampolinePhysical);
+    }
 
     return true;
 }
