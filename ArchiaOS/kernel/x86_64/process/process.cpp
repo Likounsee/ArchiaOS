@@ -550,6 +550,7 @@ extern "C" bool process_run_ring3_test()
         !process_destroy(&cleanup_process) ||
         cleanup_process.state != PROCESS_EXITED ||
         cleanup_process.pid != 0 ||
+        cleanup_process.address_space.pml4_physical != 0 ||
         process_register(&cleanup_process) ||
         ipc_receive(cleanup_endpoint, cleanup_pid, &cleanup_message))
         return false;
