@@ -372,7 +372,10 @@ extern "C" bool process_handle_syscall(ExceptionFrame* frame)
 {
     if (!frame || !current_process ||
         current_process->state != PROCESS_RUNNING ||
-        (frame->cs & 3ULL) != 3ULL)
+        frame->cs != 0x1B ||
+        frame->user_ss != 0x23 ||
+        (frame->rflags & (1ULL << 1)) == 0 ||
+        (frame->rflags & (3ULL << 12)) != 0)
         return false;
 
     if (current_process->user_stack_top < 2ULL * NOVOS_PAGE_SIZE ||
