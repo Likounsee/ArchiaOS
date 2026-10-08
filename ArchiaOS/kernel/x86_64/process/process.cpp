@@ -367,6 +367,15 @@ extern "C" bool process_handle_syscall(ExceptionFrame* frame)
         (frame->cs & 3ULL) != 3ULL)
         return false;
 
+    const uint64_t stack_base =
+        current_process->user_stack_top - 2ULL * NOVOS_PAGE_SIZE;
+    if (frame->user_rsp < stack_base ||
+        frame->user_rsp > current_process->user_stack_top ||
+        (frame->user_rsp > stack_base &&
+         !address_space_is_user_mapped(
+             &current_process->address_space, frame->user_rsp - 1ULL)))
+        return false;
+
     if (frame->rip > UINT64_MAX - 2ULL ||
         !address_space_is_user_executable(
             &current_process->address_space, frame->rip) ||
@@ -632,6 +641,7 @@ extern "C" bool process_run_ring3_test()
         return false;
 
     ExceptionFrame invalid_syscall_frame{};
+    invalid_syscall_frame.user_rsp = process.user_stack_top;
     invalid_syscall_frame.cs = 0x1B;
     invalid_syscall_frame.rip = process.user_stack_top - NOVOS_PAGE_SIZE;
     if (process_handle_syscall(&invalid_syscall_frame))
@@ -643,12 +653,27 @@ extern "C" bool process_run_ring3_test()
     process.state = PROCESS_RUNNING;
 
     ExceptionFrame overflow_syscall_frame{};
+    overflow_syscall_frame.user_rsp = process.user_stack_top;
     overflow_syscall_frame.cs = 0x1B;
     overflow_syscall_frame.rip = UINT64_MAX - 1ULL;
     if (process_handle_syscall(&overflow_syscall_frame))
         return false;
 
+    ExceptionFrame invalid_user_stack_frame{};
+    invalid_user_stack_frame.cs = 0x1B;
+    invalid_user_stack_frame.user_rsp =
+        process.user_stack_top - 3ULL * NOVOS_PAGE_SIZE;
+    invalid_user_stack_frame.rip = process.entry + 5ULL;
+    invalid_user_stack_frame.rax = 1;
+    const unsigned long long rejected_user_stack_syscalls =
+        process_syscall_count();
+    if (process_handle_syscall(&invalid_user_stack_frame) ||
+        process_syscall_count() != rejected_user_stack_syscalls)
+        return false;
+
     ExceptionFrame non_syscall_instruction{};
+    non_syscall_instruction.user_rsp = process.user_stack_top;
+    non_syscall_instruction.user_rsp = process.user_stack_top;
     non_syscall_instruction.cs = 0x1B;
     non_syscall_instruction.rip = process.entry;
     non_syscall_instruction.rax = 1;
@@ -656,6 +681,7 @@ extern "C" bool process_run_ring3_test()
         return false;
 
     ExceptionFrame valid_syscall_frame{};
+    valid_syscall_frame.user_rsp = process.user_stack_top;
     valid_syscall_frame.cs = 0x1B;
     valid_syscall_frame.rip = process.entry + 5ULL;
     valid_syscall_frame.rax = 1;
@@ -668,6 +694,7 @@ extern "C" bool process_run_ring3_test()
         return false;
 
     ExceptionFrame create_endpoint_frame{};
+    create_endpoint_frame.user_rsp = process.user_stack_top;
     create_endpoint_frame.cs = 0x1B;
     create_endpoint_frame.rip = process.entry + 7ULL;
     create_endpoint_frame.rax = 3;
@@ -677,6 +704,7 @@ extern "C" bool process_run_ring3_test()
 
     const uint64_t endpoint = create_endpoint_frame.rax;
     ExceptionFrame destroy_endpoint_frame{};
+    destroy_endpoint_frame.user_rsp = process.user_stack_top;
     destroy_endpoint_frame.cs = 0x1B;
     destroy_endpoint_frame.rip = process.entry + 7ULL;
     destroy_endpoint_frame.rax = 6;
@@ -686,6 +714,7 @@ extern "C" bool process_run_ring3_test()
         return false;
 
     ExceptionFrame destroyed_endpoint_frame{};
+    destroyed_endpoint_frame.user_rsp = process.user_stack_top;
     destroyed_endpoint_frame.cs = 0x1B;
     destroyed_endpoint_frame.rip = process.entry + 7ULL;
     destroyed_endpoint_frame.rax = 6;
@@ -695,6 +724,7 @@ extern "C" bool process_run_ring3_test()
         return false;
 
     ExceptionFrame invalid_endpoint_frame{};
+    invalid_endpoint_frame.user_rsp = process.user_stack_top;
     invalid_endpoint_frame.cs = 0x1B;
     invalid_endpoint_frame.rip = process.entry + 7ULL;
     invalid_endpoint_frame.rax = 6;
