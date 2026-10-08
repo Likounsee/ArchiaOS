@@ -351,6 +351,8 @@ page_fault_recovered:
 
     test_str("PAGING PAGE FAULT RECOVERY PASS\n");
 
+    pmm_free_page(testPage);
+
     test_str("PAGING CR3 ACTIVATION PASS\n");
     test_str("PAGING TEST PASS\n");
 }
