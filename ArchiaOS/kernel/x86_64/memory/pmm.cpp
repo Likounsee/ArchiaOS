@@ -170,7 +170,12 @@ extern "C" bool pmm_initialize(BootInfo* bootInfo)
         bootInfo->memory_map_address == 0 ||
         bootInfo->memory_map_size == 0 ||
         bootInfo->memory_descriptor_size <
-            sizeof(EfiMemoryDescriptor))
+            sizeof(EfiMemoryDescriptor) ||
+        bootInfo->memory_map_size %
+            bootInfo->memory_descriptor_size != 0 ||
+        bootInfo->memory_map_address >= NOVOS_PMM_MAX_PHYSICAL_ADDRESS ||
+        bootInfo->memory_map_size >
+            NOVOS_PMM_MAX_PHYSICAL_ADDRESS - bootInfo->memory_map_address)
     {
         return false;
     }
