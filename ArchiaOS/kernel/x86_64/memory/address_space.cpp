@@ -100,7 +100,16 @@ extern "C" bool address_space_map(
         created_pdpt = true;
     }
 
-    pdpt_physical = pml4[i4] & ~0xFFFULL;
+    const u64 pml4_flags = pml4[i4];
+    if (!(pml4_flags & NOVOS_PAGE_USER) ||
+        (executable && (pml4_flags & NOVOS_PAGE_NO_EXECUTE)) ||
+        (writable && !(pml4_flags & NOVOS_PAGE_WRITE)))
+    {
+        rollback_tables();
+        return false;
+    }
+
+    pdpt_physical = pml4_flags & ~0xFFFULL;
     pdpt = table(pdpt_physical);
     if (!pdpt)
     {
@@ -126,7 +135,16 @@ extern "C" bool address_space_map(
         created_pd = true;
     }
 
-    pd_physical = pdpt[i3] & ~0xFFFULL;
+    const u64 pdpt_flags = pdpt[i3];
+    if (!(pdpt_flags & NOVOS_PAGE_USER) ||
+        (executable && (pdpt_flags & NOVOS_PAGE_NO_EXECUTE)) ||
+        (writable && !(pdpt_flags & NOVOS_PAGE_WRITE)))
+    {
+        rollback_tables();
+        return false;
+    }
+
+    pd_physical = pdpt_flags & ~0xFFFULL;
     pd = table(pd_physical);
     if (!pd)
     {
@@ -152,7 +170,16 @@ extern "C" bool address_space_map(
         created_pt = true;
     }
 
-    pt_physical = pd[i2] & ~0xFFFULL;
+    const u64 pd_flags = pd[i2];
+    if (!(pd_flags & NOVOS_PAGE_USER) ||
+        (executable && (pd_flags & NOVOS_PAGE_NO_EXECUTE)) ||
+        (writable && !(pd_flags & NOVOS_PAGE_WRITE)))
+    {
+        rollback_tables();
+        return false;
+    }
+
+    pt_physical = pd_flags & ~0xFFFULL;
     pt = table(pt_physical);
     if (!pt)
     {
@@ -369,6 +396,16 @@ extern "C" void address_space_run_tests()
     if (address_space_is_user_executable(
             &space, NOVOS_USER_VIRTUAL_BASE + 2 * NOVOS_PAGE_SIZE))
         for (;;) asm volatile("cli; hlt");
+    pml4[user_pml4_index] = saved_pml4_entry;
+
+    pml4[user_pml4_index] = saved_pml4_entry | NOVOS_PAGE_NO_EXECUTE;
+    const blocked_exec_physical = pmm_alloc_page();
+    if (!blocked_exec_physical ||
+        address_space_map(
+            &space, NOVOS_USER_VIRTUAL_BASE + 3 * NOVOS_PAGE_SIZE,
+            blocked_exec_physical, false, true))
+        for (;;) asm volatile("cli; hlt");
+    pmm_free_page(blocked_exec_physical);
     pml4[user_pml4_index] = saved_pml4_entry;
 
     if (!address_space_destroy(&space) || space.pml4_physical != 0)
