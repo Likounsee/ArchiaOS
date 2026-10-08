@@ -467,6 +467,17 @@ extern "C" void address_space_run_tests()
             for (;;) asm volatile("cli; hlt");
     }
 
+    /*
+     * This early boot regression runs before scheduler stacks are installed.
+     * The bootstrap stack still lives in the low identity mapping, so mirror
+     * that supervisor-only root for the activation test. Normal process
+     * address spaces do not inherit this lower-half mapping.
+     */
+    auto* kernel_pml4 = table(paging_pml4_physical());
+    if (!kernel_pml4)
+        for (;;) asm volatile("cli; hlt");
+    created_pml4[0] = kernel_pml4[0];
+
     space.active = true;
     if (address_space_destroy(&space))
         for (;;) asm volatile("cli; hlt");
