@@ -278,61 +278,40 @@ extern "C" [[noreturn]] void scheduler_bootstrap_entry()
         asm volatile("cli; hlt");
 }
 
-static void scheduler_test_debug(unsigned int stage)
-{
-    static const char digits[] = "0123456789ABCDEF";
-    const char* prefix = "SCHEDULER TEST STAGE ";
-    for (const char* p = prefix; *p; ++p)
-        asm volatile("outb %0,%1" : : "a"(*p), "Nd"(static_cast<unsigned short>(0xE9)));
-    for (int shift = 28; shift >= 0; shift -= 4)
-    {
-        const char ch = digits[(stage >> shift) & 0xFULL];
-        asm volatile("outb %0,%1" : : "a"(ch), "Nd"(static_cast<unsigned short>(0xE9)));
-    }
-    asm volatile("outb %0,%1" : : "a"('\n'), "Nd"(static_cast<unsigned short>(0xE9)));
-}
-
 extern "C" bool scheduler_run_test()
 {
     if (!scheduler_initialize(1))
     {
-        scheduler_test_debug(1);
         return false;
     }
     if (scheduler_set_ready_for_kernel())
     {
-        scheduler_test_debug(2);
         return false;
     }
 
     unsigned int apic_id = lapic_current_id();
     if (!scheduler_set_cpu_apic_ids(&apic_id, 1))
     {
-        scheduler_test_debug(3);
         return false;
     }
     if (scheduler_set_cpu_apic_ids(nullptr, 0))
     {
-        scheduler_test_debug(4);
         return false;
     }
 
     cpus[0].current_task = SCHEDULER_MAX_TASKS;
     if (!scheduler_set_ready_for_kernel())
     {
-        scheduler_test_debug(5);
         return false;
     }
     ExceptionFrame invalid_task_frame = {};
     if (scheduler_timer_tick(0, &invalid_task_frame) != &invalid_task_frame)
     {
-        scheduler_test_debug(6);
         return false;
     }
 
     if (!scheduler_initialize(2))
     {
-        scheduler_test_debug(7);
         return false;
     }
     const unsigned int duplicate_apic_ids[2] = {apic_id, apic_id};
@@ -342,23 +321,19 @@ extern "C" bool scheduler_run_test()
         !scheduler_initialize(1) ||
         !scheduler_set_cpu_apic_ids(&apic_id, 1))
     {
-        scheduler_test_debug(8);
         return false;
     }
 
     if (!scheduler_set_ready_for_kernel())
     {
-        scheduler_test_debug(9);
         return false;
     }
-    if (!scheduler_set_local_cpu_index(SCHEDULER_MAX_CPUS))
+    if (scheduler_set_local_cpu_index(SCHEDULER_MAX_CPUS))
     {
-        scheduler_test_debug(10);
         return false;
     }
     if (!scheduler_set_local_cpu_index(0))
     {
-        scheduler_test_debug(11);
         return false;
     }
     ExceptionFrame test_frame = {};
@@ -370,7 +345,6 @@ extern "C" bool scheduler_run_test()
     if (scheduler_timer_tick(0, &test_frame) != &test_frame ||
         scheduler_current_task(0) != 0)
     {
-        scheduler_test_debug(12);
         return false;
     }
     tasks[0][0].cpu = saved_task_cpu;
@@ -385,7 +359,6 @@ extern "C" bool scheduler_run_test()
         tasks[0][0].state != SCHEDULER_TASK_READY ||
         tasks[0][1].state != SCHEDULER_TASK_RUNNING)
     {
-        scheduler_test_debug(13);
         return false;
     }
 
