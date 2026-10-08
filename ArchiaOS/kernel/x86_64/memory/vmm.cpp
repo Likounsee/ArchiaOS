@@ -42,7 +42,7 @@ extern "C" bool vmm_initialize()
 extern "C" u64 vmm_alloc_pages(
     u64 pages, bool user, bool writable, bool executable)
 {
-    if (!initialized || pages == 0 || (writable && executable))
+    if (!initialized || pages == 0 || user || (writable && executable))
         return 0;
     if (pages > (NOVOS_KERNEL_HEAP_SIZE / NOVOS_PAGE_SIZE))
         return 0;
@@ -161,7 +161,7 @@ extern "C" bool vmm_free_pages(u64 base, u64 pages)
 
 extern "C" bool vmm_reserve(u64 base, u64 pages, bool user)
 {
-    if (!initialized || !valid_range(base, pages))
+    if (!initialized || user || !valid_range(base, pages))
         return false;
     for (const auto& region : regions)
         if (overlaps(base, pages, region))
@@ -218,6 +218,10 @@ extern "C" u64 vmm_allocated_pages()
 extern "C" void vmm_run_tests()
 {
     const u64 before = vmm_allocated_pages();
+    if (vmm_alloc_pages(1, true, true, false) != 0 ||
+        vmm_reserve(NOVOS_KERNEL_HEAP_BASE, 1, true) ||
+        vmm_allocated_pages() != before)
+        for (;;) asm volatile("cli; hlt");
     if (vmm_alloc_pages(1, false, true, true) != 0)
         for (;;) asm volatile("cli; hlt");
     if (vmm_alloc_pages(UINT64_MAX, false, true, false) != 0 ||
