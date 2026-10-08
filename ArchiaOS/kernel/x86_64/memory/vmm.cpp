@@ -22,11 +22,23 @@ static bool valid_range(u64 base, u64 pages)
 
 static bool overlaps(u64 a, u64 pages, const VmmRegion& b)
 {
-    if (!b.used) return false;
-    if (pages > (UINT64_MAX / NOVOS_PAGE_SIZE))
+    if (!b.used ||
+        pages == 0 ||
+        b.pages == 0 ||
+        pages > UINT64_MAX / NOVOS_PAGE_SIZE ||
+        b.pages > UINT64_MAX / NOVOS_PAGE_SIZE)
         return false;
+
     const u64 bytes = pages * NOVOS_PAGE_SIZE;
-    return a < b.base + b.pages * NOVOS_PAGE_SIZE &&
+    const u64 other_bytes = b.pages * NOVOS_PAGE_SIZE;
+
+    /* Treat corrupted metadata as non-overlapping only after proving both
+       half-open ranges can be represented without wrapping. */
+    if (a > UINT64_MAX - bytes ||
+        b.base > UINT64_MAX - other_bytes)
+        return false;
+
+    return a < b.base + other_bytes &&
            b.base < a + bytes;
 }
 
