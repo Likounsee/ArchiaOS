@@ -315,7 +315,8 @@ extern "C" u64 pmm_alloc_page_above(u64 inclusiveBase)
         if (!bitmap_test(current))
         {
             bitmap_set(current);
-            --pmm_free_pages;
+            if (pmm_free_pages > 0)
+                --pmm_free_pages;
             return current * NOVOS_PAGE_SIZE;
         }
     }
