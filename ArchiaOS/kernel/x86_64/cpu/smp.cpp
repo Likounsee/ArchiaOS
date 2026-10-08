@@ -195,7 +195,11 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
             trampolinePhysical,
             trampolinePhysical,
             PagingFlags{true, false, true, false, false}))
+    {
+        (void)paging_unmap_4k(trampolineVirtual);
+        pmm_free_page(trampolinePhysical);
         return false;
+    }
 
     auto* trampoline =
         reinterpret_cast<unsigned char*>(trampolineVirtual);
