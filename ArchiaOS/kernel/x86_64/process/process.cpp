@@ -158,6 +158,7 @@ extern "C" bool process_create_elf(
             continue;
         if (ph.memsz == 0 || ph.memsz < ph.filesz ||
             !range_ok(ph.offset, ph.filesz, image_size) ||
+            (ph.flags & ~7U) != 0 ||
             (ph.flags & 6U) == 6U ||
             ph.vaddr < NOVOS_USER_VIRTUAL_BASE ||
             ph.vaddr >= NOVOS_USER_VIRTUAL_TOP ||
@@ -168,6 +169,30 @@ extern "C" bool process_create_elf(
         {
             address_space_destroy(&space);
             return false;
+        }
+
+        const uint64_t segment_base =
+            ph.vaddr & ~0xFFFULL;
+        const uint64_t segment_end =
+            (ph.vaddr + ph.memsz + 0xFFFULL) & ~0xFFFULL;
+        for (unsigned int previous = 0; previous < i; ++previous)
+        {
+            const auto& other = phdrs[previous];
+            if (other.type != 1)
+                continue;
+            const uint64_t other_base =
+                other.vaddr & ~0xFFFULL;
+            const uint64_t other_end =
+                (other.vaddr + other.memsz + 0xFFFULL) & ~0xFFFULL;
+            if (segment_base < other_end && other_base < segment_end)
+            {
+                /*
+                 * The current loader maps one physical page per virtual
+                 * page and cannot merge two PT_LOADs sharing a page.
+                 */
+                address_space_destroy(&space);
+                return false;
+            }
         }
 
         if ((ph.flags & 1U) != 0 &&
@@ -468,7 +493,7 @@ extern "C" bool process_handle_syscall(ExceptionFrame* frame)
 
 extern "C" bool process_run_ring3_test()
 {
-    static uint8_t image[0x11E] = {};
+    static uint8_t image[0x200] = {};
     for (unsigned int i = 0; i < sizeof(image); ++i)
         image[i] = 0;
 
@@ -558,6 +583,29 @@ extern "C" bool process_run_ring3_test()
     put64(image + 96, 30);
     put64(image + 104, 30);
     put64(image + 112, 0x1000);
+
+    static Process shared_load_page{};
+    put16(image + 56, 2);
+    put32(image + 120, 1);
+    put32(image + 124, 5);
+    put64(image + 128, 0x180);
+    put64(image + 136, 0x400200);
+    put64(image + 144, 0);
+    put64(image + 152, 1);
+    put64(image + 160, 1);
+    put64(image + 168, 0x1000);
+    image[0x180] = 0xC3;
+    const u64 free_before_shared_page = pmm_free_page_count();
+    if (process_create_elf(&shared_load_page, image, sizeof(image)) ||
+        pmm_free_page_count() != free_before_shared_page)
+        return false;
+    put16(image + 56, 1);
+
+    static Process invalid_flags{};
+    put32(image + 68, 0x8);
+    if (process_create_elf(&invalid_flags, image, sizeof(image)))
+        return false;
+    put32(image + 68, 5);
 
     static Process wrap_process{};
     next_pid = UINT32_MAX;
