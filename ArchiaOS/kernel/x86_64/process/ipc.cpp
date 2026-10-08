@@ -14,11 +14,14 @@ struct IpcEndpoint
 };
 
 static IpcEndpoint endpoints[IPC_MAX_ENDPOINTS] = {};
+static volatile unsigned char ipc_lock = 0;
 
 static inline uint64_t ipc_enter_critical()
 {
     uint64_t flags;
     asm volatile("pushfq; popq %0; cli" : "=r"(flags) : : "memory");
+    while (__atomic_test_and_set(&ipc_lock, __ATOMIC_ACQUIRE))
+        asm volatile("pause" : : : "memory");
     return flags;
 }
 
