@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ArchiaOS NONE)
+project(OS NONE)
 
 set(OS_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(OS_BUILD ${CMAKE_BINARY_DIR})
