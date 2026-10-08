@@ -558,7 +558,11 @@ extern "C" bool paging_map_4k(
      * can split them before installing the requested fine-grained mapping.
      */
     const u64 existingEntry = existing_4k_entry(virtualAddress);
-    if (existingEntry & PAGE_PRESENT)
+    if ((existingEntry & PAGE_PRESENT) &&
+        (existingEntry & 0x000FFFFFFFFFF000ULL) != physicalAddress)
+        return false;
+    if ((existingEntry & PAGE_PRESENT) &&
+        flags.user && (existingEntry & PAGE_USER) == 0)
         return false;
 
     const u64 flagsValue = page_entry_flags(flags);
