@@ -181,9 +181,13 @@ static bool calibrate_lapic_timer()
         initialCount);
 
     const unsigned long long start = read_tsc();
-    const unsigned long long target = start + calibrationTscTicks;
 
-    while (read_tsc() < target)
+    /*
+     * Use unsigned TSC subtraction so the reference interval remains
+     * correct even if the 64-bit TSC counter wraps while calibrating.
+     * The interval is far below the 2^63 wrap-safe subtraction bound.
+     */
+    while (read_tsc() - start < calibrationTscTicks)
         asm volatile("pause");
 
     const unsigned long long current =
