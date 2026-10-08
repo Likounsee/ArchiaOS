@@ -385,9 +385,7 @@ extern "C" u64 paging_max_physical_address()
 
 extern "C" u64 paging_translate(u64 virtualAddress)
 {
-    if (pml4 == nullptr ||
-        ((virtualAddress >> 48) != 0 &&
-         (virtualAddress >> 48) != 0xFFFFULL))
+    if (pml4 == nullptr || !canonical_address(virtualAddress))
         return 0;
 
     const u64 pml4e =
