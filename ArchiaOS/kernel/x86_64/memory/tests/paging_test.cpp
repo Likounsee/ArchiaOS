@@ -241,6 +241,28 @@ extern "C" void paging_run_tests()
     if (paging_translate(testPage) != testPage)
         fail("PAGING TEST FAIL: 4K TRANSLATION\n");
 
+    /*
+     * A supervisor-only identity mapping must not be promoted to USER just
+     * because a fine-grained user mapping is requested inside its huge leaf.
+     */
+    const identityUserProbe = pmm_alloc_page();
+    if (identityUserProbe == 0 ||
+        paging_map_4k(
+            USER_VIRTUAL_BASE,
+            identityUserProbe,
+            PagingFlags{false, true, false, false, false}))
+    {
+        fail("PAGING TEST FAIL: HUGE USER PROMOTION\n");
+    }
+
+    const identityHierarchyVirtual = paging_physical_to_virtual(
+        paging_pml4_physical());
+    auto* identityHierarchy =
+        reinterpret_cast<volatile u64*>(identityHierarchyVirtual);
+    if ((identityHierarchy[0] & PAGE_USER) != 0)
+        fail("PAGING TEST FAIL: HUGE USER HIERARCHY\n");
+    pmm_free_page(identityUserProbe);
+
     const u64 userPage = pmm_alloc_page();
     if (userPage == 0)
         fail("PAGING TEST FAIL: USER PAGE ALLOCATION\n");
