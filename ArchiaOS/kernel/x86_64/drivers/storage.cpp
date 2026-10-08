@@ -405,11 +405,6 @@ static bool ahci_prepare_port(uint64_t hba_base, uint32_t port_number,
         ahci_release_port(port);
         return false;
     }
-        !port.table_physical || !port.dma_physical)
-    {
-        release_resources();
-        return false;
-    }
 
     port.command_list = reinterpret_cast<uint8_t*>(
         paging_physical_to_virtual(port.command_list_physical));
