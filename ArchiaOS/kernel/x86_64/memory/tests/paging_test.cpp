@@ -237,6 +237,20 @@ extern "C" void paging_run_tests()
                        userReadOnly))
         fail("PAGING TEST FAIL: USER MAP\n");
 
+    /*
+     * The kernel heap is supervisor-only. A user mapping request into that
+     * window must be rejected even when its page-table hierarchy already
+     * exists and would otherwise be promotable to USER.
+     */
+    const u64 kernelHeapPage = pmm_alloc_page();
+    if (kernelHeapPage == 0)
+        fail("PAGING TEST FAIL: KERNEL HEAP ALLOCATION\n");
+    if (paging_map_4k(NOVOS_KERNEL_HEAP_BASE,
+                      kernelHeapPage,
+                      PagingFlags{true, true, false, false, false}))
+        fail("PAGING TEST FAIL: KERNEL HEAP USER PROMOTION\n");
+    pmm_free_page(kernelHeapPage);
+
     const u64 pml4Virtual = paging_physical_to_virtual(
         paging_pml4_physical());
     auto* pml4Table =
