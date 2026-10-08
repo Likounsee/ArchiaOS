@@ -17,9 +17,21 @@ static u64 used_bytes = 0;
 
 extern "C" bool heap_initialize()
 {
+    /*
+     * Initialization is not a reset operation. Re-running it must preserve
+     * live heap blocks and the VMM regions that back them.
+     */
+    static bool initialized = false;
+    if (initialized)
+        return vmm_initialize();
+
     for (auto& block : blocks) block = {};
     used_bytes = 0;
-    return vmm_initialize();
+    if (!vmm_initialize())
+        return false;
+
+    initialized = true;
+    return true;
 }
 
 extern "C" void* kmalloc(u64 size)
@@ -90,7 +102,11 @@ extern "C" void heap_run_tests()
     if (reinterpret_cast<volatile unsigned char*>(a)[0] != 0x11 ||
         reinterpret_cast<volatile unsigned char*>(b)[8192] != 0x22)
         for (;;) asm volatile("cli; hlt");
-    if (heap_used_bytes() != 8194)
+    if (heap_used_bytes() != 8194 ||
+        !heap_initialize() ||
+        heap_used_bytes() != 8194 ||
+        reinterpret_cast<volatile unsigned char*>(a)[0] != 0x11 ||
+        reinterpret_cast<volatile unsigned char*>(b)[8192] != 0x22)
         for (;;) asm volatile("cli; hlt");
     kfree(b);
     if (heap_used_bytes() != 1)
