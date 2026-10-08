@@ -168,7 +168,7 @@ extern "C" bool vfs_initialize()
             const bool is_partition = disk->type == BLOCK_DEVICE_PARTITION;
             if (pass == 0U)
             {
-                if (!is_partition || !gpt_partition_is_archiaos_system(disk))
+                if (!is_partition || !gpt_partition_is_system(disk))
                     continue;
             }
             else
