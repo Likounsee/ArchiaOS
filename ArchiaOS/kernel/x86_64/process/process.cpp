@@ -706,7 +706,7 @@ extern "C" bool process_run_ring3_test()
 
     if (!process_unregister(&process) || process_registered_count() != 0)
         return false;
-    if (process_find(process.pid) != &process ||
+    if (process_find(process.pid) != nullptr ||
         process_activate(&process))
         return false;
     if (!process_register(&process) || process_registered_count() != 1)
