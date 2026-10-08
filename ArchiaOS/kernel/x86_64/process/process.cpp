@@ -562,7 +562,7 @@ extern "C" bool process_handle_syscall(ExceptionFrame* frame)
             {
                 frame->rax = message.value;
                 if (message.value == 0x12345678ULL)
-                    ipc_user_ok = true;
+                    __atomic_store_n(&ipc_user_ok, true, __ATOMIC_RELEASE);
             }
             else
                 frame->rax = static_cast<uint64_t>(-1);
