@@ -186,7 +186,7 @@ extern "C" void paging_run_tests()
         fail("PAGING TEST FAIL: EXISTING MAP PROMOTION\n");
     }
 
-    const identityPml4Virtual = paging_physical_to_virtual(
+    const u64 identityPml4Virtual = paging_physical_to_virtual(
         paging_pml4_physical());
     auto* identityPml4Table =
         reinterpret_cast<volatile u64*>(identityPml4Virtual);
@@ -266,7 +266,7 @@ extern "C" void paging_run_tests()
         fail("PAGING TEST FAIL: HUGE USER PROMOTION\n");
     }
 
-    const identityHierarchyVirtual = paging_physical_to_virtual(
+    const u64 identityHierarchyVirtual = paging_physical_to_virtual(
         paging_pml4_physical());
     auto* identityHierarchy =
         reinterpret_cast<volatile u64*>(identityHierarchyVirtual);
