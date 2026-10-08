@@ -137,6 +137,16 @@ extern "C" bool smp_initialize(const AcpiInfo* acpi)
             ? acpi->processor_count
             : AcpiInfo::MAX_PROCESSORS;
 
+    for (unsigned int i = 0; i < processorLimit; ++i)
+    {
+        for (unsigned int previous = 0; previous < i; ++previous)
+        {
+            if (acpi->processor_apic_ids[previous] ==
+                acpi->processor_apic_ids[i])
+                return false;
+        }
+    }
+
     unsigned char* trampolineSource = smp_trampoline_start;
     const uint64_t trampolineSize =
         static_cast<uint64_t>(smp_trampoline_end - smp_trampoline_start);
