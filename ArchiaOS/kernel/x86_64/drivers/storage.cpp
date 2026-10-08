@@ -386,7 +386,7 @@ static bool ahci_prepare_port(uint64_t hba_base, uint32_t port_number,
         if (port.dma_physical)
         {
             pmm_free_page(port.dma_physical);
-            pmm_free_page(port.dma_physical + AHCI_SECTOR_SIZE * 16U);
+            pmm_free_page(port.dma_physical + PAGE_SIZE);
         }
         port = {};
     };
@@ -408,9 +408,6 @@ static bool ahci_prepare_port(uint64_t hba_base, uint32_t port_number,
         paging_physical_to_virtual(port.dma_physical));
     if (!port.command_list || !port.fis || !port.table || !port.dma)
     {
-        pmm_free_page(port.command_list_physical);
-        pmm_free_page(port.fis_physical);
-        pmm_free_page(port.table_physical);
         release_resources();
         return false;
     }
