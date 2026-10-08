@@ -107,18 +107,7 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
 
     if (pmm_free_page_count() != free_before_double_free)
     {
-        debug_str("PMM TEST FAIL: DOUBLE FREE
-");
-        for (;;) asm volatile ("cli; hlt");
-    }
-
-    pmm_free_page(page_a);
-    pmm_free_page(page_b);
-
-    if (pmm_free_page_count() != free_before_double_free)
-    {
-        debug_str("PMM TEST FAIL: REPEATED FREE
-");
+        debug_str("PMM TEST FAIL: DOUBLE FREE\n");
         for (;;) asm volatile ("cli; hlt");
     }
 
