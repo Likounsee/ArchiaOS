@@ -229,8 +229,13 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
     else if (user)
         pdpte |= NOVOS_PAGE_USER;
 
-    if (split_huge && (pdpte & NOVOS_PAGE_HUGE) != 0)
-        if (!split_1g_pdpte(&pdpte)) return nullptr;
+    if ((pdpte & NOVOS_PAGE_HUGE) != 0)
+    {
+        if (!split_huge)
+            return nullptr;
+        if (!split_1g_pdpte(&pdpte))
+            return nullptr;
+    }
 
     auto* table2 = table_pointer(pdpte & ~0xFFFULL);
     u64& pde = table2[(virtualAddress >> 21) & 0x1FF];
@@ -245,8 +250,13 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
     else if (user)
         pde |= NOVOS_PAGE_USER;
 
-    if (split_huge && !split_2m_pde(&pde))
-        return nullptr;
+    if ((pde & NOVOS_PAGE_HUGE) != 0)
+    {
+        if (!split_huge)
+            return nullptr;
+        if (!split_2m_pde(&pde))
+            return nullptr;
+    }
 
     auto* pt = table_pointer(pde & ~0xFFFULL);
     return &pt[(virtualAddress >> 12) & 0x1FF];
