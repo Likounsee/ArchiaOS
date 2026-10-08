@@ -161,7 +161,7 @@ extern "C" void paging_run_tests()
     if (!paging_map_identity(0x0000000000200000ULL))
         fail("PAGING TEST FAIL: MAP API\n");
 
-    const kernelUserProbe = pmm_alloc_page();
+    const u64 kernelUserProbe = pmm_alloc_page();
     if (kernelUserProbe == 0 ||
         paging_map_4k(
             KERNEL_HEAP_BASE,
@@ -176,7 +176,7 @@ extern "C" void paging_run_tests()
      * An existing supervisor mapping must never be promoted to USER merely
      * because a caller repeats paging_map_4k with user=true.
      */
-    const identityPhysical = paging_translate(0x0000000000201000ULL);
+    const u64 identityPhysical = paging_translate(0x0000000000201000ULL);
     if (identityPhysical == 0 ||
         paging_map_4k(
             0x0000000000201000ULL,
