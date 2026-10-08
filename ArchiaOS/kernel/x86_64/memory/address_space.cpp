@@ -405,13 +405,17 @@ extern "C" void address_space_run_tests()
     if (address_space_destroy(&space))
         for (;;) asm volatile("cli; hlt");
 
-    space.active = false;
     u64 test_cr3 = 0;
     asm volatile("mov %%cr3, %0" : "=r"(test_cr3));
     test_cr3 &= ~0xFFFULL;
-    if (test_cr3 == space.pml4_physical ||
-        address_space_activate(&space))
+    if (test_cr3 == space.pml4_physical)
         for (;;) asm volatile("cli; hlt");
+    if (!address_space_activate(&space))
+        for (;;) asm volatile("cli; hlt");
+    space.active = true;
+    if (address_space_activate(&space))
+        for (;;) asm volatile("cli; hlt");
+    space.active = false;
 
     if (address_space_map(
             &space, USER_VIRTUAL_BASE, 0,
