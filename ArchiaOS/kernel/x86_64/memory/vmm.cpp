@@ -235,8 +235,14 @@ extern "C" void vmm_run_tests()
     pmm_free_page(occupiedPhysical);
 
     const u64 reserved = NOVOS_KERNEL_HEAP_BASE;
-    if (!vmm_reserve(reserved, 2, false) ||
-        vmm_alloc_pages(2, false, true, false) != 0 ||
+    if (!vmm_reserve(reserved, 2, false))
+        for (;;) asm volatile("cli; hlt");
+    const u64 allocation_around_reservation =
+        vmm_alloc_pages(2, false, true, false);
+    if (allocation_around_reservation == 0 ||
+        allocation_around_reservation == reserved ||
+        vmm_is_mapped(reserved) ||
+        !vmm_free_pages(allocation_around_reservation, 2) ||
         vmm_free_pages(reserved, 2) ||
         !vmm_release(reserved, 2) ||
         vmm_release(reserved, 2))
