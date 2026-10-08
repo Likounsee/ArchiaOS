@@ -506,6 +506,7 @@ extern "C" void address_space_run_tests()
 
     address_space_test_marker('F');
     const u64 physical = pmm_alloc_page();
+    address_space_test_marker('G');
     if (!physical ||
         !address_space_map(&space, USER_VIRTUAL_BASE, physical, true, false) ||
         !address_space_is_user_mapped(&space, USER_VIRTUAL_BASE))
