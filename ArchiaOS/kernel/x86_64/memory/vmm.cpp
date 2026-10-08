@@ -155,6 +155,20 @@ extern "C" bool vmm_reserve(u64 base, u64 pages, bool user)
     for (const auto& region : regions)
         if (overlaps(base, pages, region))
             return false;
+
+    /*
+     * A reservation is metadata-only, but it must never claim virtual
+     * addresses that are already backed by page tables. Otherwise a later
+     * allocator operation could observe a free VMM slot while the paging
+     * hierarchy already owns those pages.
+     */
+    for (u64 page = 0; page < pages; ++page)
+    {
+        const u64 va = base + page * NOVOS_PAGE_SIZE;
+        if (paging_translate(va) != 0 || paging_get_4k_entry(va) != 0)
+            return false;
+    }
+
     for (auto& region : regions)
     {
         if (!region.used)
