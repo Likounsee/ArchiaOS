@@ -4,6 +4,13 @@
 static constexpr u64 NOVOS_IDENTITY_MAP_SIZE = NOVOS_PMM_MAX_PHYSICAL_ADDRESS;
 static constexpr u64 NOVOS_2M_PAGE_SIZE = 0x200000ULL;
 
+static inline bool canonical_address(u64 virtualAddress)
+{
+    const u64 upper = virtualAddress >> 48;
+    const bool sign = (virtualAddress >> 47) != 0;
+    return sign ? upper == 0xFFFFULL : upper == 0;
+}
+
 static u64* pml4 = nullptr;
 static u64 pml4_physical = 0;
 static u64* pdpt = nullptr;
@@ -48,7 +55,7 @@ static inline u64* table_pointer(u64 physicalAddress)
 static u64 existing_4k_entry(u64 virtualAddress)
 {
     if (pml4 == nullptr ||
-        ((virtualAddress >> 48) != 0 && (virtualAddress >> 48) != 0xFFFFULL))
+        !canonical_address(virtualAddress))
         return 0;
 
     const u64 e4 = pml4[(virtualAddress >> 39) & 0x1FF];
@@ -207,7 +214,7 @@ static u64 allocate_table_page()
 static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split_huge)
 {
     if (pml4 == nullptr ||
-        ((virtualAddress >> 48) != 0 && (virtualAddress >> 48) != 0xFFFFULL))
+        !canonical_address(virtualAddress))
         return nullptr;
 
     u64& pml4e = pml4[(virtualAddress >> 39) & 0x1FF];
@@ -444,7 +451,7 @@ extern "C" bool paging_map_4k(
     PagingFlags flags)
 {
     if ((virtualAddress & (NOVOS_PAGE_SIZE - 1ULL)) != 0 ||
-        ((virtualAddress >> 48) != 0 && (virtualAddress >> 48) != 0xFFFFULL) ||
+        !canonical_address(virtualAddress) ||
         (physicalAddress & (NOVOS_PAGE_SIZE - 1ULL)) != 0 ||
         physicalAddress >= mapped_physical_limit)
         return false;
@@ -476,7 +483,7 @@ extern "C" bool paging_map_4k(
 extern "C" bool paging_unmap_4k(u64 virtualAddress)
 {
     if ((virtualAddress & (NOVOS_PAGE_SIZE - 1ULL)) != 0 ||
-        ((virtualAddress >> 48) != 0 && (virtualAddress >> 48) != 0xFFFFULL))
+        !canonical_address(virtualAddress))
         return false;
 
     u64* entry = find_4k_entry(virtualAddress, false, false, true);
