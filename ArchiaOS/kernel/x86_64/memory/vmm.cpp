@@ -234,7 +234,7 @@ extern "C" void vmm_run_tests()
         for (;;) asm volatile("cli; hlt");
     pmm_free_page(occupiedPhysical);
 
-    const u64 reserved = NOVOS_KERNEL_HEAP_BASE + 2 * NOVOS_PAGE_SIZE;
+    const u64 reserved = NOVOS_KERNEL_HEAP_BASE;
     if (!vmm_reserve(reserved, 2, false) ||
         vmm_alloc_pages(2, false, true, false) != 0 ||
         vmm_free_pages(reserved, 2) ||
