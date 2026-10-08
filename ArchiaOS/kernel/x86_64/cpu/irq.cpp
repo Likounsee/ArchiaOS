@@ -6,6 +6,7 @@
 static volatile unsigned long long irq_dispatch_count = 0;
 static volatile unsigned long long keyboard_irq_count = 0;
 static volatile unsigned char keyboard_last_scancode = 0;
+static bool irq_initialized = false;
 
 static inline unsigned char io_in8(unsigned short port)
 {
@@ -26,8 +27,15 @@ static inline void pic_mask_all()
 
 extern "C" bool irq_initialize()
 {
+    if (irq_initialized)
+        return true;
+
     pic_mask_all();
-    return lapic_initialize();
+    if (!lapic_initialize())
+        return false;
+
+    irq_initialized = true;
+    return true;
 }
 
 extern "C" ExceptionFrame* irq_dispatch(ExceptionFrame* frame)
