@@ -234,6 +234,11 @@ jobs:
               -no-reboot -no-shutdown > "qemu-${cpu}.log" 2>&1
             status=$?
             cat "qemu-${cpu}.log"
+            fault_rip=$(grep -a -oE 'RIP: 0x[0-9A-Fa-f]+' "qemu-${cpu}.log" | tail -n 1 | awk '{print $2}' || true)
+            if [ -n "$fault_rip" ]; then
+              echo "Last exception symbolization:"
+              llvm-addr2line -f -C -e ArchiaOS/build/OS_kernel.elf "$fault_rip" || true
+            fi
             if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then
               echo "QEMU failed for CPU model $cpu with status $status"
               exit 1
