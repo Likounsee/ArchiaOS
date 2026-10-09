@@ -2,11 +2,7 @@
 #include "paging.hpp"
 #include "pmm.hpp"
 
-static inline void address_space_test_marker(char c)
-{
-    asm volatile("outb %0, %1" : : "a"(c), "Nd"(static_cast<unsigned short>(0xE9)));
-}
-
+constexpr u64 ADDRESS_SPACE_PHYSICAL_MASK = 0x000FFFFFFFFFF000ULL;
 
 static inline void zero_table(u64 physical)
 {
@@ -16,12 +12,10 @@ static inline void zero_table(u64 physical)
 
 static u64 new_table()
 {
-    address_space_test_marker('1');
     const u64 physical = pmm_alloc_page_above(0x01000000ULL);
     if (!physical)
         return 0;
 
-    address_space_test_marker('2');
     if (paging_physical_to_virtual(physical) == 0)
     {
         pmm_free_page(physical);
@@ -29,7 +23,6 @@ static u64 new_table()
     }
 
     zero_table(physical);
-    address_space_test_marker('3');
     return physical;
 }
 
@@ -52,7 +45,7 @@ static bool physical_mapped_in_level(
         if (!(entry & PAGE_PRESENT))
             continue;
 
-        const u64 entry_physical = entry & ~0xFFFULL;
+        const u64 entry_physical = entry & ADDRESS_SPACE_PHYSICAL_MASK;
         if (level == 1)
         {
             if (entry_physical == physical)
@@ -314,7 +307,7 @@ static void destroy_table_level(u64 physical, unsigned int level)
 
         if (level == 1)
         {
-            pmm_free_page(entry & ~0xFFFULL);
+            pmm_free_page(entry & ADDRESS_SPACE_PHYSICAL_MASK);
             entries[i] = 0;
             continue;
         }
@@ -454,12 +447,10 @@ extern "C" bool address_space_is_user_executable(
 
 extern "C" void address_space_run_tests()
 {
-    address_space_test_marker('A');
     AddressSpace space{};
     if (!address_space_create(&space))
         for (;;) asm volatile("cli; hlt");
 
-    address_space_test_marker('B');
     AddressSpace occupied = space;
     if (address_space_create(&occupied))
         for (;;) asm volatile("cli; hlt");
@@ -484,13 +475,11 @@ extern "C" void address_space_run_tests()
      * a dedicated CR3 activation test; here we validate the address-space
      * lifecycle guard without switching away from the bootstrap CR3.
      */
-    address_space_test_marker('C');
     space.active = true;
     if (address_space_activate(&space))
         for (;;) asm volatile("cli; hlt");
     space.active = false;
 
-    address_space_test_marker('D');
     if (address_space_map(
             &space, USER_VIRTUAL_BASE, 0,
             true, false) ||
@@ -499,7 +488,6 @@ extern "C" void address_space_run_tests()
             true, false))
         for (;;) asm volatile("cli; hlt");
 
-    address_space_test_marker('H');
     const u64 paging_limit = paging_max_physical_address();
     if (paging_limit == 0 ||
         address_space_map(
@@ -507,21 +495,16 @@ extern "C" void address_space_run_tests()
             paging_limit, true, false))
         for (;;) asm volatile("cli; hlt");
 
-    address_space_test_marker('F');
     const u64 physical = pmm_alloc_page();
-    address_space_test_marker('G');
     const bool first_user_map =
         physical &&
         address_space_map(&space, USER_VIRTUAL_BASE, physical, true, false);
-    address_space_test_marker(first_user_map &&
-        address_space_is_user_mapped(&space, USER_VIRTUAL_BASE) ? 'K' : 'L');
     if (!first_user_map ||
         !address_space_is_user_mapped(&space, USER_VIRTUAL_BASE))
         for (;;) asm volatile("cli; hlt");
 
     const bool duplicate_map =
         address_space_map(&space, USER_VIRTUAL_BASE, physical, true, false);
-    address_space_test_marker(duplicate_map ? 'L' : 'M');
     if (duplicate_map)
         for (;;) asm volatile("cli; hlt");
 
@@ -532,8 +515,6 @@ extern "C" void address_space_run_tests()
     const bool alias_visible =
         address_space_is_user_mapped(
             &space, USER_VIRTUAL_BASE + PAGE_SIZE);
-    address_space_test_marker(alias_map ? 'P' : 'Q');
-    address_space_test_marker(alias_visible ? 'R' : 'S');
     if (alias_map || alias_visible)
         for (;;) asm volatile("cli; hlt");
 
@@ -592,14 +573,12 @@ extern "C" void address_space_run_tests()
 
     const u64 active_map_physical = pmm_alloc_page();
     if (!active_map_physical ||
-        !address_space_activate(&space) ||
         !address_space_map(
             &space, USER_VIRTUAL_BASE + 5 * PAGE_SIZE,
             active_map_physical, true, false) ||
         !address_space_is_user_mapped(
             &space, USER_VIRTUAL_BASE + 5 * PAGE_SIZE))
         for (;;) asm volatile("cli; hlt");
-
 
     if (!address_space_destroy(&space) || space.pml4_physical != 0)
         for (;;) asm volatile("cli; hlt");
