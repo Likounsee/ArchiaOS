@@ -561,8 +561,32 @@ extern "C" bool process_handle_syscall(ExceptionFrame* frame)
                     &message))
             {
                 frame->rax = message.value;
-                if (message.value == 0x12345678ULL)
+                if (message.value == 0x12345678ULL &&
+                    message.sender_pid == current_process->pid &&
+                    message.code == 0)
+                {
                     __atomic_store_n(&ipc_user_ok, true, __ATOMIC_RELEASE);
+                    /*
+                     * This marker is emitted only after the user test binary
+                     * has entered ring 3, issued INT 0x80, and completed its
+                     * self-directed IPC send/receive round trip.
+                     */
+                    static volatile bool ring3_test_reported = false;
+                    if (!__atomic_exchange_n(
+                            &ring3_test_reported, true, __ATOMIC_ACQ_REL))
+                    {
+                        const char marker[] =
+                            "PROCESS: RING3 IPC ROUNDTRIP OK\n";
+                        for (unsigned int i = 0;
+                             i < sizeof(marker) - 1; ++i)
+                            asm volatile(
+                                "outb %0, %1"
+                                :
+                                : "a"(marker[i]),
+                                  "Nd"(static_cast<unsigned short>(0xE9))
+                                : "memory");
+                    }
+                }
             }
             else
                 frame->rax = static_cast<uint64_t>(-1);
