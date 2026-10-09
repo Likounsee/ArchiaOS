@@ -1,4 +1,5 @@
 #include "pmm.hpp"
+#include "paging.hpp"
 #include "../cpu/features.hpp"
 
 struct EfiMemoryDescriptor
@@ -192,7 +193,19 @@ extern "C" bool pmm_initialize(BootInfo* bootInfo)
             PMM_MAX_PHYSICAL_ADDRESS - bootInfo->pmm_bitmap_base)
         return false;
 
-    pmm_bitmap = reinterpret_cast<u64*>(bootInfo->pmm_bitmap_base);
+    /*
+     * Paging is already active when the kernel adopts the UEFI mappings.
+     * Keep allocator metadata reachable through the shared HHDM, not the
+     * low identity alias that disappears in isolated process address spaces.
+     */
+    const u64 bitmap_virtual =
+        paging_physical_to_virtual(bootInfo->pmm_bitmap_base);
+    if (!bitmap_virtual ||
+        bootInfo->pmm_bitmap_size >
+            paging_max_physical_address() - bootInfo->pmm_bitmap_base)
+        return false;
+
+    pmm_bitmap = reinterpret_cast<u64*>(bitmap_virtual);
     pmm_bitmap_words = (bootInfo->pmm_bitmap_size / 2ULL) / sizeof(u64);
     pmm_reserved_bitmap = pmm_bitmap + pmm_bitmap_words;
     const u64 bitmap_frames = pmm_bitmap_words * 64ULL;
