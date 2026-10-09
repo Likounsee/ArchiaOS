@@ -318,14 +318,7 @@ static bool ahci_write(const BlockDevice* device, uint64_t lba,
                 ? AHCI_MAX_SECTORS_PER_COMMAND : count;
         if (!ahci_issue(*port, ATA_CMD_WRITE_DMA_EXT, lba, chunk, true,
                         const_cast<uint8_t*>(input_bytes)))
-        {
-            storage_debug("AHCI WRITE FAIL LBA=");
-            const char digits[] = "0123456789ABCDEF";
-            for (int shift = 60; shift >= 0; shift -= 4)
-                asm volatile("outb %0,%1" : : "a"(digits[(lba >> shift) & 0xFULL]), "Nd"(static_cast<unsigned short>(0xE9)));
-            storage_debug("\\n");
             return false;
-        }
         input_bytes += static_cast<uint64_t>(chunk) * AHCI_SECTOR_SIZE;
         lba += chunk;
         count -= chunk;
