@@ -296,6 +296,23 @@ extern "C" void paging_run_tests()
         fail("PAGING TEST FAIL: USER MAP\n");
 
     /*
+     * NX is legal on an upper-level entry. Address extraction must discard
+     * that permission bit instead of mistaking it for part of the physical
+     * page-table address. Translation remains valid even though execution
+     * through this subtree is disabled.
+     */
+    const u64 userPml4Virtual = paging_physical_to_virtual(
+        paging_pml4_physical());
+    auto* userPml4Table =
+        reinterpret_cast<volatile u64*>(userPml4Virtual);
+    const u64 savedUserPml4e = userPml4Table[userPml4Index];
+    userPml4Table[userPml4Index] = savedUserPml4e | PAGE_NO_EXECUTE;
+    if (paging_translate(userVirtual) != userPage)
+        fail("PAGING TEST FAIL: NX PML4 ADDRESS MASK\n");
+    userPml4Table[userPml4Index] = savedUserPml4e;
+    test_str("PAGING NX TABLE ADDRESS MASK PASS\n");
+
+    /*
      * The kernel heap is supervisor-only. A user mapping request into that
      * window must be rejected even when its page-table hierarchy already
      * exists and would otherwise be promotable to USER.
