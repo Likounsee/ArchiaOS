@@ -273,7 +273,8 @@ jobs:
               "STORAGE: CONTROLLER DISCOVERY OK" \
               "STORAGE: REAL BLOCK DEVICE OK" \
               "ACPI: RSDP/MADT OK" \
-              "SMP: APPLICATION PROCESSORS ONLINE"; do
+              "SMP: APPLICATION PROCESSORS ONLINE" \
+              "PROCESS: RING3 IPC ROUNDTRIP OK"; do
               grep -a -F -q -- "$marker" "qemu-${cpu}.log" || {
                 echo "Missing expected marker for $cpu: $marker"
                 exit 1
@@ -311,6 +312,10 @@ jobs:
               -no-reboot -no-shutdown > "qemu-scale-${smp}.log" 2>&1 || test $? -eq 124
             cat "qemu-scale-${smp}.log"
             grep -q "SMP: APPLICATION PROCESSORS ONLINE" "qemu-scale-${smp}.log"
+            grep -a -F -q "PROCESS: RING3 IPC ROUNDTRIP OK" "qemu-scale-${smp}.log" || {
+              echo "Ring 3 user-mode IPC round trip did not complete for ${smp} CPUs"
+              exit 1
+            }
             expected_tss=$((smp - 1))
             actual_tss=$(grep -c "SMP: AP TSS OK" "qemu-scale-${smp}.log" || true)
             if [ "$actual_tss" -ne "$expected_tss" ]; then
