@@ -1,4 +1,5 @@
 #include "pmm.hpp"
+#include "../paging.hpp"
 #include "../cpu/features.hpp"
 
 static inline void debug_char(char c)
@@ -88,13 +89,20 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
     };
 
     bool checked_firmware_reserved = false;
+    const u64 memory_map_virtual =
+        paging_physical_to_virtual(bootInfo->memory_map_address);
+    if (!memory_map_virtual)
+    {
+        debug_str("PMM TEST FAIL: MEMORY MAP HHDM\n");
+        for (;;) asm volatile ("cli; hlt");
+    }
     const u64 entry_count =
         bootInfo->memory_map_size / bootInfo->memory_descriptor_size;
     for (u64 i = 0; i < entry_count; ++i)
     {
         const auto* descriptor =
             reinterpret_cast<const TestEfiMemoryDescriptor*>(
-                bootInfo->memory_map_address +
+                memory_map_virtual +
                 i * bootInfo->memory_descriptor_size);
 
         const bool reclaimable =
