@@ -447,6 +447,7 @@ extern "C" bool address_space_is_user_executable(
 
 extern "C" void address_space_run_tests()
 {
+    const u64 free_pages_before_test = pmm_free_page_count();
     AddressSpace space{};
     if (!address_space_create(&space))
         for (;;) asm volatile("cli; hlt");
@@ -595,5 +596,16 @@ extern "C" void address_space_run_tests()
         for (;;) asm volatile("cli; hlt");
 
     if (!address_space_destroy(&space) || space.pml4_physical != 0)
+        for (;;) asm volatile("cli; hlt");
+
+    /*
+     * All user data pages and private page-table pages allocated above must
+     * be reclaimed by address_space_destroy(). A second destroy must be
+     * rejected without changing the allocator's free-page count.
+     */
+    const u64 free_pages_after_destroy = pmm_free_page_count();
+    if (free_pages_after_destroy != free_pages_before_test ||
+        address_space_destroy(&space) ||
+        pmm_free_page_count() != free_pages_after_destroy)
         for (;;) asm volatile("cli; hlt");
 }
