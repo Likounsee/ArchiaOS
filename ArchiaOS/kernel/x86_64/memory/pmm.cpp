@@ -149,7 +149,15 @@ static bool reserve_boot_page_table_tree(u64 physical, unsigned int level)
     if (level == 1)
         return true;
 
-    auto* entries = reinterpret_cast<const u64*>(physical);
+    /*
+     * Page-table frames are physical addresses, not guaranteed identity-mapped
+     * virtual addresses. Walk them through the shared HHDM just like the
+     * allocator metadata, and fail safely if the frame is outside that map.
+     */
+    const u64 virtual_address = paging_physical_to_virtual(physical);
+    if (!virtual_address)
+        return false;
+    auto* entries = reinterpret_cast<const u64*>(virtual_address);
     for (unsigned int i = 0; i < 512; ++i)
     {
         const u64 entry = entries[i];
