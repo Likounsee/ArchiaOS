@@ -259,6 +259,7 @@ jobs:
               "PAGING TABLES CREATED" \
               "PAGING IDENTITY MAP PASS" \
               "PAGING HHDM PASS" \
+              "PAGING NX TABLE ADDRESS MASK PASS" \
               "PAGING CR3 ACTIVATION PASS" \
               "PAGING 4K RO/NX BITS PASS" \
               "PAGING CACHE FLAGS PASS" \
