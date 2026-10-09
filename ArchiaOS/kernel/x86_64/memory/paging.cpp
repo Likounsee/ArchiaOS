@@ -66,7 +66,7 @@ static u64 existing_4k_entry(u64 virtualAddress)
     if (!(e4 & PAGE_PRESENT) || (e4 & PAGE_HUGE))
         return 0;
 
-    auto* table3 = table_pointer(e4 & ~0xFFFULL);
+    auto* table3 = table_pointer(e4 & 0x000FFFFFFFFFF000ULL);
     if (!table3)
         return 0;
 
@@ -74,7 +74,7 @@ static u64 existing_4k_entry(u64 virtualAddress)
     if (!(e3 & PAGE_PRESENT) || (e3 & PAGE_HUGE))
         return 0;
 
-    auto* table2 = table_pointer(e3 & ~0xFFFULL);
+    auto* table2 = table_pointer(e3 & 0x000FFFFFFFFFF000ULL);
     if (!table2)
         return 0;
 
@@ -82,7 +82,7 @@ static u64 existing_4k_entry(u64 virtualAddress)
     if (!(e2 & PAGE_PRESENT) || (e2 & PAGE_HUGE))
         return 0;
 
-    auto* table1 = table_pointer(e2 & ~0xFFFULL);
+    auto* table1 = table_pointer(e2 & 0x000FFFFFFFFFF000ULL);
     if (!table1)
         return 0;
 
@@ -247,7 +247,7 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
     auto rollback_created_tables = [&]() {
         if (created_pd_table)
         {
-            auto* pdpt_table = table_pointer(pml4e & ~0xFFFULL);
+            auto* pdpt_table = table_pointer(pml4e & 0x000FFFFFFFFFF000ULL);
             pdpt_table[(virtualAddress >> 30) & 0x1FF] = 0;
             pmm_free_page(pd_physical);
         }
@@ -284,7 +284,7 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
         }
     }
 
-    auto* table3 = table_pointer(pml4e & ~0xFFFULL);
+    auto* table3 = table_pointer(pml4e & 0x000FFFFFFFFFF000ULL);
     if (!table3)
     {
         rollback_created_tables();
@@ -334,12 +334,12 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
             return nullptr;
         }
 
-        auto* splitPd = table_pointer(pdpte & ~0xFFFULL);
+        auto* splitPd = table_pointer(pdpte & 0x000FFFFFFFFFF000ULL);
         const unsigned int splitIndex = (virtualAddress >> 21) & 0x1FF;
         if ((splitPd[splitIndex] & PAGE_HUGE) != 0 &&
             !split_2m_pde(&splitPd[splitIndex]))
         {
-            const u64 splitPdPhysical = pdpte & ~0xFFFULL;
+            const u64 splitPdPhysical = pdpte & 0x000FFFFFFFFFF000ULL;
             pdpte = oldPdpte;
             pmm_free_page(splitPdPhysical);
             rollback_created_tables();
@@ -347,7 +347,7 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
         }
     }
 
-    auto* table2 = table_pointer(pdpte & ~0xFFFULL);
+    auto* table2 = table_pointer(pdpte & 0x000FFFFFFFFFF000ULL);
     if (!table2)
     {
         rollback_created_tables();
@@ -396,7 +396,7 @@ static u64* find_4k_entry(u64 virtualAddress, bool user, bool create, bool split
         }
     }
 
-    auto* pt = table_pointer(pde & ~0xFFFULL);
+    auto* pt = table_pointer(pde & 0x000FFFFFFFFFF000ULL);
     if (!pt)
     {
         rollback_created_tables();
@@ -445,8 +445,8 @@ static bool setup_identity_2m()
      * lower-level hierarchy. This is the direct-map invariant used by the
      * PMM/page-table code before the hierarchy is later expanded.
      */
-    if ((identityPdptEntry & ~0xFFFULL) !=
-        (hhdmPdptEntry & ~0xFFFULL))
+    if ((identityPdptEntry & 0x000FFFFFFFFFF000ULL) !=
+        (hhdmPdptEntry & 0x000FFFFFFFFFF000ULL))
         return false;
 
     const CpuInfo* cpu = cpu_get_info();
@@ -466,7 +466,7 @@ static bool setup_identity_2m()
         return false;
 
     const u64 identityPdptPhysical =
-        identityPdptEntry & ~0xFFFULL;
+        identityPdptEntry & 0x000FFFFFFFFFF000ULL;
     if (identityPdptPhysical >= mapped_physical_limit)
         return false;
 
@@ -536,7 +536,7 @@ extern "C" u64 paging_translate(u64 virtualAddress)
         return 0;
 
     auto* table3 =
-        table_pointer(pml4e & ~0xFFFULL);
+        table_pointer(pml4e & 0x000FFFFFFFFFF000ULL);
     if (!table3)
         return 0;
 
@@ -551,7 +551,7 @@ extern "C" u64 paging_translate(u64 virtualAddress)
                (virtualAddress & 0x3FFFFFFFULL);
 
     auto* table2 =
-        table_pointer(pdpte & ~0xFFFULL);
+        table_pointer(pdpte & 0x000FFFFFFFFFF000ULL);
     if (!table2)
         return 0;
 
@@ -566,7 +566,7 @@ extern "C" u64 paging_translate(u64 virtualAddress)
                (virtualAddress & 0x1FFFFFULL);
 
     auto* table1 =
-        table_pointer(pde & ~0xFFFULL);
+        table_pointer(pde & 0x000FFFFFFFFFF000ULL);
     if (!table1)
         return 0;
 
