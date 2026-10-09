@@ -471,10 +471,24 @@ static bool setup_identity_2m()
         return false;
 
     pml4_physical = bootstrapPml4Physical;
+
+    /*
+     * The bootloader has already enabled paging before entering the kernel.
+     * Record that fact when adopting its CR3: process address spaces preserve
+     * the shared HHDM/kernel mappings but intentionally omit the low identity
+     * map, so retaining physical pointers here would fault after a CR3 switch.
+     */
+    paging_active = true;
     pml4 = table_pointer(bootstrapPml4Physical);
     pdpt = table_pointer(identityPdptPhysical);
     if (!pml4 || !pdpt)
+    {
+        paging_active = false;
+        pml4 = nullptr;
+        pdpt = nullptr;
+        pml4_physical = 0;
         return false;
+    }
 
     /*
      * The boot hierarchy uses 2 MiB leaves on CPUs without 1 GiB pages and
