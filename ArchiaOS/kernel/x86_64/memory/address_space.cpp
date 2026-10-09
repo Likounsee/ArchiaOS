@@ -194,7 +194,7 @@ extern "C" bool address_space_map(
         return false;
     }
 
-    pdpt_physical = pml4_flags & ~0xFFFULL;
+    pdpt_physical = pml4_flags & 0x000FFFFFFFFFF000ULL;
     pdpt = table(pdpt_physical);
     if (!pdpt)
     {
@@ -229,7 +229,7 @@ extern "C" bool address_space_map(
         return false;
     }
 
-    pd_physical = pdpt_flags & ~0xFFFULL;
+    pd_physical = pdpt_flags & 0x000FFFFFFFFFF000ULL;
     pd = table(pd_physical);
     if (!pd)
     {
@@ -264,7 +264,7 @@ extern "C" bool address_space_map(
         return false;
     }
 
-    pt_physical = pd_flags & ~0xFFFULL;
+    pt_physical = pd_flags & 0x000FFFFFFFFFF000ULL;
     pt = table(pt_physical);
     if (!pt)
     {
@@ -318,7 +318,7 @@ static void destroy_table_level(u64 physical, unsigned int level)
             continue;
         }
 
-        const u64 child = entry & ~0xFFFULL;
+        const u64 child = entry & 0x000FFFFFFFFFF000ULL;
         destroy_table_level(child, level - 1);
         pmm_free_page(child);
         entries[i] = 0;
@@ -348,7 +348,7 @@ extern "C" bool address_space_destroy(AddressSpace* space)
         if (entry & PAGE_HUGE)
             continue;
 
-        const u64 child = entry & ~0xFFFULL;
+        const u64 child = entry & 0x000FFFFFFFFFF000ULL;
         destroy_table_level(child, 3);
         pmm_free_page(child);
         pml4[i] = 0;
@@ -388,17 +388,17 @@ extern "C" bool address_space_is_user_mapped(
     if (!pml4) return false;
     const u64 e4 = pml4[(virtual_address >> 39) & 0x1FF];
     if (!(e4 & PAGE_PRESENT) || !(e4 & PAGE_USER)) return false;
-    auto* pdpt = table(e4 & ~0xFFFULL);
+    auto* pdpt = table(e4 & 0x000FFFFFFFFFF000ULL);
     if (!pdpt) return false;
     const u64 e3 = pdpt[(virtual_address >> 30) & 0x1FF];
     if (!(e3 & PAGE_PRESENT) || !(e3 & PAGE_USER)) return false;
     if (e3 & PAGE_HUGE) return true;
-    auto* pd = table(e3 & ~0xFFFULL);
+    auto* pd = table(e3 & 0x000FFFFFFFFFF000ULL);
     if (!pd) return false;
     const u64 e2 = pd[(virtual_address >> 21) & 0x1FF];
     if (!(e2 & PAGE_PRESENT) || !(e2 & PAGE_USER)) return false;
     if (e2 & PAGE_HUGE) return true;
-    auto* pt = table(e2 & ~0xFFFULL);
+    auto* pt = table(e2 & 0x000FFFFFFFFFF000ULL);
     if (!pt) return false;
     return (pt[(virtual_address >> 12) & 0x1FF] &
             (PAGE_PRESENT | PAGE_USER)) ==
@@ -421,7 +421,7 @@ extern "C" bool address_space_is_user_executable(
         (e4 & PAGE_NO_EXECUTE))
         return false;
 
-    auto* pdpt = table(e4 & ~0xFFFULL);
+    auto* pdpt = table(e4 & 0x000FFFFFFFFFF000ULL);
     if (!pdpt) return false;
     const u64 e3 = pdpt[(virtual_address >> 30) & 0x1FF];
     if (!(e3 & PAGE_PRESENT) || !(e3 & PAGE_USER) ||
@@ -429,7 +429,7 @@ extern "C" bool address_space_is_user_executable(
         return false;
     if (e3 & PAGE_HUGE) return true;
 
-    auto* pd = table(e3 & ~0xFFFULL);
+    auto* pd = table(e3 & 0x000FFFFFFFFFF000ULL);
     if (!pd) return false;
     const u64 e2 = pd[(virtual_address >> 21) & 0x1FF];
     if (!(e2 & PAGE_PRESENT) || !(e2 & PAGE_USER) ||
@@ -437,7 +437,7 @@ extern "C" bool address_space_is_user_executable(
         return false;
     if (e2 & PAGE_HUGE) return true;
 
-    auto* pt = table(e2 & ~0xFFFULL);
+    auto* pt = table(e2 & 0x000FFFFFFFFFF000ULL);
     if (!pt) return false;
     const u64 e1 = pt[(virtual_address >> 12) & 0x1FF];
     return (e1 & (PAGE_PRESENT | PAGE_USER)) ==
