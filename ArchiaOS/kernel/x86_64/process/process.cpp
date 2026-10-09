@@ -70,8 +70,12 @@ static bool allocate_process_pid(uint32_t* pid)
     if (!pid)
         return false;
 
-    /* At most PROCESS_MAX PIDs can be resident, so this bound guarantees a free candidate. */
-    for (uint64_t attempts = 0; attempts <= PROCESS_MAX; ++attempts)
+    /*
+     * Registered and detached processes have separate bounded ownership
+     * tables, so as many as 2 * PROCESS_MAX PIDs can remain resident.
+     * Trying one more candidate than that guarantees a free PID.
+     */
+    for (uint64_t attempts = 0; attempts <= 2ULL * PROCESS_MAX; ++attempts)
     {
         const uint32_t candidate = next_pid ? next_pid : 1U;
         next_pid = candidate + 1U;
@@ -767,6 +771,48 @@ extern "C" bool process_run_ring3_test()
         wrap_process.pid != UINT32_MAX ||
         !process_register(&wrap_process) ||
         !process_destroy(&wrap_process))
+        return false;
+
+    /*
+     * Detached ownership can keep PIDs resident after registered slots are
+     * reused. Fill 65 candidate PIDs across both tables to prove allocation
+     * does not stop at PROCESS_MAX + 1 attempts.
+     */
+    static Process pid_occupants[PROCESS_MAX + 1]{};
+    static Process pid_capacity_process{};
+    Process* saved_process_table[PROCESS_MAX]{};
+    Process* saved_detached_processes[PROCESS_MAX]{};
+    for (unsigned int i = 0; i < PROCESS_MAX; ++i)
+    {
+        saved_process_table[i] = process_table[i];
+        saved_detached_processes[i] = detached_processes[i];
+    }
+    const unsigned int saved_pid_table_count = process_table_count;
+    const uint32_t saved_next_pid = next_pid;
+    for (unsigned int i = 0; i < PROCESS_MAX + 1; ++i)
+        pid_occupants[i].pid = 100U + i;
+    for (unsigned int i = 0; i < PROCESS_MAX; ++i)
+        detached_processes[i] = &pid_occupants[i];
+    process_table[0] = &pid_occupants[PROCESS_MAX];
+    process_table_count = 1;
+    next_pid = 100U;
+
+    const bool allocated_after_full_candidate_window =
+        process_create_elf(
+            &pid_capacity_process, image, sizeof(image)) &&
+        pid_capacity_process.pid == 100U + PROCESS_MAX + 1U;
+
+    for (unsigned int i = 0; i < PROCESS_MAX; ++i)
+    {
+        process_table[i] = saved_process_table[i];
+        detached_processes[i] = saved_detached_processes[i];
+    }
+    process_table_count = saved_pid_table_count;
+    next_pid = saved_next_pid;
+
+    if (!allocated_after_full_candidate_window ||
+        !process_register(&pid_capacity_process) ||
+        !process_destroy(&pid_capacity_process))
         return false;
 
     static Process process{};
