@@ -225,6 +225,33 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
         for (;;) asm volatile ("cli; hlt");
     }
 
+    /*
+     * Invalid frees must be ignored without corrupting the bitmap or the
+     * free-page counter. Include zero, an unaligned address, and the exact
+     * exclusive physical limit.
+     */
+    const u64 free_before_invalid_free = pmm_free_page_count();
+    pmm_free_page(0);
+    pmm_free_page(page_a + 1ULL);
+    pmm_free_page(pmm_max_physical_address());
+    if (pmm_free_page_count() != free_before_invalid_free)
+    {
+        debug_str("PMM TEST FAIL: INVALID FREE\n");
+        for (;;) asm volatile ("cli; hlt");
+    }
+
+    /*
+     * Requests that cannot be satisfied must fail without consuming pages.
+     */
+    const u64 free_before_invalid_contiguous = pmm_free_page_count();
+    if (pmm_alloc_contiguous(0) != 0 ||
+        pmm_alloc_contiguous(pmm_max_physical_address() / PAGE_SIZE) != 0 ||
+        pmm_free_page_count() != free_before_invalid_contiguous)
+    {
+        debug_str("PMM TEST FAIL: INVALID CONTIGUOUS REQUEST\n");
+        for (;;) asm volatile ("cli; hlt");
+    }
+
     const u64 free_before_contiguous = pmm_free_page_count();
     const u64 contiguous = pmm_alloc_contiguous(4);
 
