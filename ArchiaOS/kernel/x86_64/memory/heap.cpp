@@ -54,16 +54,7 @@ extern "C" void* kmalloc(u64 size)
 
     const u64 pages = (size + PAGE_SIZE - 1ULL) / PAGE_SIZE;
     const u64 base = vmm_alloc_pages(pages, false, true, false);
-    if (!base)
-    {
-        if (size >= 1048576ULL)
-        {
-            const char msg[] = "HEAP LARGE ALLOCATION FAILED\\n";
-            for (const char* p = msg; *p; ++p)
-                asm volatile("outb %0,%1" : : "a"(*p), "Nd"(static_cast<unsigned short>(0xE9)));
-        }
-        return nullptr;
-    }
+    if (!base) return nullptr;
 
     *free_block = {base, pages * PAGE_SIZE, size, true};
     used_bytes += size;
