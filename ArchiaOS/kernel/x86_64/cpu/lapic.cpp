@@ -276,11 +276,21 @@ extern "C" bool lapic_initialize()
     if (!x2apic_mode)
     {
         const u64 physical = apic_base & APIC_BASE_MASK;
-        if (physical >= PMM_MAX_PHYSICAL_ADDRESS ||
-            !paging_map_4k(physical, physical, PagingFlags{
+        if (physical >= paging_max_physical_address())
+            return false;
+
+        /*
+         * Process address spaces omit the low identity map. Keep the LAPIC
+         * reachable after CR3 switches by mapping its MMIO page in the shared
+         * HHDM with uncached/write-through attributes.
+         */
+        const u64 virtual_base = HHDM_BASE + physical;
+        if (virtual_base < HHDM_BASE ||
+            !paging_map_4k(virtual_base, physical, PagingFlags{
                 true, false, false, true, true}))
             return false;
-        lapic_base = reinterpret_cast<volatile unsigned char*>(physical);
+        lapic_base =
+            reinterpret_cast<volatile unsigned char*>(virtual_base);
     }
 
     /*
