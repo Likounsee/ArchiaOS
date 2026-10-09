@@ -262,6 +262,20 @@ extern "C" bool pmm_initialize(BootInfo* bootInfo)
         return false;
     }
 
+    /*
+     * BootInfo stores the EFI map's physical address. Parse it through the
+     * HHDM rather than assuming the firmware's low identity mapping survives.
+     */
+    const u64 paging_limit = paging_max_physical_address();
+    if (bootInfo->memory_map_address >= paging_limit ||
+        bootInfo->memory_map_size >
+            paging_limit - bootInfo->memory_map_address)
+        return false;
+    const u64 memory_map_virtual =
+        paging_physical_to_virtual(bootInfo->memory_map_address);
+    if (!memory_map_virtual)
+        return false;
+
     const u64 entry_count =
         bootInfo->memory_map_size /
         bootInfo->memory_descriptor_size;
@@ -273,7 +287,7 @@ extern "C" bool pmm_initialize(BootInfo* bootInfo)
     {
         auto* descriptor =
             reinterpret_cast<EfiMemoryDescriptor*>(
-                bootInfo->memory_map_address +
+                memory_map_virtual +
                 i * bootInfo->memory_descriptor_size);
 
         if (reclaimable_efi_type(descriptor->type))
