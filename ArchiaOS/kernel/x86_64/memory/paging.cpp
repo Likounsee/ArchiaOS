@@ -519,8 +519,18 @@ extern "C" u64 paging_translate(u64 virtualAddress)
     if (pml4 == nullptr || !canonical_address(virtualAddress))
         return 0;
 
+    /*
+     * Translation must follow the currently loaded CR3. The global pml4
+     * remains the kernel root used for shared mappings, while a process CR3
+     * also contains its private user mappings (including the active syscall
+     * instruction and stack).
+     */
+    auto* current_pml4 = table_pointer(read_cr3());
+    if (!current_pml4)
+        return 0;
+
     const u64 pml4e =
-        pml4[(virtualAddress >> 39) & 0x1FF];
+        current_pml4[(virtualAddress >> 39) & 0x1FF];
 
     if ((pml4e & PAGE_PRESENT) == 0)
         return 0;
