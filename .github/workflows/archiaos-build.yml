@@ -256,6 +256,8 @@ jobs:
               "CPU: IDT 256 VECTORS OK" \
               "PMM CONTIGUOUS PASS" \
               "PMM TEST PASS" \
+              "MM: KERNEL HEAP OK" \
+              "MM: ADDRESS SPACE OK" \
               "PAGING TABLES CREATED" \
               "PAGING IDENTITY MAP PASS" \
               "PAGING HHDM PASS" \
