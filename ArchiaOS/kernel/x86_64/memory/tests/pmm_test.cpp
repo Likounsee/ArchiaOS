@@ -158,6 +158,26 @@ extern "C" void pmm_run_tests(BootInfo* bootInfo)
     }
     pmm_free_page(above_page);
 
+    /*
+     * The inclusive lower bound may be unaligned. The allocator must round
+     * upward to the next page boundary rather than return a page below it.
+     */
+    const u64 free_before_unaligned_above = pmm_free_page_count();
+    const u64 unaligned_above = pmm_alloc_page_above(0x00200001ULL);
+    if (unaligned_above == 0 ||
+        unaligned_above < 0x00200001ULL ||
+        (unaligned_above & (PAGE_SIZE - 1ULL)) != 0)
+    {
+        debug_str("PMM TEST FAIL: UNALIGNED ABOVE LIMIT\n");
+        for (;;) asm volatile ("cli; hlt");
+    }
+    pmm_free_page(unaligned_above);
+    if (pmm_free_page_count() != free_before_unaligned_above)
+    {
+        debug_str("PMM TEST FAIL: UNALIGNED ABOVE COUNT\n");
+        for (;;) asm volatile ("cli; hlt");
+    }
+
     const u64 free_before_unaligned_below = pmm_free_page_count();
     const u64 unaligned_limit = 0x00200001ULL;
     const u64 below_page = pmm_alloc_page_below(unaligned_limit);
