@@ -569,6 +569,20 @@ extern "C" void address_space_run_tests()
             blocked_exec_physical, false, true))
         for (;;) asm volatile("cli; hlt");
     pmm_free_page(blocked_exec_physical);
+
+    /*
+     * NX restricts instruction fetch, not page-table address decoding or
+     * ordinary data mappings. A non-executable user page must still be
+     * mappable beneath an NX-marked PML4 entry.
+     */
+    const u64 nx_data_physical = pmm_alloc_page();
+    if (!nx_data_physical ||
+        !address_space_map(
+            &space, USER_VIRTUAL_BASE + 6 * PAGE_SIZE,
+            nx_data_physical, true, false) ||
+        !address_space_is_user_mapped(
+            &space, USER_VIRTUAL_BASE + 6 * PAGE_SIZE))
+        for (;;) asm volatile("cli; hlt");
     pml4[user_pml4_index] = saved_pml4_entry;
 
     const u64 active_map_physical = pmm_alloc_page();
