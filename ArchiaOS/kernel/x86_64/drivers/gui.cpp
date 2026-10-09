@@ -27,9 +27,14 @@ extern "C" int gui_create_window(uint32_t x, uint32_t y, uint32_t width, uint32_
     {
         if (!windows[i].used)
         {
-            const uint32_t id_value = next_id ? next_id : 1U;
+            /*
+             * This API returns int, so generated IDs must stay in the
+             * positive int range instead of becoming negative on conversion.
+             */
+            const uint32_t id_value =
+                (next_id == 0U || next_id > 0x7FFFFFFFU) ? 1U : next_id;
             next_id = id_value + 1U;
-            if (!next_id)
+            if (next_id == 0U || next_id > 0x7FFFFFFFU)
                 next_id = 1U;
             windows[i] = {
                 true, id_value, x, y, width, height,
@@ -98,6 +103,9 @@ extern "C" bool gui_test()
 
     InputEvent event{INPUT_EVENT_KEYBOARD, 0x1E, 1};
     if (!gui_dispatch_input(&event) || !gui_destroy_window(static_cast<uint32_t>(first)))
+        return false;
+
+    if (!gui_destroy_window(static_cast<uint32_t>(second)))
         return false;
 
     next_id = UINT32_MAX;
