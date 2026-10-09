@@ -790,7 +790,7 @@ extern "C" bool process_run_ring3_test()
         detached_process.pid != 0 ||
         detached_process.address_space.pml4_physical != 0 ||
         process_registered_count() + 1 != registered_before_detach ||
-        ipc_receive(detached_endpoint, detached_pid, nullptr))
+        ipc_send(detached_endpoint, detached_pid, 0, 0x55ULL))
         return false;
 
     Process duplicate = process;
