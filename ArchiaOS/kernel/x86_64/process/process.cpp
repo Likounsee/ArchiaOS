@@ -10,6 +10,8 @@ static Process* current_process = nullptr;
 static uint32_t next_pid = 1;
 static constexpr unsigned int PROCESS_MAX = 64;
 static Process* process_table[PROCESS_MAX] = {};
+/* Detached processes remain kernel-owned until re-registered or destroyed. */
+static Process* detached_processes[PROCESS_MAX] = {};
 static unsigned int process_table_count = 0;
 /* Initial process state is kept kernel-owned until the first user transition. */
 static volatile unsigned long long syscall_count = 0;
@@ -55,8 +57,11 @@ static bool process_pid_in_use(uint32_t pid)
     if (!pid)
         return true;
     for (unsigned int i = 0; i < PROCESS_MAX; ++i)
-        if (process_table[i] && process_table[i]->pid == pid)
+    {
+        if ((process_table[i] && process_table[i]->pid == pid) ||
+            (detached_processes[i] && detached_processes[i]->pid == pid))
             return true;
+    }
     return false;
 }
 
@@ -304,14 +309,30 @@ extern "C" bool process_register(Process* process)
             return true;
         if (process_table[i] && process_table[i]->pid == process->pid)
             return false;
+        if (detached_processes[i] && detached_processes[i] != process &&
+            detached_processes[i]->pid == process->pid)
+            return false;
+    }
+
+    unsigned int free_slot = PROCESS_MAX;
+    for (unsigned int i = 0; i < PROCESS_MAX; ++i)
         if (!process_table[i])
         {
-            process_table[i] = process;
-            ++process_table_count;
-            return true;
+            free_slot = i;
+            break;
         }
-    }
-    return false;
+    if (free_slot == PROCESS_MAX)
+        return false;
+
+    process_table[free_slot] = process;
+    ++process_table_count;
+    for (unsigned int i = 0; i < PROCESS_MAX; ++i)
+        if (detached_processes[i] == process)
+        {
+            detached_processes[i] = nullptr;
+            break;
+        }
+    return true;
 }
 
 extern "C" Process* process_find(uint32_t pid)
@@ -330,16 +351,23 @@ extern "C" bool process_unregister(Process* process)
         process->state != PROCESS_READY ||
         process->address_space.active)
         return false;
+
+    unsigned int table_slot = PROCESS_MAX;
+    unsigned int detached_slot = PROCESS_MAX;
     for (unsigned int i = 0; i < PROCESS_MAX; ++i)
     {
         if (process_table[i] == process)
-        {
-            process_table[i] = nullptr;
-            --process_table_count;
-            return true;
-        }
+            table_slot = i;
+        if (!detached_processes[i] && detached_slot == PROCESS_MAX)
+            detached_slot = i;
     }
-    return false;
+    if (table_slot == PROCESS_MAX || detached_slot == PROCESS_MAX)
+        return false;
+
+    detached_processes[detached_slot] = process;
+    process_table[table_slot] = nullptr;
+    --process_table_count;
+    return true;
 }
 
 extern "C" bool process_destroy(Process* process)
@@ -350,19 +378,22 @@ extern "C" bool process_destroy(Process* process)
         return false;
 
     /*
-     * Unregistering temporarily removes a process from lookup/scheduling, but
-     * it must not make its owned pages impossible to release. Permit destroy
-     * for a detached READY process as well as a registered one.
+     * Only objects explicitly owned by the process subsystem may be destroyed.
+     * This rejects copied/forged Process structs that alias another process's
+     * address space, while allowing a legitimately unregistered process to
+     * release its resources.
      */
     unsigned int table_slot = PROCESS_MAX;
+    unsigned int detached_slot = PROCESS_MAX;
     for (unsigned int i = 0; i < PROCESS_MAX; ++i)
     {
         if (process_table[i] == process)
-        {
             table_slot = i;
-            break;
-        }
+        if (detached_processes[i] == process)
+            detached_slot = i;
     }
+    if (table_slot == PROCESS_MAX && detached_slot == PROCESS_MAX)
+        return false;
 
     if (!address_space_destroy(&process->address_space))
         return false;
@@ -374,6 +405,8 @@ extern "C" bool process_destroy(Process* process)
         process_table[table_slot] = nullptr;
         --process_table_count;
     }
+    if (detached_slot != PROCESS_MAX)
+        detached_processes[detached_slot] = nullptr;
     process->state = PROCESS_EXITED;
     process->pid = 0;
     process->entry = 0;
