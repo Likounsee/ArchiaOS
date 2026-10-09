@@ -345,9 +345,15 @@ extern "C" bool process_unregister(Process* process)
 extern "C" bool process_destroy(Process* process)
 {
     if (!process || process == current_process || !process->pid ||
-        process->state != PROCESS_READY)
+        process->state != PROCESS_READY || process->address_space.active ||
+        !process->address_space.pml4_physical)
         return false;
 
+    /*
+     * Unregistering temporarily removes a process from lookup/scheduling, but
+     * it must not make its owned pages impossible to release. Permit destroy
+     * for a detached READY process as well as a registered one.
+     */
     unsigned int table_slot = PROCESS_MAX;
     for (unsigned int i = 0; i < PROCESS_MAX; ++i)
     {
@@ -357,16 +363,17 @@ extern "C" bool process_destroy(Process* process)
             break;
         }
     }
-    if (table_slot == PROCESS_MAX)
-        return false;
 
     if (!address_space_destroy(&process->address_space))
         return false;
 
     ipc_destroy_owner(process->pid);
 
-    process_table[table_slot] = nullptr;
-    --process_table_count;
+    if (table_slot != PROCESS_MAX)
+    {
+        process_table[table_slot] = nullptr;
+        --process_table_count;
+    }
     process->state = PROCESS_EXITED;
     process->pid = 0;
     process->entry = 0;
@@ -765,6 +772,25 @@ extern "C" bool process_run_ring3_test()
         cleanup_process.address_space.pml4_physical != 0 ||
         process_register(&cleanup_process) ||
         ipc_receive(cleanup_endpoint, cleanup_pid, &cleanup_message))
+        return false;
+
+    static Process detached_process{};
+    if (!process_create_elf(&detached_process, image, sizeof(image)) ||
+        !process_register(&detached_process))
+        return false;
+    const unsigned int registered_before_detach = process_registered_count();
+    const uint32_t detached_pid = detached_process.pid;
+    const int detached_endpoint = ipc_create(detached_pid);
+    if (detached_endpoint < 0 ||
+        !process_unregister(&detached_process) ||
+        process_registered_count() + 1 != registered_before_detach ||
+        process_find(detached_pid) != nullptr ||
+        !process_destroy(&detached_process) ||
+        detached_process.state != PROCESS_EXITED ||
+        detached_process.pid != 0 ||
+        detached_process.address_space.pml4_physical != 0 ||
+        process_registered_count() + 1 != registered_before_detach ||
+        ipc_receive(detached_endpoint, detached_pid, nullptr))
         return false;
 
     Process duplicate = process;
