@@ -330,6 +330,7 @@ extern "C" bool scheduler_run_test()
         return false;
     }
 
+    __atomic_store_n(&scheduler_ready_flag, false, __ATOMIC_RELEASE);
     if (!scheduler_initialize(2))
     {
         return false;
