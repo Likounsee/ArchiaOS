@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use core::arch::asm;
+use core::arch::{asm, global_asm};
 use core::fmt::{self, Write};
 use core::panic::PanicInfo;
 
@@ -28,6 +28,23 @@ static LIMINE_REQUESTS_END_MARKER: [u64; 2] = [
     0xadc0_e053_1bb1_0d03,
     0x9572_709f_3176_4c62,
 ];
+
+// Limine transfers control to _start without a normal Rust call. Align the
+// bootloader-provided stack and call Rust with the x86-64 SysV ABI alignment.
+global_asm!(
+    ".section .text.boot, \"ax\"",
+    ".global _start",
+    ".type _start, @function",
+    "_start:",
+    "cli",
+    "cld",
+    "and rsp, -16",
+    "call rust_kernel_main",
+    ".Lhalt:",
+    "cli",
+    "hlt",
+    "jmp .Lhalt",
+);
 
 const COM1: u16 = 0x3F8;
 struct Serial;
@@ -82,7 +99,7 @@ unsafe fn port_in(port: u16) -> u8 {
 }
 
 #[no_mangle]
-pub extern "C" fn _start() -> ! {
+pub extern "C" fn rust_kernel_main() -> ! {
     let mut serial = Serial;
     serial.init();
     let _ = writeln!(serial, "ArchiaOS: Limine entered x86_64 kernel");
