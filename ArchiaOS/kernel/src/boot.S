@@ -52,8 +52,12 @@ _start:
 
     lgdt [gdt64_pointer]
     push 0x08
-    push offset long_mode_start
+    push dword ptr [long_mode_target]
     retf
+
+/* Store the 32-bit offset separately to avoid an out-of-range 16-bit relocation. */
+long_mode_target:
+    .long long_mode_start
 
 .code64
 long_mode_start:
