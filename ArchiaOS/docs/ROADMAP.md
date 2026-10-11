@@ -1,7 +1,7 @@
 # Roadmap et critères
 
-- **P0 — Fondations : en cours.** Documentation initiale, manifeste Cargo bare-metal, script de liaison, génération d’ISO et CI build/boot. La validation du démarrage dépend du résultat du test QEMU.
-- **P1 — Noyau et matériel : premières fondations seulement.** Entrée Limine et sortie série écrites ; restent IDT, exceptions, validation des informations de démarrage et gestion mémoire.
+- **P0 — Fondations : en cours.** Build bare-metal, ISO Limine, sortie série et smoke test QEMU réussis sur un commit précédent. La nouvelle vérification de la carte mémoire et la vérification des segments ELF doivent passer dans la CI avant d’être considérées validées.
+- **P1 — Noyau et matériel : premières fondations.** Entrée Limine et diagnostics série vérifiés ; parsing borné de la carte mémoire en cours. Restent IDT, exceptions, réservations mémoire et allocateur physique.
 - **P2 — Ordonnanceur : non commencé.** Pas de contexte de tâche, synchronisation ni ordonnancement.
 - **P3 — Espace utilisateur : non commencé.** Pas de syscall, chargeur, ABI ni processus isolés.
 - **P4 — Stockage : non commencé.** Pas de pilote bloc ni de système de fichiers.

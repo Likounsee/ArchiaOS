@@ -2,7 +2,7 @@
 
 ## État actuel
 
-Le projet contient un noyau x86-64 expérimental écrit en Rust `no_std`, chargé au format ELF64 par Limine. Le noyau est lié en espace virtuel haut avec une adresse physique de chargement à partir de 1 Mio. Limine fournit l’entrée en mode long et les tables de pagination initiales ; un stub assembleur aligne la pile puis appelle Rust, qui initialise COM1 et écrit des diagnostics.
+Le noyau x86-64 expérimental est chargé au format ELF64 par Limine. Il est lié en espace virtuel haut et demande désormais la carte mémoire au bootloader. Au démarrage, le noyau vérifie la révision de protocole, valide le nombre d’entrées, les pointeurs non nuls, les tailles et les débordements des plages, puis rapporte le nombre de régions utilisables et leur taille totale. Cela ne constitue pas encore un allocateur physique.
 
 ## Prérequis
 
@@ -21,13 +21,10 @@ scripts/make-iso.sh
 qemu-system-x86_64 -cdrom build/archiaos.iso -boot d -serial stdio -display none -no-reboot -no-shutdown
 ```
 
-Le script télécharge Limine v12.9.1 et vérifie le SHA-256 de l’archive avant de créer l’ISO. Le message attendu sur le port série est `ArchiaOS: Limine entered x86_64 kernel`. La CI vérifie séparément la compilation, la création de l’ISO et le démarrage ; la réussite du build seul ne prouve pas que le noyau démarre.
+Le script télécharge Limine v12.9.1 et vérifie le SHA-256 de l’archive avant de créer l’ISO. La CI vérifie la compilation, les adresses virtuelles ELF, la création de l’ISO et le démarrage ; elle exige le message d’entrée noyau et celui de validation de la carte mémoire.
 
-## Architecture et limites
+## Limites
 
-- Cible initiale : x86-64, ELF64, protocole Limine.
-- Adresse virtuelle du noyau dans la moitié haute ; adresse physique de chargement à partir de 1 Mio.
-- Rust `no_std` pour le noyau et les diagnostics.
-- Pas encore de parsing de carte mémoire, allocateur, IDT, ordonnanceur, processus, syscall, stockage ou interface graphique.
+Aucun allocateur physique, tas, IDT, gestionnaire d’exceptions, ordonnanceur, processus, syscall, stockage ou interface graphique n’est encore implémenté. Le comptage des régions utilisables ne signifie pas que ces régions sont sûres à allouer : le noyau doit encore réserver ses propres segments, la pile, les tables de pages et toutes les plages requises par le bootloader.
 
-Voir `docs/` pour les limites par sous-système. Travaillez exclusivement sur la branche `ArchiaOS` et ne revendiquez pas une fonctionnalité avant de l’avoir vérifiée.
+Voir `docs/` pour les limites par sous-système. Travaillez exclusivement sur la branche `ArchiaOS`.

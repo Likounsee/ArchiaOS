@@ -2,12 +2,14 @@
 
 ## État actuel
 
-Le noyau s’appuie sur les structures de pagination initiales fournies par Limine. Le linker associe des adresses virtuelles hautes à des adresses physiques de chargement à partir de 1 Mio. Le noyau ne possède pas encore de gestionnaire de mémoire physique ou virtuelle propre.
+Le noyau demande la carte mémoire via Limine. Il vérifie la prise en charge de la révision de protocole, la présence de la réponse, un nombre d’entrées compris entre 1 et 4096, le pointeur de tableau et les pointeurs d’entrée. Chaque région doit avoir une longueur non nulle et une fin calculable sans débordement. Le total des longueurs marquées utilisables est additionné avec contrôle de débordement.
 
-## Limites
+La validation échoue de manière contrôlée et laisse le noyau dans une boucle d’arrêt si la réponse manque ou si une entrée est mal formée. Les diagnostics indiquent le nombre d’entrées, le nombre de plages utilisables et la somme de leurs longueurs.
 
-Il n’y a ni parsing de la carte mémoire, ni bitmap de frames, ni allocation/libération, ni tas, ni séparation noyau/utilisateur, ni gestion des fautes de page. Les garanties exactes du mapping initial doivent être vérifiées dans le contrat Limine et ne constituent pas une politique de protection finale.
+## Limites importantes
+
+Le noyau ne possède pas encore d’allocateur physique. Le total rapporté ne retire pas encore les segments du noyau, la pile, les tables de pages, les structures Limine ou les autres plages réservées ; il ne doit donc pas servir directement à allouer des pages. Le code s’appuie encore sur le contrat de confiance du bootloader pour l’accessibilité des pointeurs de réponse.
 
 ## Prochaine étape
 
-Valider les structures d’informations de démarrage avec des bornes et contrôles de débordement, puis construire une représentation explicite des régions utilisables et réservées avant d’implémenter un allocateur de pages physiques.
+Construire une liste de régions réservées et utilisables, vérifier les chevauchements et les alignements, réserver explicitement toutes les plages du noyau et du bootloader, puis implémenter et tester l’allocateur de pages physiques.

@@ -5,7 +5,7 @@ KERNEL_LMA = 0x00100000;
 
 PHDRS
 {
-    requests PT_LOAD FLAGS(4);
+    requests PT_LOAD FLAGS(6);
     text     PT_LOAD FLAGS(5);
     rodata   PT_LOAD FLAGS(4);
     data     PT_LOAD FLAGS(6);
@@ -56,6 +56,7 @@ SECTIONS
     {
         *(.eh_frame .eh_frame.*)
         *(.comment)
+        *(.got .got.*)
     }
 
     ASSERT(LOADADDR(.text) >= KERNEL_LMA, "kernel load address is below the reserved base")

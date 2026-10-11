@@ -1,14 +1,15 @@
 # ArchiaOS
 
-**ArchiaOS est un système d’exploitation expérimental en cours de construction.** Le dépôt contient une première base de noyau bare-metal x86-64 en Rust `no_std`, utilisant le protocole de démarrage natif de Limine, une sortie série et une chaîne de build Cargo/ELF.
+**ArchiaOS est un système d’exploitation expérimental en cours de construction.** Le dépôt contient une première base de noyau bare-metal x86-64 en Rust `no_std`, utilisant le protocole natif de Limine, une sortie série et une chaîne de build Cargo/ELF.
 
 ## État actuel
 
 - **Cible :** x86-64 ; noyau ELF64 avec adresse virtuelle haute et adresse physique de chargement à partir de 1 Mio.
-- **Langages présents :** Rust pour le code noyau et un petit stub assembleur d’entrée qui aligne la pile avant d’appeler Rust ; pas de C/C++ sans besoin d’intégration démontré.
+- **Langages présents :** Rust pour le noyau et un petit stub assembleur d’entrée qui aligne la pile avant l’appel Rust.
 - **Diagnostic :** port série COM1.
+- **Démarrage :** compilation, création d’ISO Limine et test QEMU confirmés dans la CI au commit `6f8842e`. Le noyau a atteint son entrée Rust et émis les diagnostics série.
+- **Mémoire :** le noyau demande maintenant la carte mémoire Limine et valide les bornes de ses entrées avant de rapporter les régions utilisables. L’allocateur physique n’est pas encore implémenté ; cette nouvelle vérification attend son résultat CI.
 - **Build :** Cargo, script de liaison avec segments ELF explicites, génération d’une ISO Limine BIOS/UEFI.
-- **Validation :** la compilation et la génération de l’ISO ont réussi dans les workflows. Le test QEMU a montré que Limine refusait la première image ELF liée en mémoire virtuelle basse ; le script de liaison a été corrigé pour séparer les adresses virtuelles et physiques. Le résultat du nouveau test QEMU reste à confirmer.
 
 Le noyau ne fournit pas encore de gestionnaire mémoire complet, d’IDT, d’ordonnanceur, de processus isolés, d’appels système, de pilotes de stockage, de système de fichiers, de réseau ni d’interface graphique. Il n’est pas annoncé comme prêt pour du matériel réel.
 
@@ -19,7 +20,7 @@ Le noyau ne fournit pas encore de gestionnaire mémoire complet, d’IDT, d’or
 - **C/C++ :** seulement avec justification technique.
 - **Python :** outils auxiliaires éventuels ; langages web uniquement pour une future couche utilisateur avec runtime réel.
 
-La prochaine priorité est de valider le démarrage Limine/QEMU, puis les informations de démarrage, les exceptions/interruptions et la mémoire physique.
+La prochaine priorité est de valider le parsing de la carte mémoire en QEMU, puis d’implémenter un allocateur de pages physiques et les diagnostics d’exceptions.
 
 ## Compilation et lancement
 
@@ -33,7 +34,7 @@ scripts/make-iso.sh
 qemu-system-x86_64 -cdrom build/archiaos.iso -boot d -serial stdio -display none -no-reboot -no-shutdown
 ```
 
-Le script télécharge Limine v12.9.1 et vérifie son SHA-256 avant utilisation. Les instructions techniques se trouvent dans [ArchiaOS/README.md](ArchiaOS/README.md).
+Le script télécharge Limine v12.9.1 et vérifie son SHA-256 avant utilisation. Les instructions détaillées se trouvent dans [ArchiaOS/README.md](ArchiaOS/README.md).
 
 ## Roadmap P0–P7
 

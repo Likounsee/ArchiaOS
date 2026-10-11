@@ -27,6 +27,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 xorriso
       - name: Build kernel
         run: cargo build --release
+      - name: Verify ELF virtual addresses
+        run: |
+          readelf -lW target/x86_64-unknown-none/release/archiaos-kernel
+          readelf -lW target/x86_64-unknown-none/release/archiaos-kernel | awk '$1 == "LOAD" && $3 !~ /^0xffffffff/ { bad = 1 } END { exit bad }'
       - name: Build bootable ISO
         run: scripts/make-iso.sh
       - name: Boot smoke test
@@ -42,3 +46,4 @@ jobs:
             exit 1
           fi
           grep -Fq "ArchiaOS: Limine entered x86_64 kernel" "$RUNNER_TEMP/archiaos-serial.log"
+          grep -Fq "ArchiaOS: memory map entries validated:" "$RUNNER_TEMP/archiaos-serial.log"
