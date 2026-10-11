@@ -1,73 +1,57 @@
 # ArchiaOS
 
-**ArchiaOS est un projet de système d’exploitation en développement.** Son objectif est de construire progressivement un OS moderne, modulaire et vérifiable, en commençant par une plateforme matérielle documentée, puis en ajoutant les services noyau et l’environnement utilisateur au fur et à mesure que leurs dépendances sont prêtes.
+**ArchiaOS est un système d’exploitation expérimental en cours de construction.** Le dépôt contient désormais une première base de noyau bare-metal x86-64 en Rust `no_std`, une entrée assembleur Multiboot 1, un script de liaison, une configuration Cargo et une CI. Cette base est volontairement minimale : elle ne constitue pas encore un OS complet.
 
-> **État vérifié du dépôt :** à la date de cette mise à jour, la branche **ArchiaOS** ne contient qu’un commit initial et ce README. Aucun code de noyau, système de build ou test exécutable n’a pu être confirmé dans l’arborescence distante. Les fonctionnalités décrites ci-dessous sont donc des objectifs, pas des capacités annoncées comme déjà disponibles.
+## État actuel
 
-## Vision
+- **Cible visée :** x86-64, noyau ELF démarré par un chargeur compatible Multiboot 1.
+- **Langages réellement présents :** Rust pour le code noyau et assembleur x86 pour la transition initiale vers le mode long 64 bits. C et C++ ne sont pas introduits faute de besoin démontré.
+- **Diagnostic :** sortie série COM1.
+- **Pagination d’amorçage :** identité-mapping des premiers 1 Gio avec des pages de 2 Mio ; ce n’est pas un gestionnaire de mémoire complet.
+- **Build :** Cargo, cible `x86_64-unknown-none`, linker script et workflow GitHub Actions.
+- **Validation :** le build a d’abord révélé une erreur de relocation assembleur, puis un correctif a fait passer la compilation CI. Une étape de démarrage QEMU est maintenant configurée ; consulter son exécution pour connaître le résultat du test de démarrage le plus récent.
 
-ArchiaOS vise à évoluer vers un système capable de démarrer de façon reproductible, de gérer la mémoire et les interruptions, d’exécuter des tâches isolées, de fournir des pilotes et un stockage fiables, puis de proposer un environnement utilisateur et graphique.
+Aucune prise en charge de matériel réel, aucune isolation utilisateur, aucun ordonnanceur, aucune IDT, aucun syscall, aucun système de fichiers et aucune interface graphique ne sont déclarés disponibles à ce stade.
 
-Le développement doit privilégier des composants fonctionnels, des frontières explicites et des tests réels plutôt que des modules vides ou des démonstrations qui donnent une impression trompeuse d’avancement.
+## Vision et architecture cible
 
-## Langages envisagés
+Le projet doit progresser par composants testables : démarrage et diagnostic, exceptions et interruptions, validation des informations boot, mémoire physique et virtuelle, ordonnanceur, processus et appels système, pilotes, stockage, système de fichiers, puis environnement utilisateur et graphique. Les dépendances et les résultats de tests priment sur l’ajout artificiel de modules.
 
-Le choix définitif doit être confirmé par l’architecture et la chaîne de compilation réellement mises en place.
+## Langages
 
-- **Rust** : langage privilégié pour les nouveaux composants noyau et services quand les contraintes bare-metal le permettent, avec no_std, allocateur et runtime minimal configurés explicitement.
-- **C** : intégration bas niveau, ABI et composants matériels ou existants lorsque cela se justifie.
-- **Assembleur** : uniquement aux frontières matérielles indispensables, telles que l’entrée du noyau, certaines interruptions et changements de contexte.
-- **C++** : seulement pour un composant ciblé dont les avantages justifient le runtime et le coût d’intégration.
-- **Python** : scripts de build, génération et analyse/test.
-- **JavaScript/TypeScript, HTML et CSS** : éventuellement pour une couche utilisateur future, pas pour le noyau.
+- **Rust `no_std` :** choix principal pour les nouveaux composants noyau lorsque les contraintes bare-metal le permettent.
+- **Assembleur :** uniquement pour les opérations CPU indispensables à la transition de démarrage, aux interruptions ou au changement de contexte.
+- **C :** uniquement pour les interfaces bas niveau ou l’intégration de composants qui le justifient.
+- **C++ :** uniquement si un composant ciblé présente un avantage technique concret.
+- **Python :** outils auxiliaires de génération et de test.
+- **Langages web :** éventuellement pour une future couche utilisateur disposant réellement d’un runtime adapté, jamais pour le noyau.
 
-Aucun langage ni composant n’est considéré comme déjà intégré tant que les fichiers de source et les commandes de compilation ne le démontrent pas.
-
-## Architecture cible
-
-La trajectoire envisagée comprend le démarrage et l’initialisation, l’architecture CPU, la mémoire physique et virtuelle, les exceptions et interruptions, l’ordonnanceur, les processus et appels système, les pilotes, le stockage et le système de fichiers, puis les programmes utilisateur et l’environnement graphique. L’ordre réel sera ajusté aux dépendances et à l’audit du code existant.
-
-## Plateformes
-
-- **Architecture et firmware pris en charge : non encore vérifiés dans ce dépôt.**
-- **Démarrage en machine virtuelle ou sur matériel réel : non vérifié.**
-- **Image de démarrage reproductible : non vérifiée.**
-
-x86-64 peut être retenu comme première cible si l’audit et la chaîne de démarrage le confirment.
-
-## Fonctionnalités
-
-### Implémentées et vérifiées
-
-Aucune fonctionnalité noyau n’est actuellement déclarée ici comme implémentée et vérifiée : aucun code source ni test exécutable n’a été confirmé dans l’état distant inspecté.
-
-### Expérimentales
-
-Aucun composant expérimental n’a été confirmé dans l’arborescence inspectée.
-
-### Non implémentées ou non vérifiées
-
-Démarrage, noyau, mémoire, interruptions, ordonnanceur, processus isolés, appels système, pilotes, stockage, système de fichiers, réseau, interface graphique et environnement utilisateur restent à auditer et à implémenter avant toute déclaration de disponibilité.
+Les choix détaillés et les limites actuelles figurent dans [ArchiaOS/docs/LANGUAGES.md](ArchiaOS/docs/LANGUAGES.md).
 
 ## Compilation et lancement
 
-Aucune commande de compilation ni de lancement ne peut être fournie de manière fiable pour l’instant : aucun Makefile, manifeste Cargo, script de build, linker script ou image de démarrage n’a été confirmé. Ces instructions seront ajoutées une fois la chaîne de compilation réellement présente et testée.
+Prérequis : Rust stable, cible `x86_64-unknown-none` et QEMU x86-64. Depuis le dossier du projet :
 
-## Roadmap
+```sh
+cd ArchiaOS
+rustup target add x86_64-unknown-none
+cargo build --release
+qemu-system-x86_64 -kernel target/x86_64-unknown-none/release/archiaos-kernel -serial stdio -display none -no-reboot -no-shutdown
+```
 
-- **P0 — Fondations :** audit du dépôt, chaîne de build reproductible, diagnostics, CI, tests et documentation alignés sur le code.
-- **P1 — Noyau et matériel :** démarrage, exceptions, interruptions, mémoire et diagnostics fiables.
+Le message attendu sur la console série est `ArchiaOS: kernel entry reached (x86_64)`. Le démarrage n’est considéré comme validé que lorsque le test QEMU correspondant réussit effectivement dans la CI.
+
+Instructions détaillées : [ArchiaOS/README.md](ArchiaOS/README.md).
+
+## Roadmap P0–P7
+
+- **P0 — Fondations :** build reproductible, diagnostics, CI, tests et documentation alignés sur le code.
+- **P1 — Noyau et matériel :** exceptions, interruptions, mémoire et validation des informations de démarrage.
 - **P2 — Exécution :** contextes, threads noyau, synchronisation et ordonnanceur.
-- **P3 — Espace utilisateur :** protection, appels système, chargeur et premiers programmes isolés.
+- **P3 — Espace utilisateur :** protection, appels système, chargeur et programmes isolés.
 - **P4 — Stockage :** interface bloc, pilote virtuel, système de fichiers et tests de corruption.
 - **P5 — Interface utilisateur :** entrées, rendu graphique, composition et applications.
-- **P6 — Réseau et performances :** réseau, compatibilité et benchmarks reproductibles.
-- **P7 — Stabilisation :** audit de sécurité, tests prolongés, documentation et procédure de distribution.
+- **P6 — Réseau et performances :** réseau, compatibilité et mesures reproductibles.
+- **P7 — Stabilisation :** audit de sécurité, tests prolongés et procédure de distribution.
 
-Les phases ne seront considérées comme terminées qu’après validation de leurs critères techniques et de tests.
-
-## Développement
-
-La documentation technique et les futures instructions de contribution seront maintenues dans [ArchiaOS/README.md](ArchiaOS/README.md) lorsque ce fichier et l’arborescence du projet auront été créés. Les décisions de conception devront être documentées dans ArchiaOS/docs/.
-
-Les changements de code doivent être développés exclusivement sur la branche **ArchiaOS**. La branche **main** ne doit pas être modifiée.
+Une phase n’est terminée qu’après validation de ses critères techniques et de ses tests. Le développement se fait exclusivement sur la branche **`ArchiaOS`** ; la branche `main` ne doit pas être modifiée.
