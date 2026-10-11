@@ -102,17 +102,6 @@ unsafe fn set_bit(bitmap: *mut u64, frame: u64, value: bool) {
     unsafe { ptr::write(word_ptr, updated) };
 }
 
-fn clear_bitmaps() {
-    let managed = managed_bitmap_ptr();
-    let free = free_bitmap_ptr();
-    for index in 0..BITMAP_WORDS {
-        unsafe {
-            ptr::write(managed.add(index), 0);
-            ptr::write(free.add(index), 0);
-        }
-    }
-}
-
 fn frame_range(entry: &LimineMemmapEntry) -> Option<(u64, u64)> {
     let end = entry.base.checked_add(entry.length)?;
     let mut first = entry.base / PAGE_SIZE;
@@ -205,8 +194,9 @@ pub fn initialize<W: Write>(log: &mut W) -> Result<MemoryStats, MemoryError> {
     }
     let _ = writeln!(log, "PMM: map entries validated, {} usable ranges", usable_ranges);
 
-    clear_bitmaps();
-    let _ = writeln!(log, "PMM: bitmaps cleared");
+    // Both bitmap statics live in ELF BSS, which Limine zero-initializes.
+    // Initialization is single-shot; do not redundantly clear 256 KiB here.
+    let _ = writeln!(log, "PMM: using zero-initialized BSS bitmaps");
 
     // Mark only full pages from usable regions as managed and free.
     for index in 0..response.entry_count {
