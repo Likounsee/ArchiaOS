@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ArchiaOS]
 
+concurrency:
+  group: archiaos-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -47,3 +51,4 @@ jobs:
           fi
           grep -Fq "ArchiaOS: Limine entered x86_64 kernel" "$RUNNER_TEMP/archiaos-serial.log"
           grep -Fq "ArchiaOS: memory map entries validated:" "$RUNNER_TEMP/archiaos-serial.log"
+          grep -Fq "ArchiaOS: PMM allocation/free self-test passed" "$RUNNER_TEMP/archiaos-serial.log"

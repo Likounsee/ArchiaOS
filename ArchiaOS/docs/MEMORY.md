@@ -1,15 +1,19 @@
 # Mémoire
 
-## État actuel
+## Carte mémoire
 
-Le noyau demande la carte mémoire via Limine. Il vérifie la prise en charge de la révision de protocole, la présence de la réponse, un nombre d’entrées compris entre 1 et 4096, le pointeur de tableau et les pointeurs d’entrée. Chaque région doit avoir une longueur non nulle et une fin calculable sans débordement. Le total des longueurs marquées utilisables est additionné avec contrôle de débordement.
+Le noyau demande la carte mémoire via Limine. Il vérifie la révision du protocole, la présence de la réponse, un nombre d’entrées compris entre 1 et 4096, les pointeurs non nuls, les longueurs non nulles et les débordements. Le total des longueurs utilisables est additionné avec contrôle de débordement.
 
-La validation échoue de manière contrôlée et laisse le noyau dans une boucle d’arrêt si la réponse manque ou si une entrée est mal formée. Les diagnostics indiquent le nombre d’entrées, le nombre de plages utilisables et la somme de leurs longueurs.
+## Allocateur physique expérimental
+
+Un allocateur bitmap suit les frames de 4 Kio situées sous 4 Gio. Un bitmap marque les frames issues des régions utilisables ; un second marque celles qui sont libres. Cette distinction empêche de libérer une frame réservée ou une adresse arbitraire. Les pages sous 1 Mio sont toujours réservées. Les plages non utilisables ont priorité si les entrées de carte se chevauchent.
+
+Le smoke test alloue une page, vérifie son alignement et la limite physique, vérifie la diminution du compteur libre, libère la page, vérifie le compteur restauré et exige que le double-free soit rejeté.
 
 ## Limites importantes
 
-Le noyau ne possède pas encore d’allocateur physique. Le total rapporté ne retire pas encore les segments du noyau, la pile, les tables de pages, les structures Limine ou les autres plages réservées ; il ne doit donc pas servir directement à allouer des pages. Le code s’appuie encore sur le contrat de confiance du bootloader pour l’accessibilité des pointeurs de réponse.
+L’allocateur est limité à 4 Gio et n’est pas synchronisé pour SMP. Le nombre total de bytes utilisables déclaré par Limine n’est pas égal au nombre de pages gérées : les régions hors limite, les pages partielles et les réservations sont exclues du bitmap. La réservation complète des segments noyau, tables de pages et structures du bootloader doit encore être auditée. Aucun tas ou gestionnaire de mémoire virtuelle général n’existe encore.
 
 ## Prochaine étape
 
-Construire une liste de régions réservées et utilisables, vérifier les chevauchements et les alignements, réserver explicitement toutes les plages du noyau et du bootloader, puis implémenter et tester l’allocateur de pages physiques.
+Ajouter des tests de fragmentation et de plages chevauchantes, réserver explicitement toutes les structures nécessaires, puis introduire les primitives de synchronisation avant tout usage concurrent.
