@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   kernel-build:
-    name: Build x86_64 bare-metal kernel
+    name: Build and boot x86_64 kernel
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -25,3 +25,18 @@ jobs:
         run: rustc --version && cargo --version
       - name: Build kernel
         run: cargo build --release
+      - name: Install QEMU
+        run: sudo apt-get update && sudo apt-get install -y qemu-system-x86
+      - name: Boot smoke test
+        shell: bash
+        run: |
+          set +e
+          timeout 8s qemu-system-x86_64 -kernel target/x86_64-unknown-none/release/archiaos-kernel -serial stdio -display none -no-reboot -no-shutdown > "$RUNNER_TEMP/archiaos-serial.log" 2>&1
+          qemu_status=$?
+          set -e
+          cat "$RUNNER_TEMP/archiaos-serial.log"
+          if [[ "$qemu_status" -ne 0 && "$qemu_status" -ne 124 ]]; then
+            echo "QEMU exited unexpectedly with status $qemu_status"
+            exit 1
+          fi
+          grep -Fq "ArchiaOS: kernel entry reached (x86_64)" "$RUNNER_TEMP/archiaos-serial.log"
