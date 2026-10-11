@@ -1,3 +1,4 @@
+use core::fmt::Write;
 use core::ptr;
 
 const PAGE_SIZE: u64 = 4096;
@@ -163,7 +164,8 @@ fn read_entry(response: &LimineMemmapResponse, index: u64) -> Result<LimineMemma
     Ok(entry)
 }
 
-pub fn initialize() -> Result<MemoryStats, MemoryError> {
+pub fn initialize<W: Write>(log: &mut W) -> Result<MemoryStats, MemoryError> {
+    let _ = writeln!(log, "PMM: checking Limine base revision");
     let base_revision_ptr = ptr::addr_of!(LIMINE_BASE_REVISION).cast::<u64>();
     // SAFETY: the pointer addresses the third u64 in the Limine base-revision request.
     let supported_revision = unsafe { ptr::read_volatile(base_revision_ptr.add(2)) };
@@ -172,6 +174,7 @@ pub fn initialize() -> Result<MemoryStats, MemoryError> {
     }
 
     // SAFETY: Limine writes the response pointer before transferring control.
+    let _ = writeln!(log, "PMM: base revision supported");
     let response_ptr = unsafe { ptr::read_volatile(ptr::addr_of!(LIMINE_MEMMAP_REQUEST.response)) };
     if response_ptr.is_null() {
         return Err(MemoryError::MissingMemoryMap);
@@ -185,6 +188,7 @@ pub fn initialize() -> Result<MemoryStats, MemoryError> {
         return Err(MemoryError::InvalidMemoryMapMetadata);
     }
 
+    let _ = writeln!(log, "PMM: memory map metadata valid: {} entries", response.entry_count);
     let mut usable_ranges = 0u64;
     let mut usable_bytes = 0u64;
     for index in 0..response.entry_count {
@@ -199,8 +203,10 @@ pub fn initialize() -> Result<MemoryStats, MemoryError> {
     if usable_ranges == 0 {
         return Err(MemoryError::NoFreePages);
     }
+    let _ = writeln!(log, "PMM: map entries validated, {} usable ranges", usable_ranges);
 
     clear_bitmaps();
+    let _ = writeln!(log, "PMM: bitmaps cleared");
 
     // Mark only full pages from usable regions as managed and free.
     for index in 0..response.entry_count {
@@ -210,6 +216,8 @@ pub fn initialize() -> Result<MemoryStats, MemoryError> {
         }
     }
 
+    let _ = writeln!(log, "PMM: usable ranges marked");
+
     // Reserved regions take precedence if the supplied map ever overlaps.
     for index in 0..response.entry_count {
         let entry = read_entry(response, index)?;
@@ -218,16 +226,20 @@ pub fn initialize() -> Result<MemoryStats, MemoryError> {
         }
     }
 
+    let _ = writeln!(log, "PMM: reserved ranges marked");
+
     // Never allocate the low 1 MiB, which contains legacy and boot structures.
     unsafe {
         set_bit_range(managed_bitmap_ptr(), 0, ONE_MIB / PAGE_SIZE, false);
         set_bit_range(free_bitmap_ptr(), 0, ONE_MIB / PAGE_SIZE, false);
     }
 
+    let _ = writeln!(log, "PMM: low memory reserved");
     let free_pages = free_page_count();
     if free_pages == 0 {
         return Err(MemoryError::NoFreePages);
     }
+    let _ = writeln!(log, "PMM: initial free page count {}", free_pages);
     Ok(MemoryStats { map_entries: response.entry_count, usable_ranges, usable_bytes, free_pages })
 }
 

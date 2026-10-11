@@ -95,7 +95,7 @@ pub extern "C" fn rust_kernel_main() -> ! {
     let _ = writeln!(serial, "ArchiaOS: serial diagnostics are online");
 
     let _ = writeln!(serial, "ArchiaOS: initializing physical page allocator");
-    let stats = match memory::initialize() {
+    let stats = match memory::initialize(&mut serial) {
         Ok(stats) => stats,
         Err(error) => {
             let _ = writeln!(serial, "ArchiaOS: memory initialization failed: {:?}", error);
