@@ -4,22 +4,22 @@
 
 ## État actuel
 
-- **Cible :** x86-64 ; noyau ELF chargé par Limine en mode long.
-- **Langages présents :** Rust pour le code noyau ; pas de C/C++ sans besoin d’intégration démontré.
+- **Cible :** x86-64 ; noyau ELF64 avec adresse virtuelle haute et adresse physique de chargement à partir de 1 Mio.
+- **Langages présents :** Rust pour le code noyau et un petit stub assembleur d’entrée qui aligne la pile avant d’appeler Rust ; pas de C/C++ sans besoin d’intégration démontré.
 - **Diagnostic :** port série COM1.
-- **Build :** Cargo, script de liaison, configuration de cible et génération d’une ISO Limine.
-- **Validation :** la compilation a réussi en CI après correction d’une relocation assembleur. Le test QEMU a révélé que le chargeur direct de QEMU ne charge pas cette image ELF64 ; la CI est désormais configurée pour démarrer une ISO Limine et vérifier la sortie série. Le démarrage ne sera considéré comme validé qu’après réussite effective de cette nouvelle étape.
+- **Build :** Cargo, script de liaison avec segments ELF explicites, génération d’une ISO Limine BIOS/UEFI.
+- **Validation :** la compilation et la génération de l’ISO ont réussi dans les workflows. Le test QEMU a montré que Limine refusait la première image ELF liée en mémoire virtuelle basse ; le script de liaison a été corrigé pour séparer les adresses virtuelles et physiques. Le résultat du nouveau test QEMU reste à confirmer.
 
 Le noyau ne fournit pas encore de gestionnaire mémoire complet, d’IDT, d’ordonnanceur, de processus isolés, d’appels système, de pilotes de stockage, de système de fichiers, de réseau ni d’interface graphique. Il n’est pas annoncé comme prêt pour du matériel réel.
 
 ## Langages et architecture
 
 - **Rust `no_std` :** nouveau code noyau lorsque les contraintes bare-metal le permettent.
-- **Assembleur :** limité aux opérations CPU qui ne peuvent pas être évitées proprement.
+- **Assembleur :** limité aux opérations CPU indispensables à l’entrée et aux changements de contexte.
 - **C/C++ :** seulement avec justification technique.
 - **Python :** outils auxiliaires éventuels ; langages web uniquement pour une future couche utilisateur avec runtime réel.
 
-La prochaine priorité est la validation des données de démarrage, puis les exceptions/interruptions et la mémoire physique.
+La prochaine priorité est de valider le démarrage Limine/QEMU, puis les informations de démarrage, les exceptions/interruptions et la mémoire physique.
 
 ## Compilation et lancement
 

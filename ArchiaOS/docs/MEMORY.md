@@ -2,7 +2,7 @@
 
 ## État actuel
 
-Le noyau s’appuie sur les structures de pagination initiales fournies par Limine. Il n’a pas encore de gestionnaire de mémoire physique ou virtuelle propre.
+Le noyau s’appuie sur les structures de pagination initiales fournies par Limine. Le linker associe des adresses virtuelles hautes à des adresses physiques de chargement à partir de 1 Mio. Le noyau ne possède pas encore de gestionnaire de mémoire physique ou virtuelle propre.
 
 ## Limites
 
