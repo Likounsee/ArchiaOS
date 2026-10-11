@@ -1,11 +1,33 @@
 #![no_std]
 #![no_main]
 
-use core::arch::global_asm;
+use core::arch::asm;
 use core::fmt::{self, Write};
 use core::panic::PanicInfo;
 
-global_asm!(include_str!("boot.S"));
+#[used]
+#[link_section = ".limine_requests_start"]
+static LIMINE_REQUESTS_START_MARKER: [u64; 4] = [
+    0xf6b8_f4b3_9de7_d1ae,
+    0xfab9_1a69_40fc_b9cf,
+    0x785c_6ed0_15d3_e316,
+    0x181e_920a_7852_b9d9,
+];
+
+#[used]
+#[link_section = ".limine_requests"]
+static LIMINE_BASE_REVISION: [u64; 3] = [
+    0xf956_2b2d_5c95_a6c8,
+    0x6a7b_3849_4453_6bdc,
+    3,
+];
+
+#[used]
+#[link_section = ".limine_requests_end"]
+static LIMINE_REQUESTS_END_MARKER: [u64; 2] = [
+    0xadc0_e053_1bb1_0d03,
+    0x9572_709f_3176_4c62,
+];
 
 const COM1: u16 = 0x3F8;
 struct Serial;
@@ -38,7 +60,9 @@ impl Serial {
 impl Write for Serial {
     fn write_str(&mut self, text: &str) -> fmt::Result {
         for byte in text.bytes() {
-            if byte == b'\n' { self.write_byte(b'\r'); }
+            if byte == b'\n' {
+                self.write_byte(b'\r');
+            }
             self.write_byte(byte);
         }
         Ok(())
@@ -47,26 +71,27 @@ impl Write for Serial {
 
 unsafe fn port_out(port: u16, value: u8) {
     // SAFETY: privileged x86 port I/O; called only by early kernel diagnostics.
-    unsafe { core::arch::asm!("out dx, al", in("dx") port, in("al") value, options(nomem, nostack, preserves_flags)) };
+    unsafe { asm!("out dx, al", in("dx") port, in("al") value, options(nomem, nostack, preserves_flags)) };
 }
 
 unsafe fn port_in(port: u16) -> u8 {
     let value: u8;
     // SAFETY: privileged x86 port I/O; caller must execute at kernel privilege.
-    unsafe { core::arch::asm!("in al, dx", in("dx") port, out("al") value, options(nomem, nostack, preserves_flags)) };
+    unsafe { asm!("in al, dx", in("dx") port, out("al") value, options(nomem, nostack, preserves_flags)) };
     value
 }
 
 #[no_mangle]
-pub extern "C" fn rust_kernel_main() -> ! {
+pub extern "C" fn _start() -> ! {
     let mut serial = Serial;
     serial.init();
-    let _ = writeln!(serial, "ArchiaOS: kernel entry reached (x86_64)");
-    let _ = writeln!(serial, "ArchiaOS: early identity map covers first 1 GiB");
+    let _ = writeln!(serial, "ArchiaOS: Limine entered x86_64 kernel");
+    let _ = writeln!(serial, "ArchiaOS: serial diagnostics are online");
     let _ = writeln!(serial, "ArchiaOS: memory manager and interrupts are not initialized yet");
+
     loop {
         // SAFETY: interrupts remain disabled until an IDT and handlers are installed.
-        unsafe { core::arch::asm!("cli; hlt", options(nomem, nostack)) };
+        unsafe { asm!("cli; hlt", options(nomem, nostack)) };
     }
 }
 
@@ -77,6 +102,6 @@ fn panic(_info: &PanicInfo<'_>) -> ! {
     let _ = writeln!(serial, "ArchiaOS: PANIC");
     loop {
         // SAFETY: the panic path is terminal and interrupts are disabled.
-        unsafe { core::arch::asm!("cli; hlt", options(nomem, nostack)) };
+        unsafe { asm!("cli; hlt", options(nomem, nostack)) };
     }
 }

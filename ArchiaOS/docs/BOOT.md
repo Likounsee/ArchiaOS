@@ -1,9 +1,7 @@
 # Démarrage
 
-Le noyau cible actuellement **Multiboot 1** et un ELF x86-64 lié à l’adresse 1 Mio. L’en-tête est conservé dans la section `.multiboot` en tête de l’image.
+Le noyau cible le protocole natif **Limine** et un ELF64 x86-64 lié à l’adresse 1 Mio. Les marqueurs de requêtes Limine sont conservés par le linker script. Le bootloader fournit l’entrée en mode long et l’environnement de pagination initial ; le noyau n’effectue plus lui-même une transition 32→64 bits.
 
-Multiboot 1 démarre le processeur en mode protégé 32 bits. `kernel/src/boot.S` prépare une pile, construit les structures de pagination, active PAE, active `EFER.LME` et `CR0.PG`, charge une GDT minimale, puis bascule vers le code 64 bits. Les diagnostics initiaux sont envoyés à COM1.
+Le script `scripts/make-iso.sh` télécharge Limine v12.9.1, vérifie le SHA-256 de l’archive, crée une ISO amorçable BIOS/UEFI et exécute `limine bios-install`. La CI démarre cette ISO sous QEMU et exige le message série de `_start`.
 
-L’implémentation est expérimentale. Elle ne valide pas encore les informations Multiboot ni toutes les fonctionnalités CPU requises ; elle suppose un processeur x86-64 avec support PAE et mode long. Le démarrage doit être confirmé dans QEMU avant de revendiquer la compatibilité.
-
-Commande proposée depuis ce dossier : `make run`. Elle n’a pas encore été exécutée.
+Cette base reste expérimentale. Elle ne valide pas encore les informations de démarrage ni les régions mémoire, et elle ne doit pas être présentée comme prête pour du matériel réel avant des tests prolongés et un audit.
