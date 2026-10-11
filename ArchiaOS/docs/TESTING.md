@@ -2,7 +2,7 @@
 
 La CI compile le noyau pour `x86_64-unknown-none`, vérifie les adresses virtuelles ELF, crée une ISO Limine et démarre cette ISO dans QEMU. Le test exige les messages de l’entrée noyau, de validation de la carte mémoire et de l’auto-test PMM.
 
-Le test PMM alloue deux pages gérées et distinctes, vérifie l’alignement et la limite 4 Gio, confirme la baisse du compteur libre de deux, libère les pages, vérifie le rétablissement du compteur et exige que les libérations de zéro, d’une adresse non alignée, d’une page réservée et de la limite exclusive soient rejetées, ainsi que le double-free.
+Le test PMM alloue 130 pages gérées et distinctes, traverse plusieurs mots bitmap, vérifie l’alignement et la limite 4 Gio, confirme la baisse du compteur libre de deux, libère les pages, vérifie le rétablissement du compteur et exige que les libérations de zéro, d’une adresse non alignée, d’une page réservée et de la limite exclusive soient rejetées, ainsi que le double-free.
 
 Vérification manuelle depuis `ArchiaOS` :
 

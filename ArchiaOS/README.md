@@ -2,7 +2,7 @@
 
 ## État actuel
 
-Le noyau x86-64 expérimental est chargé au format ELF64 par Limine. Il valide la carte mémoire puis initialise un allocateur bitmap physique pour les frames sous 4 Gio. Un bitmap marque les frames gérées, un second les frames libres, ce qui empêche de libérer une adresse réservée arbitraire. Le smoke test QEMU vérifie deux allocations distinctes, l’alignement, le compteur libre, la libération, les adresses invalides et le double-free.
+Le noyau x86-64 expérimental est chargé au format ELF64 par Limine. Il valide la carte mémoire puis initialise un allocateur bitmap physique pour les frames sous 4 Gio. Un bitmap marque les frames gérées, un second les frames libres, ce qui empêche de libérer une adresse réservée arbitraire. Le smoke test QEMU vérifie 130 allocations distinctes sur plusieurs mots bitmap, l’alignement, le compteur libre, la libération, les adresses invalides et le double-free.
 
 ## Prérequis et commandes
 

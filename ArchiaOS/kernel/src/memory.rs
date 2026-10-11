@@ -310,8 +310,9 @@ pub fn free_page_count() -> u64 {
 }
 
 pub fn self_test() -> Result<(), MemoryError> {
+    const TEST_PAGES: usize = 130;
     let before = free_page_count();
-    if before < 2 {
+    if before < TEST_PAGES as u64 {
         return Err(MemoryError::NoFreePages);
     }
 
@@ -324,38 +325,31 @@ pub fn self_test() -> Result<(), MemoryError> {
         return Err(MemoryError::InvalidFreeAccepted);
     }
 
-    let first = alloc_page().ok_or(MemoryError::AllocationFailed)?;
-    let second = match alloc_page() {
-        Some(page) => page,
-        None => {
-            let _ = free_page(first);
-            return Err(MemoryError::AllocationFailed);
-        }
-    };
-    for page in [first, second] {
+    // Cross multiple 64-bit bitmap words to exercise allocation and fragmented frees.
+    let mut pages = [0u64; TEST_PAGES];
+    for index in 0..TEST_PAGES {
+        let page = alloc_page().ok_or(MemoryError::AllocationFailed)?;
         if page < ONE_MIB || page % PAGE_SIZE != 0 || page >= MAX_PHYSICAL_ADDRESS {
-            let _ = free_page(first);
-            let _ = free_page(second);
             return Err(MemoryError::AllocationAddressInvalid);
         }
+        if pages[..index].contains(&page) {
+            return Err(MemoryError::AllocationNotUnique);
+        }
+        pages[index] = page;
     }
-    if first == second {
-        let _ = free_page(first);
-        let _ = free_page(second);
-        return Err(MemoryError::AllocationNotUnique);
-    }
-    if free_page_count().checked_add(2) != Some(before) {
-        let _ = free_page(first);
-        let _ = free_page(second);
+
+    if free_page_count().checked_add(TEST_PAGES as u64) != Some(before) {
         return Err(MemoryError::FreeCountMismatch);
     }
-    if !free_page(first) || !free_page(second) {
-        return Err(MemoryError::FreeFailed);
+    for page in pages.iter().rev() {
+        if !free_page(*page) {
+            return Err(MemoryError::FreeFailed);
+        }
     }
     if free_page_count() != before {
         return Err(MemoryError::FreeCountMismatch);
     }
-    if free_page(first) {
+    if free_page(pages[0]) {
         return Err(MemoryError::DoubleFreeAccepted);
     }
     Ok(())

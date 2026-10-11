@@ -8,7 +8,7 @@ Le noyau demande la carte mémoire via Limine. Il vérifie la révision du proto
 
 Un allocateur bitmap suit les frames de 4 Kio situées sous 4 Gio. Un bitmap marque les frames issues des régions utilisables ; un second marque celles qui sont libres. Cette distinction empêche de libérer une frame réservée ou une adresse arbitraire. Les pages sous 1 Mio sont toujours réservées. Les plages non utilisables ont priorité si les entrées de carte se chevauchent. Les plages sont appliquées par mots bitmap, plutôt qu’en parcourant chaque page une par une.
 
-Le smoke test QEMU alloue deux pages distinctes, vérifie leur alignement et la limite physique, confirme la baisse du compteur libre, libère les pages, vérifie le compteur restauré et exige que les adresses invalides et le double-free soient rejetés.
+Le smoke test QEMU alloue 130 pages distinctes en traversant plusieurs mots bitmap, vérifie leur alignement et la limite physique, confirme la baisse du compteur libre, libère les pages, vérifie le compteur restauré et exige que les adresses invalides et le double-free soient rejetés.
 
 ## Limites importantes
 

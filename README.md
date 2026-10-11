@@ -6,7 +6,7 @@
 
 - **Démarrage :** l’ISO Limine BIOS/UEFI se construit et le noyau atteint son entrée Rust en mode long x86-64 ; la sortie COM1 est vérifiée par le smoke test QEMU.
 - **Carte mémoire :** la réponse Limine est contrôlée pour les pointeurs, le nombre d’entrées, les longueurs nulles et les débordements.
-- **Mémoire physique :** allocateur bitmap expérimental pour les pages sous 4 Gio. Le test QEMU confirme l’allocation de deux pages distinctes, l’alignement, la baisse puis le rétablissement du compteur, le rejet des libérations invalides et le rejet du double-free.
+- **Mémoire physique :** allocateur bitmap expérimental pour les pages sous 4 Gio. Le test QEMU confirme l’allocation de 130 pages distinctes, traversant plusieurs mots bitmap, l’alignement, la baisse puis le rétablissement du compteur, le rejet des libérations invalides et le rejet du double-free.
 - **Langages :** Rust pour le noyau ; un petit stub assembleur aligne la pile à l’entrée. C/C++ ne sont pas ajoutés sans besoin démontré.
 - **Build :** Cargo, linker ELF avec segments virtuels hauts, génération d’ISO Limine, vérification des segments ELF et CI de démarrage.
 

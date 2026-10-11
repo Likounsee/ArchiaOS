@@ -1,7 +1,7 @@
 # Architecture actuelle
 
-Le noyau expérimental cible x86-64 et est chargé au format ELF64 par le protocole natif Limine. Le script de liaison place les segments dans la moitié haute de l’espace virtuel et leur associe des adresses physiques de chargement à partir de 1 Mio. Le segment des requêtes Limine est lisible/inscriptible afin que le bootloader puisse y placer les pointeurs de réponse.
+Le noyau x86-64 démarre via Limine dans un ELF lié en espace virtuel haut. Le stub assembleur aligne la pile avant l’appel Rust. La CI vérifie les segments ELF, crée l’ISO, démarre QEMU, valide la carte mémoire Limine et exécute l’auto-test du PMM.
 
-Limine fournit l’entrée en mode long et la pagination de démarrage ; un petit stub assembleur aligne la pile et appelle Rust selon l’ABI x86-64 SysV. Le noyau initialise COM1, vérifie que la révision de protocole demandée est prise en charge, valide la carte mémoire fournie par Limine, puis attend avec les interruptions désactivées.
+Le PMM expérimental suit les frames physiques sous 4 Gio avec deux bitmaps : pages gérées et pages libres. Les plages utilisables sont appliquées par mots bitmap ; les plages réservées prennent priorité. Le test traverse plusieurs mots, vérifie les allocations distinctes, les libérations, les adresses invalides et le double-free.
 
-Non implémenté : réservations mémoire durables, allocateur physique, tas, IDT, gestion des exceptions, ordonnanceur, processus, syscall, stockage, système de fichiers, réseau et espace utilisateur. La validation des entrées mémoire est une étape de vérification, pas encore un allocateur.
+Non implémenté : IDT, gestion des exceptions, synchronisation/SMP, ordonnanceur, processus, syscall, stockage, système de fichiers, réseau et espace utilisateur. L’allocateur n’est pas synchronisé et ne constitue pas encore un gestionnaire mémoire général.
