@@ -15,18 +15,10 @@ SECTIONS
 {
     . = KERNEL_VMA + KERNEL_LMA;
 
-    .limine_requests_start ALIGN(8) : AT(ADDR(.limine_requests_start) - KERNEL_VMA)
-    {
-        KEEP(*(.limine_requests_start))
-    } :requests
-
     .limine_requests ALIGN(8) : AT(ADDR(.limine_requests) - KERNEL_VMA)
     {
+        KEEP(*(.limine_requests_start))
         KEEP(*(.limine_requests))
-    } :requests
-
-    .limine_requests_end ALIGN(8) : AT(ADDR(.limine_requests_end) - KERNEL_VMA)
-    {
         KEEP(*(.limine_requests_end))
     } :requests
 
