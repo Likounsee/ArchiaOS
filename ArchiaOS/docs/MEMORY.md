@@ -6,14 +6,10 @@ Le noyau demande la carte mémoire via Limine. Il vérifie la révision du proto
 
 ## Allocateur physique expérimental
 
-Un allocateur bitmap suit les frames de 4 Kio situées sous 4 Gio. Un bitmap marque les frames issues des régions utilisables ; un second marque celles qui sont libres. Cette distinction empêche de libérer une frame réservée ou une adresse arbitraire. Les pages sous 1 Mio sont toujours réservées. Les plages non utilisables ont priorité si les entrées de carte se chevauchent.
+Un allocateur bitmap suit les frames de 4 Kio situées sous 4 Gio. Un bitmap marque les frames issues des régions utilisables ; un second marque celles qui sont libres. Cette distinction empêche de libérer une frame réservée ou une adresse arbitraire. Les pages sous 1 Mio sont toujours réservées. Les plages non utilisables ont priorité si les entrées de carte se chevauchent. Les plages sont appliquées par mots bitmap, plutôt qu’en parcourant chaque page une par une.
 
-Le smoke test alloue une page, vérifie son alignement et la limite physique, vérifie la diminution du compteur libre, libère la page, vérifie le compteur restauré et exige que le double-free soit rejeté.
+Le smoke test QEMU alloue deux pages distinctes, vérifie leur alignement et la limite physique, confirme la baisse du compteur libre, libère les pages, vérifie le compteur restauré et exige que les adresses invalides et le double-free soient rejetés.
 
 ## Limites importantes
 
-L’allocateur est limité à 4 Gio et n’est pas synchronisé pour SMP. Le nombre total de bytes utilisables déclaré par Limine n’est pas égal au nombre de pages gérées : les régions hors limite, les pages partielles et les réservations sont exclues du bitmap. La réservation complète des segments noyau, tables de pages et structures du bootloader doit encore être auditée. Aucun tas ou gestionnaire de mémoire virtuelle général n’existe encore.
-
-## Prochaine étape
-
-Ajouter des tests de fragmentation et de plages chevauchantes, réserver explicitement toutes les structures nécessaires, puis introduire les primitives de synchronisation avant tout usage concurrent.
+L’allocateur est limité à 4 Gio, initialisé une seule fois et non synchronisé pour SMP. Le nombre total d’octets utilisables déclaré par Limine n’est pas égal au nombre de pages gérées : les régions hors limite, les pages partielles et les réservations sont exclues du bitmap. Les réservations et chevauchements doivent encore être audités ; aucun tas ou gestionnaire de mémoire virtuelle général n’existe encore.

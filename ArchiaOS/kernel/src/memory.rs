@@ -55,10 +55,12 @@ static mut LIMINE_MEMMAP_REQUEST: LimineMemmapRequest = LimineMemmapRequest {
 // distinguishes free from allocated frames. Reserved frames can never be freed.
 static mut MANAGED_BITMAP: [u64; BITMAP_WORDS] = [0; BITMAP_WORDS];
 static mut FREE_BITMAP: [u64; BITMAP_WORDS] = [0; BITMAP_WORDS];
+static mut PMM_INITIALIZED: bool = false;
 
 #[derive(Clone, Copy, Debug)]
 pub enum MemoryError {
     UnsupportedLimineBaseRevision,
+    AlreadyInitialized,
     MissingMemoryMap,
     InvalidMemoryMapMetadata,
     NullMemoryMapEntry,
@@ -67,6 +69,8 @@ pub enum MemoryError {
     NoFreePages,
     AllocationFailed,
     AllocationAddressInvalid,
+    AllocationNotUnique,
+    InvalidFreeAccepted,
     FreeFailed,
     DoubleFreeAccepted,
     FreeCountMismatch,
@@ -154,6 +158,10 @@ fn read_entry(response: &LimineMemmapResponse, index: u64) -> Result<LimineMemma
 }
 
 pub fn initialize<W: Write>(log: &mut W) -> Result<MemoryStats, MemoryError> {
+    // The allocator is an early-boot singleton and must not be reinitialized.
+    if unsafe { ptr::read_volatile(ptr::addr_of!(PMM_INITIALIZED)) } {
+        return Err(MemoryError::AlreadyInitialized);
+    }
     let _ = writeln!(log, "PMM: checking Limine base revision");
     let base_revision_ptr = ptr::addr_of!(LIMINE_BASE_REVISION).cast::<u64>();
     // SAFETY: the pointer addresses the third u64 in the Limine base-revision request.
@@ -193,6 +201,10 @@ pub fn initialize<W: Write>(log: &mut W) -> Result<MemoryStats, MemoryError> {
         return Err(MemoryError::NoFreePages);
     }
     let _ = writeln!(log, "PMM: map entries validated, {} usable ranges", usable_ranges);
+
+    // Set the guard before touching bitmap state. Any later error is fatal to the
+    // caller and must not allow a second initialization over partially changed bits.
+    unsafe { ptr::write_volatile(ptr::addr_of_mut!(PMM_INITIALIZED), true) };
 
     // Both bitmap statics live in ELF BSS, which Limine zero-initializes.
     // Initialization is single-shot; do not redundantly clear 256 KiB here.
@@ -234,6 +246,9 @@ pub fn initialize<W: Write>(log: &mut W) -> Result<MemoryStats, MemoryError> {
 }
 
 pub fn alloc_page() -> Option<u64> {
+    if !unsafe { ptr::read_volatile(ptr::addr_of!(PMM_INITIALIZED)) } {
+        return None;
+    }
     let free = free_bitmap_ptr() as *const u64;
     let managed = managed_bitmap_ptr() as *const u64;
     let first_word = (ONE_MIB / PAGE_SIZE / 64) as usize;
@@ -260,6 +275,9 @@ pub fn alloc_page() -> Option<u64> {
 }
 
 pub fn free_page(physical_address: u64) -> bool {
+    if !unsafe { ptr::read_volatile(ptr::addr_of!(PMM_INITIALIZED)) } {
+        return false;
+    }
     if physical_address == 0
         || physical_address % PAGE_SIZE != 0
         || physical_address >= MAX_PHYSICAL_ADDRESS
@@ -280,6 +298,9 @@ pub fn free_page(physical_address: u64) -> bool {
 }
 
 pub fn free_page_count() -> u64 {
+    if !unsafe { ptr::read_volatile(ptr::addr_of!(PMM_INITIALIZED)) } {
+        return 0;
+    }
     let free = free_bitmap_ptr() as *const u64;
     let mut count = 0u64;
     for index in 0..BITMAP_WORDS {
@@ -290,25 +311,51 @@ pub fn free_page_count() -> u64 {
 
 pub fn self_test() -> Result<(), MemoryError> {
     let before = free_page_count();
-    if before == 0 {
+    if before < 2 {
         return Err(MemoryError::NoFreePages);
     }
-    let page = alloc_page().ok_or(MemoryError::AllocationFailed)?;
-    if page < ONE_MIB || page % PAGE_SIZE != 0 || page >= MAX_PHYSICAL_ADDRESS {
-        let _ = free_page(page);
-        return Err(MemoryError::AllocationAddressInvalid);
+
+    // Reserved, unaligned, zero, and exclusive-limit addresses must never free a frame.
+    if free_page(0)
+        || free_page(1)
+        || free_page(ONE_MIB - PAGE_SIZE)
+        || free_page(MAX_PHYSICAL_ADDRESS)
+    {
+        return Err(MemoryError::InvalidFreeAccepted);
     }
-    if free_page_count().checked_add(1) != Some(before) {
-        let _ = free_page(page);
+
+    let first = alloc_page().ok_or(MemoryError::AllocationFailed)?;
+    let second = match alloc_page() {
+        Some(page) => page,
+        None => {
+            let _ = free_page(first);
+            return Err(MemoryError::AllocationFailed);
+        }
+    };
+    for page in [first, second] {
+        if page < ONE_MIB || page % PAGE_SIZE != 0 || page >= MAX_PHYSICAL_ADDRESS {
+            let _ = free_page(first);
+            let _ = free_page(second);
+            return Err(MemoryError::AllocationAddressInvalid);
+        }
+    }
+    if first == second {
+        let _ = free_page(first);
+        let _ = free_page(second);
+        return Err(MemoryError::AllocationNotUnique);
+    }
+    if free_page_count().checked_add(2) != Some(before) {
+        let _ = free_page(first);
+        let _ = free_page(second);
         return Err(MemoryError::FreeCountMismatch);
     }
-    if !free_page(page) {
+    if !free_page(first) || !free_page(second) {
         return Err(MemoryError::FreeFailed);
     }
     if free_page_count() != before {
         return Err(MemoryError::FreeCountMismatch);
     }
-    if free_page(page) {
+    if free_page(first) {
         return Err(MemoryError::DoubleFreeAccepted);
     }
     Ok(())

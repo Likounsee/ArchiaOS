@@ -1,7 +1,7 @@
 # Démarrage
 
-Le noyau cible le protocole natif **Limine** et un ELF64 x86-64. Il est lié dans la moitié haute de l’espace virtuel, avec une adresse physique de chargement à partir de 1 Mio. Le script de liaison déclare explicitement les segments ELF et conserve les marqueurs de requêtes Limine.
+Le noyau cible le protocole natif **Limine** et un ELF64 x86-64 lié dans la moitié haute de l’espace virtuel. Le script de liaison sépare les adresses virtuelles et les adresses physiques de chargement et garde les requêtes Limine dans un segment accessible en écriture.
 
-Limine fournit l’entrée en mode long et les tables de pagination initiales ; un petit stub assembleur aligne la pile avant l’appel Rust. Le script `scripts/make-iso.sh` télécharge Limine v12.9.1, vérifie le SHA-256 de l’archive, crée une ISO amorçable BIOS/UEFI et exécute `limine bios-install`. La CI démarre cette ISO sous QEMU et exige le message série de l’entrée noyau.
+Le script `scripts/make-iso.sh` télécharge Limine v12.9.1, vérifie le SHA-256, crée une ISO BIOS/UEFI et exécute `limine bios-install`. La CI démarre cette ISO sous QEMU. L’entrée Rust et la sortie COM1 sont vérifiées, tout comme la validation de la carte mémoire et l’auto-test de l’allocateur bitmap.
 
-Le premier test a détecté que Limine refusait les segments ELF liés en espace virtuel bas. Le linker a été modifié pour séparer VMA haute et LMA basse. Le résultat du test après cette correction doit être confirmé avant de revendiquer un démarrage fonctionnel.
+Le point d’entrée assembleur aligne la pile puis appelle Rust selon l’ABI x86-64 SysV. Le noyau ne traite pas encore les exceptions/IRQ et laisse les interruptions désactivées.
