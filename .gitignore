@@ -1,0 +1,6 @@
+/ArchiaOS/target/
+/ArchiaOS/build/
+*.iso
+*.img
+*.elf
+*.log

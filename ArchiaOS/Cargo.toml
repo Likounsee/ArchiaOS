@@ -1,0 +1,21 @@
+[package]
+name = "archiaos-kernel"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[[bin]]
+name = "archiaos-kernel"
+path = "kernel/src/main.rs"
+test = false
+bench = false
+
+[profile.dev]
+panic = "abort"
+codegen-units = 1
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = 2
