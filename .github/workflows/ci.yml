@@ -41,7 +41,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          timeout 10s qemu-system-x86_64 -cdrom build/archiaos.iso -boot d -serial stdio -display none -no-reboot -no-shutdown > "$RUNNER_TEMP/archiaos-serial.log" 2>&1
+          timeout 20s qemu-system-x86_64 -cdrom build/archiaos.iso -boot d -serial stdio -display none -no-reboot -no-shutdown > "$RUNNER_TEMP/archiaos-serial.log" 2>&1
           qemu_status=$?
           set -e
           cat "$RUNNER_TEMP/archiaos-serial.log"

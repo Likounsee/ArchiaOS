@@ -309,13 +309,14 @@ pub fn free_page_count() -> u64 {
     count
 }
 
-pub fn self_test() -> Result<(), MemoryError> {
+pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
     const TEST_PAGES: usize = 130;
     let before = free_page_count();
     if before < TEST_PAGES as u64 {
         return Err(MemoryError::NoFreePages);
     }
 
+    let _ = writeln!(log, "PMM test: rejecting invalid free addresses");
     // Reserved, unaligned, zero, and exclusive-limit addresses must never free a frame.
     if free_page(0)
         || free_page(1)
@@ -324,6 +325,7 @@ pub fn self_test() -> Result<(), MemoryError> {
     {
         return Err(MemoryError::InvalidFreeAccepted);
     }
+    let _ = writeln!(log, "PMM test: invalid frees rejected");
 
     // Cross multiple 64-bit bitmap words to exercise allocation and fragmented frees.
     let mut pages = [0u64; TEST_PAGES];
@@ -336,21 +338,30 @@ pub fn self_test() -> Result<(), MemoryError> {
             return Err(MemoryError::AllocationNotUnique);
         }
         pages[index] = page;
+        if index == 0 || (index + 1) % 64 == 0 || index + 1 == TEST_PAGES {
+            let _ = writeln!(log, "PMM test: allocated {} pages", index + 1);
+        }
     }
 
     if free_page_count().checked_add(TEST_PAGES as u64) != Some(before) {
         return Err(MemoryError::FreeCountMismatch);
     }
-    for page in pages.iter().rev() {
+    let _ = writeln!(log, "PMM test: allocation count verified");
+    for (index, page) in pages.iter().rev().enumerate() {
         if !free_page(*page) {
             return Err(MemoryError::FreeFailed);
+        }
+        if index == 0 || (index + 1) % 64 == 0 || index + 1 == TEST_PAGES {
+            let _ = writeln!(log, "PMM test: freed {} pages", index + 1);
         }
     }
     if free_page_count() != before {
         return Err(MemoryError::FreeCountMismatch);
     }
+    let _ = writeln!(log, "PMM test: free count restored");
     if free_page(pages[0]) {
         return Err(MemoryError::DoubleFreeAccepted);
     }
+    let _ = writeln!(log, "PMM test: double-free rejected");
     Ok(())
 }

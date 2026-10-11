@@ -106,7 +106,7 @@ pub extern "C" fn rust_kernel_main() -> ! {
     let _ = writeln!(serial, "ArchiaOS: usable memory ranges: {}, bytes: {}", stats.usable_ranges, stats.usable_bytes);
     let _ = writeln!(serial, "ArchiaOS: free physical pages below 4 GiB: {}", stats.free_pages);
 
-    if let Err(error) = memory::self_test() {
+    if let Err(error) = memory::self_test(&mut serial) {
         let _ = writeln!(serial, "ArchiaOS: PMM self-test failed: {:?}", error);
         halt_forever();
     }
