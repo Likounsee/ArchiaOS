@@ -121,17 +121,30 @@ fn frame_range(entry: &LimineMemmapEntry) -> Option<(u64, u64)> {
     Some((first.min(MAX_FRAMES), (end / PAGE_SIZE).min(MAX_FRAMES)))
 }
 
-fn set_frame_state(frame: u64, managed: bool, free: bool) {
-    unsafe {
-        set_bit(managed_bitmap_ptr(), frame, managed);
-        set_bit(free_bitmap_ptr(), frame, free);
+unsafe fn set_bit_range(bitmap: *mut u64, first: u64, last: u64, value: bool) {
+    let mut frame = first;
+    while frame < last {
+        let word_index = (frame / 64) as usize;
+        let bit_offset = (frame % 64) as u32;
+        let chunk = (64 - bit_offset as u64).min(last - frame) as u32;
+        let mask = if chunk == 64 {
+            u64::MAX
+        } else {
+            ((1u64 << chunk) - 1) << bit_offset
+        };
+        let word_ptr = unsafe { bitmap.add(word_index) };
+        let current = unsafe { ptr::read(word_ptr) };
+        let updated = if value { current | mask } else { current & !mask };
+        unsafe { ptr::write(word_ptr, updated) };
+        frame += chunk as u64;
     }
 }
 
 fn apply_range(entry: &LimineMemmapEntry, managed: bool, free: bool) {
     if let Some((first, last)) = frame_range(entry) {
-        for frame in first..last {
-            set_frame_state(frame, managed, free);
+        unsafe {
+            set_bit_range(managed_bitmap_ptr(), first, last, managed);
+            set_bit_range(free_bitmap_ptr(), first, last, free);
         }
     }
 }
@@ -206,8 +219,9 @@ pub fn initialize() -> Result<MemoryStats, MemoryError> {
     }
 
     // Never allocate the low 1 MiB, which contains legacy and boot structures.
-    for frame in 0..(ONE_MIB / PAGE_SIZE) {
-        set_frame_state(frame, false, false);
+    unsafe {
+        set_bit_range(managed_bitmap_ptr(), 0, ONE_MIB / PAGE_SIZE, false);
+        set_bit_range(free_bitmap_ptr(), 0, ONE_MIB / PAGE_SIZE, false);
     }
 
     let free_pages = free_page_count();

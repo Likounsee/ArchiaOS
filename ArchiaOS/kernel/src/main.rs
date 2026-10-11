@@ -94,6 +94,7 @@ pub extern "C" fn rust_kernel_main() -> ! {
     let _ = writeln!(serial, "ArchiaOS: Limine entered x86_64 kernel");
     let _ = writeln!(serial, "ArchiaOS: serial diagnostics are online");
 
+    let _ = writeln!(serial, "ArchiaOS: initializing physical page allocator");
     let stats = match memory::initialize() {
         Ok(stats) => stats,
         Err(error) => {
