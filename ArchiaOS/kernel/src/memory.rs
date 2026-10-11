@@ -7,6 +7,7 @@ const MAX_PHYSICAL_ADDRESS: u64 = 1u64 << 32;
 const MAX_FRAMES: u64 = MAX_PHYSICAL_ADDRESS / PAGE_SIZE;
 const BITMAP_WORDS: usize = (MAX_FRAMES / 64) as usize;
 const MAX_MEMMAP_ENTRIES: u64 = 4096;
+const PMM_SELF_TEST_PAGES: usize = 130;
 const LIMINE_MEMMAP_USABLE: u64 = 0;
 
 #[used]
@@ -56,6 +57,8 @@ static mut LIMINE_MEMMAP_REQUEST: LimineMemmapRequest = LimineMemmapRequest {
 static mut MANAGED_BITMAP: [u64; BITMAP_WORDS] = [0; BITMAP_WORDS];
 static mut FREE_BITMAP: [u64; BITMAP_WORDS] = [0; BITMAP_WORDS];
 static mut PMM_INITIALIZED: bool = false;
+// Keep the stress-test buffer in reserved kernel BSS, not on the small boot stack.
+static mut PMM_TEST_PAGES: [u64; PMM_SELF_TEST_PAGES] = [0; PMM_SELF_TEST_PAGES];
 
 #[derive(Clone, Copy, Debug)]
 pub enum MemoryError {
@@ -310,9 +313,8 @@ pub fn free_page_count() -> u64 {
 }
 
 pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
-    const TEST_PAGES: usize = 130;
     let before = free_page_count();
-    if before < TEST_PAGES as u64 {
+    if before < PMM_SELF_TEST_PAGES as u64 {
         return Err(MemoryError::NoFreePages);
     }
 
@@ -328,38 +330,44 @@ pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
     let _ = writeln!(log, "PMM test: invalid frees rejected");
 
     // Cross multiple 64-bit bitmap words to exercise allocation and fragmented frees.
-    let mut pages = [0u64; TEST_PAGES];
-    for index in 0..TEST_PAGES {
+    // Keep addresses in kernel BSS rather than consuming the limited boot stack.
+    let pages = ptr::addr_of_mut!(PMM_TEST_PAGES).cast::<u64>();
+    for index in 0..PMM_SELF_TEST_PAGES {
         let page = alloc_page().ok_or(MemoryError::AllocationFailed)?;
         if page < ONE_MIB || page % PAGE_SIZE != 0 || page >= MAX_PHYSICAL_ADDRESS {
             return Err(MemoryError::AllocationAddressInvalid);
         }
-        if pages[..index].contains(&page) {
-            return Err(MemoryError::AllocationNotUnique);
+        for previous in 0..index {
+            if unsafe { ptr::read(pages.add(previous)) } == page {
+                return Err(MemoryError::AllocationNotUnique);
+            }
         }
-        pages[index] = page;
-        if index == 0 || (index + 1) % 64 == 0 || index + 1 == TEST_PAGES {
+        unsafe { ptr::write(pages.add(index), page) };
+        if index == 0 || (index + 1) % 64 == 0 || index + 1 == PMM_SELF_TEST_PAGES {
             let _ = writeln!(log, "PMM test: allocated {} pages", index + 1);
         }
     }
 
-    if free_page_count().checked_add(TEST_PAGES as u64) != Some(before) {
+    if free_page_count().checked_add(PMM_SELF_TEST_PAGES as u64) != Some(before) {
         return Err(MemoryError::FreeCountMismatch);
     }
     let _ = writeln!(log, "PMM test: allocation count verified");
-    for (index, page) in pages.iter().rev().enumerate() {
-        if !free_page(*page) {
+    for index in (0..PMM_SELF_TEST_PAGES).rev() {
+        let page = unsafe { ptr::read(pages.add(index)) };
+        if !free_page(page) {
             return Err(MemoryError::FreeFailed);
         }
-        if index == 0 || (index + 1) % 64 == 0 || index + 1 == TEST_PAGES {
-            let _ = writeln!(log, "PMM test: freed {} pages", index + 1);
+        let freed = PMM_SELF_TEST_PAGES - index;
+        if freed == 1 || freed % 64 == 0 || freed == PMM_SELF_TEST_PAGES {
+            let _ = writeln!(log, "PMM test: freed {} pages", freed);
         }
     }
     if free_page_count() != before {
         return Err(MemoryError::FreeCountMismatch);
     }
     let _ = writeln!(log, "PMM test: free count restored");
-    if free_page(pages[0]) {
+    let first_page = unsafe { ptr::read(pages) };
+    if free_page(first_page) {
         return Err(MemoryError::DoubleFreeAccepted);
     }
     let _ = writeln!(log, "PMM test: double-free rejected");
