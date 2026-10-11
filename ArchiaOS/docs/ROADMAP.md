@@ -1,8 +1,8 @@
 # Roadmap et critères
 
-- **P0 — Fondations : en cours.** Build bare-metal, ISO Limine, diagnostics, CI, vérification ELF et smoke test QEMU réussis. La carte mémoire et l’auto-test PMM passent en QEMU ; restent des tests de régression plus larges et l’audit des réservations.
-- **P1 — Noyau et matériel : premières fondations.** Entrée Limine, sortie série, validation de la carte mémoire et allocateur bitmap physique testés en QEMU. Restent IDT, exceptions, réservations complètes et synchronisation.
-- **P2 — Ordonnanceur : non commencé.** Pas de contexte de tâche, synchronisation ni ordonnancement.
+- **P0 — Fondations : en cours.** Build bare-metal, ISO Limine, diagnostics, vérification ELF et smoke test QEMU réussis. La CI vérifie aussi la carte mémoire et l’auto-test PMM sur 130 pages. Restent un contrôle plus large des réservations, le formatage automatisé et des tests supplémentaires.
+- **P1 — Noyau et matériel : premières fondations.** Entrée Limine, sortie série, validation de la carte mémoire et allocateur bitmap physique testés en QEMU. Restent IDT, exceptions, réservations mémoire complètes, gestion des fautes et synchronisation.
+- **P2 — Ordonnanceur : non commencé.** Pas de contexte de tâche, synchronisation multiprocesseur ni ordonnancement.
 - **P3 — Espace utilisateur : non commencé.** Pas de syscall, chargeur, ABI ni processus isolés.
 - **P4 — Stockage : non commencé.** Pas de pilote bloc ni de système de fichiers.
 - **P5 — Graphique : non commencé.** Pas de framebuffer ou de compositeur.
