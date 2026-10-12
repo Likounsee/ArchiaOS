@@ -394,6 +394,8 @@ jobs:
           grep -Fq "ArchiaOS Bootloader: loading high-half ELF segments" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "ArchiaOS Bootloader: exiting UEFI boot services" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "ArchiaOS: custom UEFI bootloader entered production kernel" "$RUNNER_TEMP/archiaos-production-uefi.log"
+          grep -Fxq "E" "$RUNNER_TEMP/archiaos-production-uefi.log" # ELF entry reached after CR3 handoff
+          grep -Fxq "S" "$RUNNER_TEMP/archiaos-production-uefi.log" # kernel-owned stack installed
           grep -Fq "ArchiaOS: CPU vendor:" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "ArchiaOS: PCI bus 0 scan complete:" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "ArchiaOS: UEFI BootInfo validated" "$RUNNER_TEMP/archiaos-production-uefi.log"
