@@ -4,10 +4,10 @@
 
 ## État du développement
 
-- **Bootloader maison :** lecture du noyau depuis la partition EFI, validation ELF64, allocation et chargement de segments identité sous 4 Gio, initialisation du BSS, contrat BootInfo versionné, collecte de la carte mémoire finale et sortie des services UEFI.
-- **Test x86-64 :** une image de test indépendante démarre sous OVMF/QEMU et vérifie le handoff. Le noyau de production, lié en high-half et dépendant de Limine, n'est pas encore basculé vers ce chargeur.
-- **ARM64/AArch64 :** prototype du noyau avec pile dédiée, diagnostic PL011, validation BootInfo et lecture des descripteurs mémoire. Le chargeur effectue désormais le chargement identité, la maintenance I-cache et le transfert d'exécution pour la cible AArch64 ; un test AAVMF/QEMU complet est ajouté à la CI et reste à confirmer.
-- **Firmware :** le firmware UEFI standard de la machine reste utilisé. Aucun firmware ou bootloader tiers n'est prévu dans la chaîne finale ArchiaOS.
+- **Bootloader maison :** lecture du noyau depuis la partition EFI, validation ELF64, allocation et chargement de segments identité sous 4 Gio, initialisation du BSS, contrat BootInfo versionné, carte mémoire finale et sortie des services UEFI.
+- **Handoff x86-64 :** une image de test indépendante démarre sous OVMF/QEMU et vérifie BootInfo. Le noyau de production, lié en high-half et dépendant de Limine, n'est pas encore basculé vers ce chargeur.
+- **ARM64/AArch64 :** le bootloader charge désormais les segments identité, synchronise le cache d'instructions, récupère le Device Tree UEFI et transmet BootInfo au noyau AArch64. Le noyau vérifie l'ABI, le header FDT et les descripteurs mémoire. Le test AAVMF/QEMU complet est ajouté à la CI ; sa réussite reste à confirmer.
+- **Firmware :** le firmware UEFI standard de la carte mère ou de la machine virtuelle reste utilisé ; aucun bootloader tiers n'est prévu dans la chaîne finale.
 
 La compilation de l'application UEFI AArch64 ou du noyau ne suffit pas à démontrer la compatibilité de l'ensemble de l'OS. Il faut encore valider le démarrage complet en CI, puis ajouter les exceptions, la MMU, les timers, les interruptions et les pilotes ARM64. Le stockage, la VFS et l'intégration OpenFS sont des étapes ultérieures.
 
