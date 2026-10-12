@@ -308,7 +308,7 @@ impl PoolAllocation {
         Ok(Self { pointer, boot_services })
     }
 
-    fn into_raw(mut self) -> *mut c_void {
+    fn take_raw(&mut self) -> *mut c_void {
         let pointer = self.pointer;
         self.pointer = ptr::null_mut();
         pointer
@@ -892,8 +892,8 @@ pub unsafe fn transfer_to_kernel(
         // Stop tracking the two pool buffers before the first EBS call, so no
         // destructor can call FreePool after boot services have been terminated.
         if leaked_info.is_null() {
-            leaked_map = map_allocation.into_raw().cast::<u8>();
-            leaked_info = info_allocation.into_raw().cast::<BootInfo>();
+            leaked_map = map_allocation.take_raw().cast::<u8>();
+            leaked_info = info_allocation.take_raw().cast::<BootInfo>();
         }
 
         // SAFETY: map_key is from the immediately preceding successful GetMemoryMap call.
