@@ -24,9 +24,10 @@ Le firmware UEFI standard reste fourni par la machine. ArchiaOS développe son p
 7. **B6 — Validation x86-64 : test QEMU/OVMF présent.** Un noyau de test identité vérifie BootInfo après la sortie des services. Cela ne démarre pas encore le noyau de production high-half.
 8. **A0 — Entrée noyau ARM64 : implémentée.** Entrée AArch64, pile dédiée et console PL011 pour QEMU `virt`.
 9. **A1 — Transfert UEFI ARM64 : code implémenté, test de bout en bout ajouté.** Le chargeur alloue/copie les segments identité, synchronise l'I-cache AArch64, valide l'en-tête et les jetons FDT avec le parseur commun, transmet BootInfo et branche vers l'entrée du noyau. Le noyau réutilise la même ABI et le même parseur pour vérifier BootInfo, le FDT et les descripteurs mémoire. Le résultat du job AAVMF/QEMU doit encore être confirmé.
-10. **A2 — Fondations matérielles ARM64 : à faire.** Vecteurs d'exceptions, MMU/TLB, timer et contrôleur d'interruptions adaptés à la plateforme.
-11. **A3 — Architecture portable : à faire.** Extraire les abstractions communes et tester séparément les implémentations x86-64/AArch64.
-12. **B7 — Démarrage du noyau principal : à faire.** Le noyau de production est high-half lié, dépend encore de Limine et utilise ses réponses mémoire ; il faut établir les tables de pages/contrat de mémoire avant de retirer Limine du chemin de démarrage.
+10. **A2 — Gestion mémoire ARM64 : PMM bitmap expérimental implémenté.** Initialise un bitmap à partir des plages conventionnelles UEFI sous 4 Gio, réserve les pages basses et teste 130 allocations/libérations à travers plusieurs mots bitmap. Restent les réservations exhaustives, un mappage MMU propre, la synchronisation SMP et les tests de limites de mémoire.
+11. **A3 — Exceptions et interruptions ARM64 : à faire.** Ajouter les vecteurs d'exceptions, MMU/TLB, timer et contrôleur d'interruptions adaptés à la plateforme.
+12. **A4 — Architecture portable : à faire.** Extraire les abstractions communes et tester séparément les implémentations x86-64/AArch64.
+13. **B7 — Démarrage du noyau principal : à faire.** Le noyau de production est high-half lié, dépend encore de Limine et utilise ses réponses mémoire ; il faut établir les tables de pages/contrat de mémoire avant de retirer Limine du chemin de démarrage.
 
 La prise en charge ARM64 ne sera annoncée comme validée qu'après un test UEFI AAVMF/QEMU de bout en bout qui confirme l'entrée du noyau, la validation de BootInfo et du FDT. La compilation seule ne suffit pas.
 
