@@ -783,6 +783,19 @@ fn image_uses_highhalf(elf: &archiaos_bootloader::elf::ElfFile) -> bool {
 }
 
 #[cfg(target_arch = "x86_64")]
+fn cpu_supports_nx() -> bool {
+    // Extended CPUID leaf 0x80000001 EDX bit 20 advertises the architectural
+    // NX bit. Refuse high-half paging before constructing NX-marked PTEs when
+    // the CPU cannot enable EFER.NXE.
+    let maximum_leaf = unsafe { core::arch::x86_64::__cpuid(0x8000_0000) }.eax;
+    if maximum_leaf < 0x8000_0001 {
+        return false;
+    }
+    let features = unsafe { core::arch::x86_64::__cpuid(0x8000_0001) };
+    features.edx & (1 << 20) != 0
+}
+
+#[cfg(target_arch = "x86_64")]
 unsafe fn loaded_image_physical_range(
     image_handle: Handle,
     system_table: *mut SystemTable,
@@ -1230,6 +1243,11 @@ pub unsafe fn transfer_to_kernel(
         .ok_or_else(|| error(EFI_UNSUPPORTED, b"ArchiaOS: GetMemoryMap is unavailable.\r\n\0"))?;
     let exit_boot_services = unsafe { (*boot_services).exit_boot_services }
         .ok_or_else(|| error(EFI_UNSUPPORTED, b"ArchiaOS: ExitBootServices is unavailable.\r\n\0"))?;
+
+    #[cfg(target_arch = "x86_64")]
+    if image_uses_highhalf(_elf) && !cpu_supports_nx() {
+        return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: high-half paging requires CPU NX support.\r\n\0"));
+    }
 
     let (acpi_rsdp, device_tree) = platform_tables(system_table);
     #[cfg(target_arch = "aarch64")]
