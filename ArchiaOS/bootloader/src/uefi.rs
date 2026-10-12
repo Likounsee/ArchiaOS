@@ -871,12 +871,18 @@ unsafe fn loaded_image_physical_range(
     let end = image_end.checked_add(EFI_PAGE_SIZE - 1)
         .map(|value| value & !(EFI_PAGE_SIZE - 1))
         .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: rounded loader-image range overflow.\r\n\0"))?;
+    // The loader may be placed above 4 GiB by firmware on machines with
+    // large memory. The x86-64 four-level page tables can identity-map it as
+    // long as it remains in the low canonical 512 GiB region (PML4[0]).
+    // RAM below 4 GiB is mapped from the UEFI memory map; the loader's own
+    // pages above 4 GiB are added explicitly during page-table construction.
+    const MAX_LOW_CANONICAL_IDENTITY_ADDRESS: u64 = 1u64 << 39;
     if image_base == 0
         || image_size == 0
         || start >= end
-        || end > MAX_KERNEL_PHYSICAL_ADDRESS
+        || end > MAX_LOW_CANONICAL_IDENTITY_ADDRESS
     {
-        return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: loader image is outside the supported identity-mapped 4 GiB range.\r\n\0"));
+        return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: loader image is outside the low-canonical identity-map range (512 GiB).\r\n\0"));
     }
     Ok((start, end))
 }
@@ -1089,13 +1095,44 @@ unsafe fn build_x86_64_page_tables(
     // while all kernel physical aliases remain NX.
     let mut loader_address = loader_image_start;
     while loader_address < loader_image_end {
-        let span = (loader_address / (2 * 1024 * 1024)) as usize;
-        if span >= identity_tables.len() || identity_tables[span] == 0 {
-            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: loader image is outside mapped RAM.\r\n\0"));
-        }
-        let table = identity_tables[span] as *mut u64;
         let pte_index = ((loader_address >> 12) & 0x1ff) as usize;
-        unsafe { ptr::write(table.add(pte_index), loader_address | 0x1) };
+        if loader_address < MAX_KERNEL_PHYSICAL_ADDRESS {
+            // Under 4 GiB, reuse the page tables created from RAM descriptors.
+            let span = (loader_address / (2 * 1024 * 1024)) as usize;
+            if span >= identity_tables.len() || identity_tables[span] == 0 {
+                return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: loader image is outside mapped RAM below 4 GiB.\r\n\0"));
+            }
+            let table = identity_tables[span] as *mut u64;
+            unsafe { ptr::write(table.add(pte_index), loader_address | 0x1) };
+        } else {
+            // Firmware can load this EFI application above 4 GiB. Map only
+            // its own pages there, preserving the bounded <4 GiB RAM map used
+            // by the PMM. All paging structures themselves remain below 4 GiB.
+            let pdpt_index = (loader_address >> 30) as usize;
+            if pdpt_index >= 512 {
+                return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: loader image exceeds the low-canonical identity map.\r\n\0"));
+            }
+            let pdpt_entry = unsafe { ptr::read(identity_pdpt.add(pdpt_index)) };
+            let pd = if pdpt_entry & 1 == 0 {
+                let page = arena.allocate_page()?;
+                let physical = arena.physical_address(page);
+                unsafe { ptr::write(identity_pdpt.add(pdpt_index), physical | 0x3) };
+                page
+            } else {
+                (pdpt_entry & 0x000f_ffff_ffff_f000) as *mut u64
+            };
+            let pd_index = ((loader_address >> 21) & 0x1ff) as usize;
+            let pd_entry = unsafe { ptr::read(pd.add(pd_index)) };
+            let pt = if pd_entry & 1 == 0 {
+                let page = arena.allocate_page()?;
+                let physical = arena.physical_address(page);
+                unsafe { ptr::write(pd.add(pd_index), physical | 0x3) };
+                page
+            } else {
+                (pd_entry & 0x000f_ffff_ffff_f000) as *mut u64
+            };
+            unsafe { ptr::write(pt.add(pte_index), loader_address | 0x1) };
+        }
         loader_address = loader_address.checked_add(EFI_PAGE_SIZE)
             .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: loader-image identity-map iteration overflow.\r\n\0"))?;
     }
