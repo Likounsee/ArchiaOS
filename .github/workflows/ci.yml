@@ -100,3 +100,59 @@ jobs:
           fi
           grep -Fq "ArchiaOS AArch64: kernel entry reached" "$RUNNER_TEMP/archiaos-aarch64.log"
           grep -Fq "ArchiaOS AArch64: PL011 diagnostics initialized" "$RUNNER_TEMP/archiaos-aarch64.log"
+
+  bootloader-uefi-qemu-smoke:
+    name: Boot custom UEFI loader and validate kernel image
+    runs-on: ubuntu-latest
+    needs: [kernel-build, bootloader-uefi-build]
+    defaults:
+      run:
+        working-directory: ArchiaOS
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Rust targets
+        run: rustup target add x86_64-unknown-none x86_64-unknown-uefi
+      - name: Install OVMF and FAT image tools
+        run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 ovmf dosfstools mtools
+      - name: Build x86_64 kernel ELF
+        run: cargo build --release --target x86_64-unknown-none
+      - name: Build first-party UEFI loader
+        run: cargo build --manifest-path bootloader/Cargo.toml --release --target x86_64-unknown-uefi
+      - name: Prepare UEFI FAT disk image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="$RUNNER_TEMP/archiaos-uefi.img"
+          loader="target/x86_64-unknown-uefi/release/archiaos-bootloader.efi"
+          kernel="target/x86_64-unknown-none/release/archiaos-kernel"
+          test -s "$loader"
+          test -s "$kernel"
+          truncate -s 64M "$image"
+          mkfs.vfat -F 32 "$image"
+          mmd -i "$image" ::/EFI
+          mmd -i "$image" ::/EFI/BOOT
+          mmd -i "$image" ::/EFI/ArchiaOS
+          mcopy -i "$image" "$loader" ::/EFI/BOOT/BOOTX64.EFI
+          mcopy -i "$image" "$kernel" ::/EFI/ArchiaOS/kernel.elf
+          echo "UEFI disk image prepared with BOOTX64.EFI and kernel.elf"
+      - name: Boot custom loader with OVMF
+        shell: bash
+        run: |
+          set +e
+          firmware="$(find /usr/share/OVMF /usr/share/ovmf -type f -iname 'OVMF_CODE*.fd' -print -quit 2>/dev/null)"
+          if [[ -z "$firmware" ]]; then
+            echo "OVMF firmware image was not found"
+            exit 1
+          fi
+          timeout 20s qemu-system-x86_64 -machine pc -m 512M -bios "$firmware" -drive "file=$RUNNER_TEMP/archiaos-uefi.img,format=raw,if=ide" -boot order=c -display none -serial stdio -monitor none -no-reboot -no-shutdown > "$RUNNER_TEMP/archiaos-uefi.log" 2>&1
+          qemu_status=$?
+          set -e
+          cat "$RUNNER_TEMP/archiaos-uefi.log"
+          if [[ "$qemu_status" -ne 0 && "$qemu_status" -ne 124 ]]; then
+            echo "QEMU UEFI exited unexpectedly with status $qemu_status"
+            exit 1
+          fi
+          grep -Fq "ArchiaOS Bootloader: opening EFI kernel image" "$RUNNER_TEMP/archiaos-uefi.log"
+          grep -Fq "ArchiaOS Bootloader: validating ELF64 kernel" "$RUNNER_TEMP/archiaos-uefi.log"
+          grep -Fq "ArchiaOS Bootloader: kernel ELF validated; handoff pending" "$RUNNER_TEMP/archiaos-uefi.log"
