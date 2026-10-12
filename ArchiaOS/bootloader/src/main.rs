@@ -13,13 +13,16 @@ use archiaos_bootloader::elf::parse_elf64;
 type Status = usize;
 type Handle = *mut c_void;
 
+// UEFI errors set the high bit of EFI_STATUS on 64-bit targets. These values
+// must not be compared with the small warning/success codes.
 const EFI_SUCCESS: Status = 0;
-const EFI_LOAD_ERROR: Status = 1;
-const EFI_INVALID_PARAMETER: Status = 2;
-const EFI_UNSUPPORTED: Status = 3;
-const EFI_BAD_BUFFER_SIZE: Status = 4;
-const EFI_BUFFER_TOO_SMALL: Status = 5;
-const EFI_NOT_FOUND: Status = 14;
+const EFI_ERROR_BIT: Status = 1usize << (usize::BITS - 1);
+const EFI_LOAD_ERROR: Status = EFI_ERROR_BIT | 1;
+const EFI_INVALID_PARAMETER: Status = EFI_ERROR_BIT | 2;
+const EFI_UNSUPPORTED: Status = EFI_ERROR_BIT | 3;
+const EFI_BAD_BUFFER_SIZE: Status = EFI_ERROR_BIT | 4;
+const EFI_BUFFER_TOO_SMALL: Status = EFI_ERROR_BIT | 5;
+const EFI_NOT_FOUND: Status = EFI_ERROR_BIT | 14;
 const EFI_LOADER_DATA: u32 = 2;
 const EFI_FILE_MODE_READ: u64 = 1;
 const MAX_KERNEL_IMAGE_SIZE: u64 = 64 * 1024 * 1024;
