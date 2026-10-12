@@ -2127,6 +2127,19 @@ mod memory_map_tests {
     }
 
     #[test]
+    fn reserved_coverage_handles_unsorted_descriptors() {
+        // The parser accepts non-overlapping unsorted maps within its bounded
+        // limit; coverage must therefore search all descriptors at each step.
+        let mut bytes = descriptor(2, 0x3000, 1);
+        bytes.extend_from_slice(&descriptor(2, 0x1000, 1));
+        bytes.extend_from_slice(&descriptor(4, 0x2000, 1));
+        let map = UefiMemoryMap::parse(&bytes, 48).expect("valid unsorted map");
+        assert_eq!(map.range_is_fully_reserved(0x1000, 0x3000), Ok(true));
+        assert_eq!(map.range_is_fully_reserved(0x1800, 0x1800), Ok(true));
+        assert_eq!(map.range_is_fully_reserved(0x0fff, 0x3001), Ok(false));
+    }
+
+    #[test]
     fn accepts_adjacent_ranges_without_treating_them_as_overlap() {
         let mut bytes = descriptor(EFI_CONVENTIONAL_MEMORY, 0x1000, 1);
         bytes.extend_from_slice(&descriptor(4, 0x2000, 1));
