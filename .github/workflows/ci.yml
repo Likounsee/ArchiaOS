@@ -33,7 +33,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if grep -RniE 'limine|LIMINE' kernel/src linker.ld Cargo.toml scripts; then
+          paths=(kernel/src linker.ld Cargo.toml)
+          if [[ -d scripts ]]; then
+            paths+=(scripts)
+          fi
+          if grep -RniE 'limine|LIMINE' "${paths[@]}"; then
             echo "Operational kernel/build files still reference Limine" >&2
             exit 1
           fi
