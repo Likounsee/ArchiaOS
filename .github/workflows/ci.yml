@@ -52,3 +52,19 @@ jobs:
           grep -Fq "ArchiaOS: Limine entered x86_64 kernel" "$RUNNER_TEMP/archiaos-serial.log"
           grep -Fq "ArchiaOS: memory map entries validated:" "$RUNNER_TEMP/archiaos-serial.log"
           grep -Fq "ArchiaOS: PMM allocation/free self-test passed" "$RUNNER_TEMP/archiaos-serial.log"
+
+  bootloader-uefi-build:
+    name: Build first-party UEFI loader for x86_64 and AArch64
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ArchiaOS
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install UEFI Rust targets
+        run: rustup target add x86_64-unknown-uefi aarch64-unknown-uefi
+      - name: Build x86_64 UEFI application
+        run: cargo build --manifest-path bootloader/Cargo.toml --release --target x86_64-unknown-uefi
+      - name: Build AArch64 UEFI application
+        run: cargo build --manifest-path bootloader/Cargo.toml --release --target aarch64-unknown-uefi
