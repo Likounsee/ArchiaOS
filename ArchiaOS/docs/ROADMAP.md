@@ -1,43 +1,238 @@
-# Roadmap et critères
+# Feuille de route ArchiaOS
 
-- **P0 — Noyau principal sans Limine : bascule du code effectuée, validation finale en attente.** Le noyau par défaut exige l’entrée UEFI maison ; le chemin mémoire Limine, `limine.conf` et le script ISO Limine ont été retirés. La CI doit confirmer compilation et démarrage OVMF/QEMU sur le HEAD courant.
-- **P1 — Bootloader maison : fondations en place.** Validation ELF64, chargement high-half x86-64, BootInfo, `ExitBootServices` et tests de permissions sont implémentés ; restent les cas d’échec, le rollback et un audit plus large des réservations.
-- **P2 — Ordonnanceur : 0 % (non commencé).** Pas encore de contexte de tâche, mécanisme de changement de contexte, ordonnanceur préemptif ni synchronisation multiprocesseur.
-- **P3 — Espace utilisateur : non commencé.** Pas de syscall, chargeur, ABI ni processus isolés.
-- **P4 — Stockage : non commencé.** Pas de pilote bloc ni de système de fichiers. Préparer une couche **VFS (Virtual File System)** indépendante du format de stockage.
-- **P4.1 — Préparation à OpenFS : à concevoir.** Définir le contrat d’intégration avec **Likounsee/OpenFS** : types et erreurs, fichiers/répertoires, volumes, propriété mémoire, synchronisation, limites de blocs et versionnement. Garder un adaptateur distinct du cœur du noyau.
-- **P4.2 — Intégration OpenFS : future, après stabilisation d’OpenFS.** Confirmer son API, ses garanties et ses dépendances ; tester montage, lectures/écritures, répertoires, erreurs, corruption et accès concurrents pris en charge.
-- **P5 — Graphique : non commencé.** Pas de framebuffer ou de compositeur.
-- **P6 — Réseau et performances : non commencé.** Pas de pile réseau ni de benchmarks.
-- **P7 — Distribution : non commencé.** Pas de version distribuable ni d’audit de sécurité final.
-- **P8 — Contrôle matériel bas niveau : objectif produit à préparer dès maintenant, implémentation non commencée.** Concevoir une couche commune de découverte/capteurs/actionneurs, des pilotes isolés par matériel, puis un service privilégié et une API pour les courbes de ventilation, températures, RGB et profils. Ne pas coder les protocoles fabricants directement dans le cœur du noyau. Les commandes doivent être explicites, vérifiées et limitées aux périphériques pris en charge ; la protection thermique et un retour à un état sûr priment toujours sur les profils personnalisés. Voir [l'architecture de contrôle matériel](HARDWARE_CONTROL.md) et la [vision du centre de contrôle tout-en-un](CONTROL_CENTER.md).
+> **Règle de suivi :** les pourcentages sont des estimations de réalisation, pas des mesures automatiques. Une phase ne passe à 100 % qu'après implémentation, tests reproductibles et critères d'acceptation satisfaits. Une fonctionnalité décrite dans la documentation mais absente du code ne compte pas comme implémentée.
 
-## Piste parallèle — bootloader maison et ARM64
+## Tableau de bord
 
-Le firmware UEFI standard reste fourni par la machine. ArchiaOS développe son propre chargeur et son propre noyau. Ces jalons sont suivis séparément de P0–P7.
+| Priorité | Domaine | Avancement estimé | État / prochaine preuve attendue |
+|---|---|---:|---|
+| **P0** | Démarrage UEFI maison x86-64 par défaut | **73 %** | Bascule de code faite ; obtenir une CI verte sur le HEAD courant et confirmer le démarrage OVMF/QEMU. |
+| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **72 %** | Fondations présentes ; couvrir les échecs, réservations mémoire et cas limites. |
+| **P2** | Ordonnanceur et synchronisation | **0 %** | Non implémenté ; définir les primitives de tâches et le changement de contexte avant la préemption. |
+| **P3** | Espace utilisateur et ABI système | **0 %** | Non commencé ; dépend notamment des exceptions, syscalls et mécanismes mémoire isolés. |
+| **P4** | Stockage, VFS et préparation OpenFS | **0 %** | Pas de pilote bloc/VFS fonctionnel ; spécifier d'abord les interfaces. |
+| **P5** | Affichage et pile graphique | **0 %** | Pas de pile graphique de production. |
+| **P6** | Réseau et mesures de performances | **0 %** | Pas de pile réseau complète ni de bancs de performance stabilisés. |
+| **P7** | Distribution, installation et sécurité | **0 %** | Pas de version distribuable validée. |
+| **P8** | Fondations noyau pour le contrôle matériel | **5 %** | Architecture décrite ; démarrer par l'identification CPU en lecture seule puis l'inventaire PCI. |
+| **P9** | Service privilégié de télémétrie/contrôle | **0 %** | Pas de service fonctionnel ; dépend d'interfaces noyau et de pilotes sûrs. |
+| **P10** | Archia Control Center (interface tout-en-un) | **5 %** | Vision et modules documentés ; pas encore d'application fonctionnelle. |
+| **B0–B9** | Chargeur UEFI maison | Voir jalons ci-dessous | Plusieurs fondations validées en CI ; la validation de la bascule par défaut reste à confirmer sur le HEAD courant. |
+| **A0–A4** | Démarrage et fondations ARM64 | Voir jalons ci-dessous | Prototype et tests ciblés ; parité avec x86-64 non atteinte. |
 
-1. **B0 — Entrée UEFI : implémentée.** Crate Rust sans dépendance externe pour x86-64 et AArch64.
-2. **B1 — Lecture du noyau : implémentée.** Ouvre `\\EFI\\ArchiaOS\\kernel.elf`, borne sa taille et gère les lectures partielles.
-3. **B2 — Validation ELF64 : implémentée.** Contrôles de l'en-tête, de la table des programmes, des segments, tailles, alignements, débordements, recouvrements et entrée exécutable. Les segments RWX sont refusés ; tests unitaires présents.
-4. **B3 — Chargement identité : implémenté sous contraintes.** Réserve les pages aux adresses physiques ELF, copie les octets et met le BSS à zéro. Le chemin identité reste celui du prototype AArch64.
-5. **B4 — Chargement high-half x86-64 : validé en CI.** Construit des tables 4-niveaux, mappe la fenêtre high-half, rend les alias physiques du noyau NX et applique les permissions ELF. Le test vérifie que le code est RO+X, les données RW+NX et l'alias identité du code RO+NX.
-6. **B5 — Protection x86-64 : validée en CI.** Le chargeur vérifie la capacité CPU NX, active EFER.NXE et CR0.WP avant le changement CR3 ; le noyau de test lit ensuite ces bits et examine les entrées de page effectives.
-7. **B6 — Contrat BootInfo : implémenté.** ABI versionnée `ARCHIABI` contenant l'entrée noyau, la carte mémoire UEFI finale et les pointeurs de plateforme disponibles.
-8. **B7 — Sortie UEFI : implémentée.** Collecte la carte mémoire immédiatement avant `ExitBootServices` et réessaie avec une clé fraîche en cas de `EFI_INVALID_PARAMETER`.
-9. **B8 — Noyau x86-64 de production via le chargeur maison : validé en CI.** Le build `--features uefi-boot` démarre sous OVMF/QEMU, valide BootInfo et les descripteurs UEFI puis réussit le test PMM de 130 allocations/libérations. Le chemin UEFI maison est maintenant le chemin par défaut ; les tests de démarrage doivent être confirmés sur le nouveau HEAD.
-10. **A0 — Entrée noyau ARM64 : implémentée.** Entrée AArch64, pile dédiée et console PL011 pour QEMU `virt`.
-11. **A1 — Transfert UEFI ARM64 : validé sous AAVMF/QEMU.** Le chargeur copie les segments identité, synchronise l'I-cache, construit BootInfo puis branche au noyau. Sur le firmware testé, le noyau découvre la console via ACPI SPCR et valide BootInfo/la carte mémoire.
-12. **A2 — Gestion mémoire ARM64 : PMM bitmap expérimental implémenté.** Initialise à partir des plages conventionnelles sous 4 Gio et réussit les tests d'allocations/libérations. Restent une MMU propre, les réservations exhaustives, la synchronisation SMP et l'extension au-delà de 4 Gio.
-13. **A3 — Vecteurs d'exceptions ARM64 : première base implémentée.** Table alignée installée et test d'exception synchrone présents. Restent les handlers différenciés, retours d'exception contrôlés et interruptions asynchrones.
-14. **A4 — Parité des architectures : en cours de conception.** Extraire les abstractions partagées tout en maintenant séparées les primitives spécifiques.
-15. **B9 — Démarrage par défaut maison : bascule de code effectuée, validation CI en attente.** Le noyau et le linker utilisent désormais le contrat UEFI ArchiaOS ; confirmer une CI verte avant de déclarer la migration validée.
+Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas conduire à contourner la fiabilité du démarrage, la mémoire, les permissions ou la sécurité. Le but est un logiciel intégré inspiré des usages de CPU-Z, HWiNFO, GPU-Z, Fan Control et OpenRGB, mais conçu pour ArchiaOS et son matériel pris en charge.
 
-**Limites actuelles :** les adresses physiques chargées, le chargeur et les buffers de transfert doivent être accessibles dans l'identité sous 4 Gio ; la mémoire totale des segments est plafonnée à 128 Mio et le fichier noyau à 64 Mio. L'ARM64 testée utilise des segments identité ; la pagination high-half testée concerne x86-64. Les résultats démontrent les configurations QEMU CI, pas l'ensemble du matériel physique.
+## Ordre de travail prioritaire
 
-## Conditions d’intégration d’OpenFS
+### P0 — Démarrage UEFI maison x86-64 — 73 %
 
-OpenFS reste un projet distinct et n’est pas supposé prêt tant que son propre dépôt et ses tests ne l’attestent pas. Avant l'intégration, confirmer son API publique, sa licence, ses cibles, ses dépendances, son allocation mémoire, sa synchronisation et sa gestion des erreurs. Ne pas copier prématurément son code ni dépendre d'API instables. L'intégration doit être versionnée, reproductible et testée en CI.
+**Objectif :** faire du chemin UEFI ArchiaOS le démarrage par défaut fiable.
 
-## Critères de progression
+- [x] Remplacer l'ancien chemin Limine dans la configuration par défaut.
+- [x] Utiliser le contrat UEFI du chargeur ArchiaOS.
+- [ ] Confirmer une CI verte sur le HEAD courant.
+- [ ] Confirmer compilation, démarrage et sortie attendue sous OVMF/QEMU.
+- [ ] Tester les erreurs de démarrage et vérifier que les logs série permettent de les diagnostiquer.
+- [ ] Documenter précisément les configurations testées et les limites restantes.
 
-Une phase ne passe à 100 % qu’après satisfaction de tous ses critères et tests documentés. L'intégration OpenFS ne compte pas comme réalisée avant que le dépôt OpenFS soit suffisamment stable et que les tests d'intégration ArchiaOS passent.
+**Critère de sortie :** build reproductible et tests de démarrage verts sur le HEAD courant, sans déclarer les essais QEMU comme une validation de tout matériel physique.
+
+### P1 — Fiabilité du chargeur et de la mémoire — 72 %
+
+**Objectif :** sécuriser le transfert UEFI → noyau et la gestion de la mémoire physique.
+
+- [x] Valider les en-têtes ELF64 et les tables de programmes.
+- [x] Contrôler les tailles, alignements, débordements, recouvrements et l'entrée exécutable.
+- [x] Refuser les segments ELF RWX.
+- [x] Construire les mappings high-half x86-64 et appliquer les permissions ELF.
+- [x] Activer NXE et CR0.WP dans le chemin testé.
+- [x] Fournir un BootInfo versionné et récupérer la carte mémoire UEFI finale.
+- [x] Réessayer ExitBootServices avec une clé de carte mémoire fraîche si nécessaire.
+- [ ] Auditer toutes les plages réservées : chargeur, noyau, buffers, framebuffer, tables de pages et zones firmware.
+- [ ] Ajouter des tests d'échec et de limites pour les allocations et la validation du BootInfo.
+- [ ] Clarifier le comportement en cas d'épuisement mémoire et empêcher toute libération d'une plage réservée.
+
+**Critère de sortie :** invariants mémoire documentés et testés, sans chevauchement dangereux ni accès hors plage.
+
+### P2 — Exceptions, ordonnanceur et synchronisation — 0 %
+
+**Objectif :** exécuter plusieurs tâches de façon contrôlée avant de bâtir un espace utilisateur complet.
+
+1. Stabiliser les handlers d'exceptions et les diagnostics de faute.
+2. Définir le contexte CPU d'une tâche et une pile par tâche.
+3. Implémenter un changement de contexte coopératif et le tester.
+4. Ajouter états de tâche, file d'exécution et primitives de synchronisation.
+5. Introduire une source d'interruption/timer adaptée à la plateforme.
+6. Ajouter la préemption seulement après validation du changement de contexte.
+7. Définir la stratégie SMP et protéger les structures partagées avant d'activer plusieurs cœurs.
+
+**Critère de sortie :** tests reproductibles de création, exécution, blocage et reprise des tâches ; pas de préemption ni de SMP annoncés avant leur implémentation.
+
+### P3 — Espace utilisateur et ABI — 0 %
+
+- Définir les niveaux de privilège et les frontières noyau/utilisateur.
+- Définir une ABI système versionnée et des codes d'erreur stables.
+- Concevoir les syscalls minimaux avec validation stricte des pointeurs et tailles.
+- Ajouter un chargeur de programmes et des espaces d'adressage isolés.
+- Prévoir permissions, terminaison et diagnostic des processus.
+- Ne pas exposer l'accès brut aux ports, registres ou périphériques aux applications ordinaires.
+
+**Critère de sortie :** un programme utilisateur peut démarrer, appeler l'ABI documentée et échouer sans compromettre le noyau.
+
+### P4 — Stockage, VFS et OpenFS — 0 %
+
+**P4.1 — Contrat VFS**
+- Définir les abstractions fichiers, répertoires, volumes, handles, erreurs et permissions.
+- Définir la propriété mémoire, les limites de blocs, la synchronisation et la gestion des accès concurrents.
+- Séparer le VFS des formats et pilotes de stockage.
+
+**P4.2 — Pilote bloc et tests**
+- Choisir un périphérique bloc initial pour QEMU.
+- Implémenter les opérations de lecture/écriture et leur gestion d'erreurs.
+- Tester les limites, les transferts partiels et les erreurs de périphérique.
+
+**P4.3 — Adaptateur OpenFS**
+- Vérifier dans le dépôt distinct Likounsee/OpenFS l'API publique, la licence, les cibles, les dépendances et l'état des tests.
+- Créer un adaptateur distinct plutôt que coupler directement le noyau au code interne d'OpenFS.
+- Tester montage, lecture, écriture, répertoires, corruption, erreurs et concurrence effectivement prise en charge.
+- Épingler une version/révision stable et rendre l'intégration reproductible en CI.
+
+**Critère de sortie :** tests VFS et d'intégration verts. OpenFS ne doit pas être considéré intégré avant ces preuves.
+
+### P5 — Affichage et pile graphique — 0 %
+
+- Détecter et valider les informations framebuffer fournies par le firmware.
+- Ajouter une sortie graphique minimale sans dépendance à une résolution particulière.
+- Séparer pilote d'affichage, rendu et interface.
+- Ajouter ensuite événements d'entrée et composition de fenêtres selon les besoins.
+
+**Critère de sortie :** affichage contrôlé sur configurations documentées, sans supposer qu'un framebuffer UEFI est disponible partout.
+
+### P6 — Réseau et performances — 0 %
+
+- Définir les abstractions de périphérique réseau et de paquets.
+- Commencer par un pilote et un environnement virtuel reproductible.
+- Implémenter progressivement Ethernet, configuration IP, puis les protocoles nécessaires.
+- Ajouter des benchmarks reproductibles pour mémoire, stockage, réseau et ordonnancement.
+- Publier les méthodes et configurations de test avec les résultats.
+
+**Critère de sortie :** tests de connectivité et de charge répétables ; chiffres de performance accompagnés de leur environnement de mesure.
+
+### P7 — Distribution et sécurité — 0 %
+
+- Définir le format de l'image, l'installation et la mise à jour.
+- Établir la politique de versions, la provenance des artefacts et la reproductibilité.
+- Auditer les entrées non fiables, les permissions, les débordements et les chemins d'erreur.
+- Exécuter la suite CI sur chaque changement et ajouter des tests de démarrage/installation.
+- Ne déclarer une version stable qu'après les critères de sortie documentés.
+
+**Critère de sortie :** image installable et récupérable, procédures de mise à jour documentées et tests de sécurité ciblés réussis.
+
+## P8 — Fondations noyau pour le logiciel de contrôle matériel — 5 %
+
+**But produit :** fournir au futur logiciel une source de télémétrie cohérente et, à terme, un accès contrôlé aux ventilateurs, à l'éclairage RGB et aux fonctions prises en charge des cartes mères et périphériques.
+
+### P8.1 — Identification et inventaire en lecture seule
+- [ ] Ajouter un module x86-64 CPUID sans allocation dynamique : fabricant, famille/modèle/stepping, marque CPU si disponible et fonctionnalités pertinentes.
+- [ ] Vérifier les feuilles CPUID maximales avant chaque interrogation et gérer proprement les champs indisponibles.
+- [ ] Ajouter des tests unitaires pour le décodage des champs CPU.
+- [ ] Découvrir les périphériques PCI en lecture seule, d'abord avec le mécanisme de configuration disponible sur la plateforme cible.
+- [ ] Prévoir une abstraction pour PCIe ECAM/ACPI ; ne pas supposer que l'accès PCI legacy convient à toutes les machines.
+- [ ] Exposer un inventaire typé (identifiants vendeur/périphérique, classe, bus/emplacement) sans écrire dans les registres de configuration des périphériques.
+- [ ] Journaliser les résultats et tester sur QEMU ; distinguer clairement tests virtuels et matériel physique.
+
+### P8.2 — Découverte de plateforme et capteurs
+- [ ] Définir des types communs pour température, tension, puissance, vitesse de rotation et état de disponibilité.
+- [ ] Inclure unité, source, précision/validité, horodatage et erreurs ; ne jamais inventer une mesure indisponible.
+- [ ] Découvrir les tables ACPI et les informations SMBIOS/UEFI avec validation des bornes.
+- [ ] Concevoir une interface de pilote de capteur indépendante du fabricant.
+- [ ] Séparer les capteurs CPU, GPU, carte mère, stockage et périphériques ; chaque source peut être absente ou partiellement prise en charge.
+
+### P8.3 — Bus et pilotes
+- [ ] Définir les abstractions nécessaires pour PCI/PCIe, I²C/SMBus et USB.
+- [ ] Ajouter les pilotes un par un avec identifiants matériels, capacités déclarées et tests ciblés.
+- [ ] Garder les protocoles propres à chaque fabricant dans des pilotes/adaptateurs isolés.
+- [ ] Limiter les accès matériels à une liste de capacités explicitement autorisées.
+- [ ] Ne pas activer une écriture de registre sur la seule base d'une identification approximative du périphérique.
+
+### P8.4 — Contrôle matériel sûr
+- [ ] Commencer par la télémétrie en lecture seule.
+- [ ] Définir les préconditions, plages valides, unités et erreurs de chaque commande d'actionneur.
+- [ ] Prévoir une protection thermique prioritaire, des limites minimales/maximales et un retour à un état sûr.
+- [ ] Refuser les commandes non prises en charge ou ambiguës.
+- [ ] Ajouter les tests simulés et les tests matériels documentés avant d'autoriser l'écriture.
+- [ ] Ne jamais couper une ventilation essentielle ni appliquer un profil RGB/ventilateur non validé.
+
+**Critère de sortie P8 :** inventaire et télémétrie lisibles via des interfaces stables, tests passants et contrôle matériel explicitement limité aux modèles validés. L'inventaire PCI seul ne signifie pas que les températures GPU ou carte mère sont disponibles.
+
+## P9 — Service privilégié de télémétrie et de contrôle — 0 %
+
+- [ ] Créer un service séparé du noyau qui collecte les sources prises en charge.
+- [ ] Exposer une API versionnée, documentée et typée au centre de contrôle.
+- [ ] Séparer les permissions de lecture de télémétrie des permissions d'écriture/actionneurs.
+- [ ] Valider les profils et courbes avant application ; enregistrer l'origine des commandes et les erreurs.
+- [ ] Ajouter une simulation sans effet matériel pour développer et tester l'interface.
+- [ ] Garantir que l'arrêt du service ou une erreur de profil ne neutralise pas les protections firmware/thermiques.
+
+**Critère de sortie :** service testable sans privilèges d'écriture par défaut, API stable et modes dégradés sûrs.
+
+## P10 — Archia Control Center, application tout-en-un — 5 %
+
+La vision est une seule application avec des modules cohérents, pas une simple liste de capteurs. L'interface ne doit jamais accéder directement aux ports, registres ou protocoles fabricants : elle passe par le service privilégié.
+
+1. **Tableau de bord :** état général, températures, fréquences, charge et alertes réellement disponibles.
+2. **CPU et carte mère :** identification, fonctionnalités CPU et capteurs pris en charge.
+3. **GPU :** modèle, charge, mémoire et températures uniquement si le pilote/source les fournit.
+4. **RAM et stockage :** capacité, état et statistiques accessibles ; diagnostics ensuite.
+5. **Ventilation :** ventilateurs détectés, courbes, profils et contrôle uniquement sur modèles validés.
+6. **RGB :** périphériques compatibles, zones et profils via pilotes dédiés.
+7. **Profils :** sauvegarde, validation, application et retour arrière.
+8. **Diagnostics/benchmarks :** tests séparés, résultats comparables et avertissements thermiques.
+9. **Compatibilité :** matrice par matériel, version de pilote et fonctionnalité prise en charge.
+
+**Étapes d'implémentation**
+- [ ] Établir le contrat de données avec P9 et un mode de simulation.
+- [ ] Construire une première vue qui affiche les données réelles de CPUID/inventaire, avec état « indisponible » quand la source n'existe pas.
+- [ ] Ajouter les cartes capteurs et l'historique lorsque des mesures réelles sont fournies.
+- [ ] Ajouter les profils de ventilation après validation de P8.4 et P9.
+- [ ] Ajouter RGB périphérique par périphérique, sans promesse de compatibilité universelle.
+- [ ] Ajouter tests d'API, tests UI et vérification des erreurs/pertes de connexion.
+
+**Critère de sortie :** application intégrée, données traçables jusqu'à leur source et commandes limitées aux fonctions réellement validées. Les modules documentés ne comptent pas comme terminés tant qu'ils ne fonctionnent pas.
+
+## Piste parallèle — chargeur UEFI maison et ARM64
+
+### Chargeur UEFI
+
+- **B0 — Entrée UEFI : implémentée.** Crate Rust sans dépendance externe pour x86-64 et AArch64.
+- **B1 — Lecture du noyau : implémentée.** Ouvre `\\EFI\\ArchiaOS\\kernel.elf`, borne sa taille et gère les lectures partielles.
+- **B2 — Validation ELF64 : implémentée.** Vérifications des en-têtes, segments, tailles, alignements, débordements, recouvrements et entrée exécutable ; segments RWX refusés et tests unitaires présents.
+- **B3 — Chargement identité : implémenté sous contraintes.** Réserve les pages physiques ELF, copie les octets et met le BSS à zéro ; prototype surtout utilisé par le chemin AArch64.
+- **B4 — Chargement high-half x86-64 : validé en CI antérieure.** Tables 4 niveaux, fenêtre high-half, alias physiques NX et permissions ELF.
+- **B5 — Protection x86-64 : validée en CI antérieure.** Vérification NX, activation EFER.NXE et CR0.WP ; test des permissions effectives.
+- **B6 — Contrat BootInfo : implémenté.** ABI versionnée `ARCHIABI`, entrée noyau, carte mémoire UEFI finale et pointeurs de plateforme disponibles.
+- **B7 — Sortie UEFI : implémentée.** Collecte de la carte mémoire juste avant `ExitBootServices`, nouvelle tentative avec clé fraîche en cas de `EFI_INVALID_PARAMETER`.
+- **B8 — Noyau x86-64 de production via le chargeur maison : validé en CI antérieure.** OVMF/QEMU, validation BootInfo et test PMM de 130 allocations/libérations.
+- **B9 — Démarrage maison par défaut : bascule du code effectuée ; validation du HEAD courant en attente.** Lié directement à P0.
+
+### ARM64
+
+- **A0 — Entrée noyau ARM64 : implémentée.** Entrée AArch64, pile dédiée et console PL011 pour QEMU `virt`.
+- **A1 — Transfert UEFI ARM64 : validé sur AAVMF/QEMU.** Copie des segments identité, synchronisation I-cache, BootInfo et découverte console via ACPI SPCR sur le firmware testé.
+- **A2 — Gestion mémoire ARM64 : prototype.** PMM bitmap sous 4 Gio avec tests d'allocations/libérations ; MMU, réservations exhaustives, SMP et mémoire au-delà de 4 Gio restent à faire.
+- **A3 — Exceptions ARM64 : première base implémentée.** Table alignée et test d'exception synchrone ; handlers différenciés, retours contrôlés et interruptions asynchrones restent à faire.
+- **A4 — Parité des architectures : conception en cours.** Extraire les interfaces communes sans mélanger les primitives propres à chaque architecture.
+
+## Limites et règles de sécurité
+
+- Les validations CI historiques ne prouvent pas que le HEAD courant est vert ni que tous les PC physiques fonctionnent. Vérifier la CI après chaque changement pertinent.
+- Les contraintes actuellement documentées du chargeur comprennent l'accès identité sous 4 Gio, un total de segments limité à 128 Mio et un fichier noyau limité à 64 Mio ; les étendre seulement avec tests.
+- Les résultats ARM64 actuels concernent le chemin identité testé ; la pagination high-half décrite ici concerne x86-64.
+- Les fonctions capteur et contrôle varient selon le matériel, le firmware et les pilotes. Ne pas annoncer de compatibilité universelle.
+- **Lecture seule avant écriture.** Les identifiants matériels ne suffisent pas à autoriser l'écriture dans un registre.
+- La sécurité thermique et les mécanismes de protection firmware priment sur les profils utilisateur.
+- OpenFS reste un dépôt distinct : vérifier son état et son API réelle avant toute intégration.
+
+## Règle de mise à jour de la feuille de route
+
+Après chaque lot de travail, actualiser les pourcentages seulement si du code ou des tests ont réellement avancé, indiquer la preuve (commit, test ou CI) et noter les blocages. Ne pas augmenter un pourcentage pour une intention ou une documentation seule.
