@@ -43,9 +43,9 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 
 **Critère de sortie :** build reproductible et tests de démarrage verts sur le HEAD courant, sans déclarer les essais QEMU comme une validation de tout matériel physique.
 
-### P1 — Fiabilité du chargeur et de la mémoire — 89 %
+### P1 — Fiabilité du chargeur et de la mémoire — 90 %
 
-**État : EN COURS.** CI verte sur le HEAD `1ab767a` : tests unitaires du chargeur, démarrage UEFI OVMF en identité et high-half, test négatif BootInfo, smoke test AAVMF/ARM64 et paquet USB. P1 continue sur l'audit des plages réservées spécifiques aux plateformes et les scénarios matériels.
+**État : EN COURS.** CI verte sur le HEAD `2c3058e` : tests négatifs BootInfo, démarrage UEFI local, CI x86-64/ARM64 et paquet USB. Le lot récent sécurise les lectures des métadonnées RSDP/Device Tree après contrôle de réservation et d'accessibilité ; l'audit des autres plages spécifiques aux plateformes et les scénarios matériels restent à faire.
 
 **Objectif :** sécuriser le transfert UEFI → noyau et la gestion de la mémoire physique.
 
@@ -58,7 +58,7 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 - [x] Réessayer ExitBootServices avec une clé de carte mémoire fraîche si nécessaire.
 - [x] Ajouter un contrôle de la carte mémoire UEFI finale pour détecter les buffers BootInfo/carte mémoire, segments ELF, image du chargeur et arène de tables de pages incorrectement classés en RAM conventionnelle.
 - [x] Découvrir le framebuffer actif via UEFI GOP, transmettre base/taille dans BootInfo et refuser le transfert si sa plage chevauche de la RAM conventionnelle ou traverse un trou de carte mémoire.
-- [x] Auditer aussi les plages du RSDP ACPI et du Device Tree : chaque table transmise dans BootInfo doit rester entièrement couverte par des descripteurs UEFI réservés et, pour le noyau high-half x86-64, résider dans la RAM réellement identity-mappée sous 4 Gio.
+- [x] Auditer les plages du RSDP ACPI et du Device Tree : contrôler le préfixe avant lecture des métadonnées, borner les tailles annoncées, vérifier la réservation complète et, pour le noyau high-half x86-64, l'identité de mapping RAM sous 4 Gio (commits `3d3dae0`, `2c3058e`; CI BootInfo négatif, UEFI local, CI et paquet USB verts sur `2c3058e`).
 - [x] Auditer explicitement l'accessibilité dans le mapping identité actif des plages critiques BootInfo, carte mémoire, segments ELF et arène de tables de pages ; le framebuffer GOP reçoit un mapping d'écriture uncached dédié. Les autres plages réservées spécifiques aux plateformes restent à examiner.
 - [x] Vérifier en CI les rejets de libérations invalides/doubles, la cohérence bitmap (toute page libre est gérée, mémoire basse réservée), la réutilisation après libération et la restauration du compte de pages.
 - [x] Extraire la validation scalaire du contrat BootInfo en fonction testable sans déréférencer la carte mémoire, avec tests négatifs magic/version, taille de structure, pointeur absent/désaligné, taille de carte et métadonnées.
@@ -71,7 +71,7 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 - [x] Durcir le calcul des plages PMM réservées : écrêtage à la fenêtre gérée sous 4 Gio avant l'arrondi, sans débordement inutile pour une plage MMIO située hors fenêtre ; auto-vérifications au démarrage pour les limites, les plages non alignées et les longueurs nulles (commit `a8654bf`).
 - [x] Centraliser le calcul du chevauchement entre intervalles de frames et ajouter des auto-vérifications déterministes pour les plages libres, réservées, adjacentes, disjointes, incluses et vides ; validation de démarrage OVMF et tests négatifs BootInfo verts sur le code correspondant (commit `b22d509`).
 - [x] Valider le framebuffer GOP linéaire avant de le transmettre : rejeter les modes BltOnly, les dimensions/strides invalides, les plages débordantes et les buffers trop petits ; tests unitaires pour RGB/BGR/bitmask et cas invalides, CI x86-64/ARM64 et démarrages OVMF/AAVMF verts (commits `5526ae4`, `d218075`).
-- [x] Borner le tableau des tables de configuration UEFI avant toute lecture : vérifier le nombre d'entrées, le calcul de taille et l'absence de débordement d'adresse, puis lire les entrées de façon non alignée pour éviter un comportement indéfini sur une adresse mal alignée ; tests des bornes et débordements (commit `2f360f7`, CI à confirmer).
+- [x] Borner le tableau des tables de configuration UEFI avant toute lecture : vérifier le nombre d'entrées, le calcul de taille et l'absence de débordement d'adresse, puis lire les entrées de façon non alignée pour éviter un comportement indéfini sur une adresse mal alignée ; tests des bornes et débordements (commit `2f360f7` ; CI ultérieure verte sur le HEAD `2c3058e`).
 - [x] Confirmer les contrôles de transfert, mappings et BootInfo par la CI du HEAD `00bcb8c` : compilation x86-64/ARM64, démarrage UEFI OVMF, BootInfo négatif et paquet USB tous verts.
 - [x] Réinitialiser les bitmaps PMM après la prévalidation et avant chaque tentative de population, afin qu'une tentative échouée ne laisse pas d'état périmé pour une reprise.
 - [x] Refuser l'allocation lorsque le bitmap ne contient aucune frame à la fois libre et gérée ; la simulation locale teste l'épuisement déterministe.
