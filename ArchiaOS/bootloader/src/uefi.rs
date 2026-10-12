@@ -1511,6 +1511,19 @@ fn audit_platform_table_ranges(
     Ok(())
 }
 
+#[cfg(target_arch = "x86_64")]
+fn require_identity_mapped_ram(
+    memory_map: &UefiMemoryMap<'_>,
+    start: u64,
+    length: u64,
+    message: &'static [u8],
+) -> Result<(), BootError> {
+    if !range_is_identity_mapped_ram(memory_map, start, length)? {
+        return Err(error(EFI_UNSUPPORTED, message));
+    }
+    Ok(())
+}
+
 fn platform_tables(system_table: *mut SystemTable) -> (u64, u64) {
     let acpi20 = configuration_table(system_table, &ACPI_20_TABLE_GUID);
     let acpi10 = configuration_table(system_table, &ACPI_10_TABLE_GUID);
@@ -1659,12 +1672,30 @@ pub unsafe fn transfer_to_kernel(
         ).map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid BootInfo storage range in final memory map.\r\n\0"))? {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: BootInfo storage is incorrectly marked conventional RAM.\r\n\0"));
         }
+        #[cfg(target_arch = "x86_64")]
+        if image_uses_highhalf(_elf) {
+            require_identity_mapped_ram(
+                &parsed_map,
+                info_storage_start,
+                core::mem::size_of::<BootInfo>() as u64,
+                b"ArchiaOS: BootInfo storage is not covered by the active high-half identity map.\r\n\0",
+            )?;
+        }
         let map_storage_start = destination as u64;
         if !parsed_map.range_is_fully_reserved(
             map_storage_start,
             MAX_MEMORY_MAP_SIZE as u64,
         ).map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid memory-map buffer range in final map.\r\n\0"))? {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: memory-map buffer is incorrectly marked conventional RAM.\r\n\0"));
+        }
+        #[cfg(target_arch = "x86_64")]
+        if image_uses_highhalf(_elf) {
+            require_identity_mapped_ram(
+                &parsed_map,
+                map_storage_start,
+                MAX_MEMORY_MAP_SIZE as u64,
+                b"ArchiaOS: final memory-map buffer is not covered by the active high-half identity map.\r\n\0",
+            )?;
         }
 
         // Every PT_LOAD segment was reserved with AllocateAddress before this
@@ -1687,12 +1718,22 @@ pub unsafe fn transfer_to_kernel(
                 .checked_add(EFI_PAGE_SIZE - 1)
                 .map(|value| value & !(EFI_PAGE_SIZE - 1))
                 .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF rounded range overflow during final memory-map audit.\r\n\0"))?;
+            let segment_length = rounded_end.checked_sub(segment.physical_address)
+                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ELF range during final memory-map audit.\r\n\0"))?;
             if !parsed_map.range_is_fully_reserved(
                 segment.physical_address,
-                rounded_end.checked_sub(segment.physical_address)
-                    .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ELF range during final memory-map audit.\r\n\0"))?,
+                segment_length,
             ).map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: malformed ELF range in final memory map.\r\n\0"))? {
                 return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: kernel segment is incorrectly marked conventional RAM.\r\n\0"));
+            }
+            #[cfg(target_arch = "x86_64")]
+            if image_uses_highhalf(_elf) {
+                require_identity_mapped_ram(
+                    &parsed_map,
+                    segment.physical_address,
+                    segment_length,
+                    b"ArchiaOS: kernel segment is not covered by the active identity map.\r\n\0",
+                )?;
             }
         }
 
@@ -1715,6 +1756,12 @@ pub unsafe fn transfer_to_kernel(
                 .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid page-table arena range in final map.\r\n\0"))? {
                 return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: page-table arena is incorrectly marked conventional RAM.\r\n\0"));
             }
+            require_identity_mapped_ram(
+                &parsed_map,
+                arena.physical_base,
+                arena_bytes,
+                b"ArchiaOS: page-table arena is not covered by the active identity map.\r\n\0",
+            )?;
         }
 
         #[cfg(target_arch = "x86_64")]
