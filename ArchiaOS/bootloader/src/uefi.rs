@@ -1536,6 +1536,8 @@ fn audit_platform_table_ranges(
     acpi_rsdp: u64,
     device_tree: u64,
     high_half_image: bool,
+    framebuffer_base: u64,
+    framebuffer_size: u64,
 ) -> Result<(), BootError> {
     #[cfg(target_arch = "aarch64")]
     let _ = high_half_image;
@@ -1553,6 +1555,9 @@ fn audit_platform_table_ranges(
             && !range_is_identity_mapped_ram(memory_map, acpi_rsdp, RSDP_FIXED_PREFIX)?
         {
             return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: ACPI RSDP prefix is outside identity-mapped RAM for the high-half kernel.\r\n\0"));
+        }
+        if physical_ranges_overlap(acpi_rsdp, RSDP_FIXED_PREFIX, framebuffer_base, framebuffer_size) {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI RSDP overlaps the GOP framebuffer.\r\n\0"));
         }
 
         let rsdp = acpi_rsdp as *const u8;
@@ -1584,6 +1589,9 @@ fn audit_platform_table_ranges(
         {
             return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: ACPI RSDP is outside identity-mapped RAM for the high-half kernel.\r\n\0"));
         }
+        if physical_ranges_overlap(acpi_rsdp, length, framebuffer_base, framebuffer_size) {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI RSDP overlaps the GOP framebuffer.\r\n\0"));
+        }
         // SAFETY: the complete length is bounded, reserved, and identity-mapped
         // where required, as checked above.
         let complete = unsafe { core::slice::from_raw_parts(rsdp, length as usize) };
@@ -1605,6 +1613,9 @@ fn audit_platform_table_ranges(
         {
             return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: Device Tree prefix is outside identity-mapped RAM for the high-half kernel.\r\n\0"));
         }
+        if physical_ranges_overlap(device_tree, FDT_FIXED_PREFIX, framebuffer_base, framebuffer_size) {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: Device Tree header overlaps the GOP framebuffer.\r\n\0"));
+        }
 
         let dtb = device_tree as *const u8;
         // SAFETY: the fixed prefix is reserved and mapped, as checked above.
@@ -1621,6 +1632,9 @@ fn audit_platform_table_ranges(
             && !range_is_identity_mapped_ram(memory_map, device_tree, length)?
         {
             return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: Device Tree is outside identity-mapped RAM for the high-half kernel.\r\n\0"));
+        }
+        if physical_ranges_overlap(device_tree, length, framebuffer_base, framebuffer_size) {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: Device Tree overlaps the GOP framebuffer.\r\n\0"));
         }
         // Firmware data may have changed since initial discovery. Re-parse the
         // entire bounded tree while its full range is still proven readable.
@@ -2016,7 +2030,14 @@ pub unsafe fn transfer_to_kernel(
         // framebuffer-overlapping page from its ordinary RAM identity map, and the
         // kernel PMM independently reserves those frames before publishing alloc_page().
 
-        audit_platform_table_ranges(&parsed_map, acpi_rsdp, device_tree, image_uses_highhalf(_elf))?;
+        audit_platform_table_ranges(
+            &parsed_map,
+            acpi_rsdp,
+            device_tree,
+            image_uses_highhalf(_elf),
+            framebuffer_base,
+            framebuffer_size,
+        )?;
 
         // Stop tracking the two pool buffers before the first EBS call, so no
         // destructor can call FreePool after boot services have been terminated.
