@@ -1,5 +1,8 @@
 #![no_std]
 
+#[cfg(test)]
+extern crate std;
+
 // Defensive, allocation-free ELF64 validation for the first-party loader.
 // Parsing is separate from firmware I/O so malformed-image cases can be tested
 // on the host before any physical memory is allocated.
@@ -266,6 +269,9 @@ pub mod elf {
 
 #[cfg(test)]
 mod tests {
+    use std::vec;
+    use std::vec::Vec;
+
     use super::elf::{parse_elf64, load_segment, ElfError};
 
     const X86_64: u16 = 62;
