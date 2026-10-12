@@ -1604,13 +1604,13 @@ mod tests {
     #[test]
     fn rejects_overlapping_physical_load_segments() {
         let mut image = valid_elf(X86_64);
-        image.resize(0x1104, 0);
+        image.resize(0x2104, 0);
         put_u16(&mut image, 56, 2);
         // Distinct virtual ranges, but both segments would claim the same physical page.
         put_u32(&mut image, 120, 1);
         put_u32(&mut image, 124, 4);
-        put_u64(&mut image, 128, 0x1100);
-        put_u64(&mut image, 136, 0x4008_2000);
+        put_u64(&mut image, 128, 0x2100);
+        put_u64(&mut image, 136, 0x4008_2100);
         put_u64(&mut image, 144, 0x4008_0100);
         put_u64(&mut image, 152, 4);
         put_u64(&mut image, 160, 16);
