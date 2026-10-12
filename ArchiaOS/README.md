@@ -32,7 +32,7 @@ Depuis `kernel/aarch64` :
 cargo build --release --target aarch64-unknown-none
 ```
 
-Le test direct QEMU et le test de transfert UEFI AArch64 sont tous deux définis dans la CI. Le noyau reste un prototype QEMU `virt`, mais il localise désormais la console PL011 à partir des propriétés `compatible`/`reg` du Device Tree, avec une adresse de secours limitée à QEMU. Il réutilise la même ABI BootInfo, le même parseur FDT et le parseur de carte mémoire que le chargeur. Les exceptions, la MMU, les traductions `ranges`, la découverte mémoire complète et les pilotes ARM64 restent à implémenter.
+Le test direct QEMU et le test de transfert UEFI AArch64 sont tous deux définis dans la CI. Le noyau reste un prototype QEMU `virt`. Il localise la console PL011 par `compatible`/`reg` du Device Tree, valide la carte mémoire UEFI et initialise un PMM bitmap sous 4 Gio qui teste 130 allocations/libérations sur plusieurs mots. Il réutilise la même ABI BootInfo, le parseur FDT et le parseur de carte mémoire que le chargeur. La MMU, les exceptions, la synchronisation SMP, les traductions `ranges`, la découverte mémoire complète et les pilotes ARM64 restent à implémenter.
 
 Voir [la roadmap](docs/ROADMAP.md), [le plan boot/ARM64](docs/BOOT_AND_ARCHITECTURES.md), [le bootloader](bootloader/README.md) et [le test de transfert UEFI x86-64](kernel/boot-test-x86_64/README.md).
 
