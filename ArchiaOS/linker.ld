@@ -5,6 +5,7 @@ KERNEL_LMA = 0x00100000;
 
 PHDRS
 {
+    metadata PT_LOAD FLAGS(4);
     text     PT_LOAD FLAGS(5);
     rodata   PT_LOAD FLAGS(4);
     data     PT_LOAD FLAGS(6);
@@ -17,7 +18,7 @@ SECTIONS
     .archiaos_metadata ALIGN(8) : AT(ADDR(.archiaos_metadata) - KERNEL_VMA)
     {
         KEEP(*(.archiaos_image_marker))
-    } :rodata
+    } :metadata
 
     .text ALIGN(4K) : AT(ADDR(.text) - KERNEL_VMA)
     {
