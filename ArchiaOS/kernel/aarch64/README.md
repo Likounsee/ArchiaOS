@@ -20,7 +20,7 @@ cargo build --release --target aarch64-unknown-none
 timeout 15s qemu-system-aarch64 -machine virt -cpu cortex-a57 -m 512M -kernel target/aarch64-unknown-none/release/archiaos-kernel-aarch64 -display none -serial stdio -monitor none -no-reboot -no-shutdown
 ```
 
-The project CI also compiles the UEFI application and attempts to boot this kernel through the custom loader. The CI result must pass before considering the end-to-end ARM64 handoff validated.
+The project CI compiles the UEFI application and boots this kernel through the custom loader. The most recent fully completed workflow passed the AAVMF/QEMU handoff and validated BootInfo, ACPI RSDP, the memory map, PMM operations and the exception self-test. Keep checking the current run after code changes.
 
 ## Limits
 
