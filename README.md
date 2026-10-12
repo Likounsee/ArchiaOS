@@ -12,7 +12,7 @@
 - Les tests négatifs UEFI couvrent ELF invalide, plage physique indisponible et noyau absent.
 - Le prototype noyau AArch64 se compile et démarre en QEMU direct ; le transfert UEFI AArch64 est testé sous AAVMF/QEMU, avec console PL011, BootInfo/carte mémoire, PMM et une exception synchrone contrôlée.
 
-Les résultats sont propres aux configurations virtuelles exécutées par la CI. Le statut du dernier ensemble CI doit être consulté dans [GitHub Actions](https://github.com/Likounsee/ArchiaOS/actions/workflows/ci.yml) ; une exécution encore en cours ne doit pas être présentée comme entièrement verte.
+La CI complète du HEAD `1ec20483c4e699ae884a271d4b1613531d158070` est verte : compilations x86-64/ARM64 et démarrages QEMU/OVMF + AAVMF réussis ; le workflow de rejet BootInfo invalide est également vert. Ces résultats ne couvrent que les configurations virtuelles testées. La validation sur matériel physique reste le seul critère P0 explicitement ouvert. [CI complète](https://github.com/Likounsee/ArchiaOS/actions/runs/38247434624) · [test BootInfo invalide](https://github.com/Likounsee/ArchiaOS/actions/runs/38247434330).
 
 ## Limites actuelles
 

@@ -6,7 +6,7 @@
 
 | Priorité | Domaine | Avancement estimé | État / prochaine preuve attendue |
 |---|---|---:|---|
-| **P0** | Démarrage UEFI maison x86-64 par défaut | **96 %** | Tests OVMF couvrant ELF invalide, plage physique indisponible et noyau absent ; un workflow dédié teste maintenant le rejet d'un BootInfo volontairement invalide. La CI du HEAD doit confirmer les scénarios récents et le démarrage AAVMF ARM64 ; validation sur matériel physique toujours ouverte. |
+| **P0** | Démarrage UEFI maison x86-64 par défaut | **98 %** | CI verte sur le HEAD `1ec20483c4e699ae884a271d4b1613531d158070` : compilations x86-64/ARM64, démarrages QEMU/OVMF + AAVMF et rejet BootInfo invalide. Validation sur matériel physique toujours ouverte. |
 | **P1** | Fiabilité du chargeur, BootInfo et mémoire | **74 %** | Carte mémoire, ELF, BootInfo et autotests PMM validés ; ajouter des scénarios d'échec du chemin complet et approfondir l'audit des plages réservées. |
 | **P2** | Ordonnanceur et synchronisation | **0 %** | Non implémenté ; définir les primitives de tâches et le changement de contexte avant la préemption. |
 | **P3** | Espace utilisateur et ABI système | **0 %** | Non commencé ; dépend notamment des exceptions, syscalls et mécanismes mémoire isolés. |
@@ -17,20 +17,20 @@
 | **P8** | Fondations noyau pour le contrôle matériel | **12 %** | CPUID x86-64 intégré et inventaire PCI legacy en lecture seule sur le bus 0 ; ECAM/ACPI et tests dédiés restent à faire. |
 | **P9** | Service privilégié de télémétrie/contrôle | **0 %** | Pas de service fonctionnel ; dépend d'interfaces noyau et de pilotes sûrs. |
 | **P10** | Archia Control Center (interface tout-en-un) | **5 %** | Vision et modules documentés ; pas encore d'application fonctionnelle. |
-| **B0–B9** | Chargeur UEFI maison | Voir jalons ci-dessous | Plusieurs fondations validées en CI ; la validation de la bascule par défaut reste à confirmer sur le HEAD courant. |
+| **B0–B9** | Chargeur UEFI maison | Voir jalons ci-dessous | Plusieurs fondations validées en CI ; la CI du HEAD courant est verte ; la validation sur matériel physique reste ouverte. |
 | **A0–A4** | Démarrage et fondations ARM64 | Voir jalons ci-dessous | Prototype et tests ciblés ; parité avec x86-64 non atteinte. |
 
 Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas conduire à contourner la fiabilité du démarrage, la mémoire, les permissions ou la sécurité. Le but est un logiciel intégré inspiré des usages de CPU-Z, HWiNFO, GPU-Z, Fan Control et OpenRGB, mais conçu pour ArchiaOS et son matériel pris en charge.
 
 ## Ordre de travail prioritaire
 
-### P0 — Démarrage UEFI maison x86-64 — 96 %
+### P0 — Démarrage UEFI maison x86-64 — 98 %
 
 **Objectif :** faire du chemin UEFI ArchiaOS le démarrage par défaut fiable.
 
 - [x] Remplacer l'ancien chemin Limine dans la configuration par défaut.
 - [x] Utiliser le contrat UEFI du chargeur ArchiaOS.
-- [x] Confirmer une CI verte sur le commit `cca0f07a96709cb099831cac711a3165037c7b7e` : compilation du noyau x86-64, chargeurs UEFI x86-64/ARM64 et démarrages QEMU/OVMF + AAVMF.
+- [x] Confirmer la CI complète verte sur le HEAD `1ec20483c4e699ae884a271d4b1613531d158070` : compilation du noyau x86-64, chargeurs UEFI x86-64/ARM64 et démarrages QEMU/OVMF + AAVMF.
 - [x] Confirmer compilation et démarrage sous OVMF/QEMU et AAVMF/QEMU sur le commit `da556433`.
 - [x] Vérifier en CI les signatures de sortie CPU, inventaire PCI, BootInfo et autotests PMM.
 - [x] Valider un démarrage négatif OVMF/QEMU avec ELF invalide : diagnostic de validation ELF exigé, aucune sortie `ExitBootServices` ni exécution du noyau attendue (CI OVMF : `ELF64 validation failed`, test négatif passé).

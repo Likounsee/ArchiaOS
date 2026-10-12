@@ -45,6 +45,10 @@ Les VM ne remplacent pas un essai sur machine physique. Lorsqu'une machine de te
 - [ ] Faire un redémarrage à froid et vérifier que le chemin de récupération du firmware reste accessible.
 - [ ] Documenter les échecs et ne déclarer que cette configuration testée, sans extrapoler à tout le matériel.
 
+## Dernière validation CI enregistrée
+
+Le HEAD `1ec20483c4e699ae884a271d4b1613531d158070` a passé la CI complète : [compilations et démarrages QEMU/OVMF + AAVMF](https://github.com/Likounsee/ArchiaOS/actions/runs/38247434624) et [rejet BootInfo invalide](https://github.com/Likounsee/ArchiaOS/actions/runs/38247434330). La validation matérielle n'est pas incluse dans ces résultats.
+
 ## Limites des tests
 
 Le smoke test ne couvre pas toutes les variantes de firmware, les erreurs de mémoire matérielles, la fragmentation et la concurrence approfondies, ni toutes les réservations de mémoire. Ces audits supplémentaires appartiennent à des étapes ultérieures ; ils ne doivent pas être présentés comme validés par le simple succès de QEMU.
