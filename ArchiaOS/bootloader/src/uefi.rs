@@ -1323,7 +1323,13 @@ unsafe fn validated_rsdp(pointer: *mut c_void) -> u64 {
         return 0;
     }
     let address = pointer.cast::<u8>();
+    // Check the fixed signature before interpreting revision or length fields.
     // SAFETY: pointer is supplied by the firmware ACPI configuration table.
+    let signature = unsafe { core::slice::from_raw_parts(address, 8) };
+    if !rsdp_signature_is_valid(signature) {
+        return 0;
+    }
+    // SAFETY: the ACPI RSDP contains a fixed legacy prefix of 20 bytes.
     let legacy = unsafe { core::slice::from_raw_parts(address, 20) };
     if legacy.get(15).copied() == Some(0) {
         return if archiaos_bootloader::acpi::parse_rsdp(legacy).is_ok() {
@@ -1356,19 +1362,13 @@ unsafe fn validated_device_tree(pointer: *mut c_void) -> u64 {
         return 0;
     }
     let address = pointer.cast::<u8>();
-    // SAFETY: pointer is returned by EFI_DTB_TABLE_GUID in the configuration table.
+    // SAFETY: pointer is returned by EFI_DTB_TABLE_GUID; the fixed prefix is read
+    // before its advertised total size is trusted.
     let prefix = unsafe { core::slice::from_raw_parts(address, 8) };
-    if u32::from_be_bytes([prefix[0], prefix[1], prefix[2], prefix[3]])
-        != archiaos_bootloader::device_tree::FDT_MAGIC
-    {
+    let Some(total) = validated_fdt_prefix_length(prefix) else {
         return 0;
-    }
-    let total = u32::from_be_bytes([prefix[4], prefix[5], prefix[6], prefix[7]]) as usize;
-    if !(archiaos_bootloader::device_tree::HEADER_SIZE
-        ..=archiaos_bootloader::device_tree::MAX_TOTAL_SIZE).contains(&total)
-    {
-        return 0;
-    }
+    };
+    let total = total as usize;
     // SAFETY: total is bounded by the parser limit and firmware supplied the DTB address.
     let tree = unsafe { core::slice::from_raw_parts(address, total) };
     if archiaos_bootloader::device_tree::validate_tree(tree).is_ok() {
