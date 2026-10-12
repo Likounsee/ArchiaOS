@@ -1346,14 +1346,14 @@ pub unsafe fn transfer_to_kernel(
             leaked_info.cast::<u8>()
         };
         let info_storage_start = info_storage as u64;
-        if parsed_map.range_overlaps_conventional(
+        if !parsed_map.range_is_fully_reserved(
             info_storage_start,
             core::mem::size_of::<BootInfo>() as u64,
         ).map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid BootInfo storage range in final memory map.\r\n\0"))? {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: BootInfo storage is incorrectly marked conventional RAM.\r\n\0"));
         }
         let map_storage_start = destination as u64;
-        if parsed_map.range_overlaps_conventional(
+        if !parsed_map.range_is_fully_reserved(
             map_storage_start,
             MAX_MEMORY_MAP_SIZE as u64,
         ).map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid memory-map buffer range in final map.\r\n\0"))? {
@@ -1380,7 +1380,7 @@ pub unsafe fn transfer_to_kernel(
                 .checked_add(EFI_PAGE_SIZE - 1)
                 .map(|value| value & !(EFI_PAGE_SIZE - 1))
                 .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF rounded range overflow during final memory-map audit.\r\n\0"))?;
-            if parsed_map.range_overlaps_conventional(
+            if !parsed_map.range_is_fully_reserved(
                 segment.physical_address,
                 rounded_end.checked_sub(segment.physical_address)
                     .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ELF range during final memory-map audit.\r\n\0"))?,
@@ -1391,9 +1391,10 @@ pub unsafe fn transfer_to_kernel(
 
         #[cfg(target_arch = "x86_64")]
         if let Some((loader_start, loader_end)) = loader_image_range {
-            if parsed_map.range_overlaps_conventional(
+            if !parsed_map.range_is_fully_reserved(
                 loader_start,
-                loader_end - loader_start,
+                loader_end.checked_sub(loader_start)
+                    .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: inverted loader-image range in final map.\r\n\0"))?,
             ).map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid loader-image range in final map.\r\n\0"))? {
                 return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: loader image is incorrectly marked conventional RAM.\r\n\0"));
             }
@@ -1403,7 +1404,7 @@ pub unsafe fn transfer_to_kernel(
             let arena_bytes = (PAGE_TABLE_ARENA_PAGES as u64)
                 .checked_mul(EFI_PAGE_SIZE)
                 .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: page-table arena size overflow.\r\n\0"))?;
-            if parsed_map.range_overlaps_conventional(arena.physical_base, arena_bytes)
+            if !parsed_map.range_is_fully_reserved(arena.physical_base, arena_bytes)
                 .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid page-table arena range in final map.\r\n\0"))? {
                 return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: page-table arena is incorrectly marked conventional RAM.\r\n\0"));
             }
@@ -1461,7 +1462,7 @@ pub unsafe fn transfer_to_kernel(
         let framebuffer_base = unsafe { (*info_pointer).framebuffer_base };
         let framebuffer_size = unsafe { (*info_pointer).framebuffer_size };
         if framebuffer_size != 0
-            && parsed_map.range_overlaps_conventional(framebuffer_base, framebuffer_size)
+            && !parsed_map.range_is_fully_reserved(framebuffer_base, framebuffer_size)
                 .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid framebuffer range in final map.\r\n\0"))?
         {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer is incorrectly classified as conventional RAM.\r\n\0"));
