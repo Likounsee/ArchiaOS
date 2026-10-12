@@ -4,7 +4,8 @@
 
 ## État confirmé par la CI
 
-- Compilation du noyau principal x86-64 avec l’entrée UEFI maison par défaut.\n- Démarrage du vrai noyau x86-64 sous OVMF/QEMU via le chargeur ArchiaOS et auto-test PMM de 130 pages (test CI dédié).
+- Compilation du noyau principal x86-64 avec l’entrée UEFI maison par défaut.
+- Démarrage du vrai noyau x86-64 sous OVMF/QEMU via le chargeur ArchiaOS et auto-test PMM de 130 pages (test CI dédié).
 - Tests des parseurs BootInfo, ELF64, ACPI, Device Tree et carte mémoire.
 - Compilation du bootloader maison pour UEFI x86-64 et AArch64.
 - Démarrage UEFI du noyau de production x86-64 high-half avec BootInfo UEFI et auto-test PMM réussi.
