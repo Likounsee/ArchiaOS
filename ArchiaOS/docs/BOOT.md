@@ -26,7 +26,7 @@ Le script compile le noyau de production et le chargeur, crée `build/local-uefi
 
 Pour un firmware OVMF installé ailleurs, définir `OVMF_CODE=/chemin/OVMF_CODE.fd` et `OVMF_VARS=/chemin/OVMF_VARS.fd` avant la commande.
 
-Ce test confirme le démarrage virtuel x86-64, pas la compatibilité de tout matériel. Avant de déclarer P0 terminé sur matériel, démarrer depuis une clé FAT32 dédiée, confirmer BootInfo et PMM, tester un redémarrage à froid et consigner le modèle de machine, la version UEFI et le résultat.
+Ce test confirme le démarrage virtuel x86-64, pas la compatibilité de tout matériel. Le premier démarrage physique et l’écriture dans le framebuffer ont été confirmés sur une machine réelle ; le motif bleu est un test d’affichage bas niveau, pas un bureau. Un redémarrage à froid et le retour au firmware restent à consigner pour compléter la matrice de validation matérielle.
 
 ## Compilation des composants
 
