@@ -58,7 +58,7 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 - [x] Réessayer ExitBootServices avec une clé de carte mémoire fraîche si nécessaire.
 - [x] Ajouter un contrôle de la carte mémoire UEFI finale pour détecter les buffers BootInfo/carte mémoire, segments ELF, image du chargeur et arène de tables de pages incorrectement classés en RAM conventionnelle.
 - [x] Découvrir le framebuffer actif via UEFI GOP, transmettre base/taille dans BootInfo et refuser le transfert si sa plage chevauche de la RAM conventionnelle ou traverse un trou de carte mémoire.
-- [x] Auditer aussi les plages du RSDP ACPI et du Device Tree : chaque table transmise dans BootInfo doit rester entièrement couverte par des descripteurs UEFI réservés.
+- [x] Auditer aussi les plages du RSDP ACPI et du Device Tree : chaque table transmise dans BootInfo doit rester entièrement couverte par des descripteurs UEFI réservés et, pour le noyau high-half x86-64, résider dans la RAM réellement identity-mappée sous 4 Gio.
 - [ ] Compléter l'audit de l'accessibilité de toutes les plages plateforme dans les mappings actifs ; la découverte GOP ne signifie pas encore que le framebuffer est mappé pour l'écriture graphique.
 - [x] Vérifier en CI les rejets de libérations invalides/doubles, la cohérence bitmap (toute page libre est gérée, mémoire basse réservée), la réutilisation après libération et la restauration du compte de pages.
 - [x] Extraire la validation scalaire du contrat BootInfo en fonction testable sans déréférencer la carte mémoire, avec tests négatifs magic/version, taille de structure, pointeur absent/désaligné, taille de carte et métadonnées.
