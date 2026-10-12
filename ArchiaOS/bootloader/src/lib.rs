@@ -1960,4 +1960,32 @@ mod memory_map_tests {
         let map = UefiMemoryMap::parse(&bytes, 48).expect("valid EFI memory map");
         assert_eq!(map.entry(1), Err(MemoryMapError::EntryOutOfBounds));
     }
+
+    #[test]
+    fn accepts_adjacent_ranges_without_treating_them_as_overlap() {
+        let mut bytes = descriptor(EFI_CONVENTIONAL_MEMORY, 0x1000, 1);
+        bytes.extend_from_slice(&descriptor(4, 0x2000, 1));
+        let map = UefiMemoryMap::parse(&bytes, 48).expect("adjacent ranges are valid");
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.entry(0).unwrap().physical_end(), Ok(0x2000));
+        assert_eq!(map.entry(1).unwrap().physical_start, 0x2000);
+    }
+
+    #[test]
+    fn rejects_large_unsorted_maps_without_quadratic_scan() {
+        use super::memory_map::MAX_UNSORTED_DESCRIPTOR_COUNT;
+
+        let mut bytes = Vec::with_capacity((MAX_UNSORTED_DESCRIPTOR_COUNT + 1) * 48);
+        for index in (0..=MAX_UNSORTED_DESCRIPTOR_COUNT).rev() {
+            bytes.extend_from_slice(&descriptor(
+                EFI_CONVENTIONAL_MEMORY,
+                0x1000 + (index as u64) * 0x1000,
+                1,
+            ));
+        }
+        assert_eq!(
+            UefiMemoryMap::parse(&bytes, 48).err(),
+            Some(MemoryMapError::UnsupportedOrdering)
+        );
+    }
 }
