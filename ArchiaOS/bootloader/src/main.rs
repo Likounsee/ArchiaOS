@@ -29,6 +29,9 @@ const MAX_KERNEL_MEMORY_SIZE: u64 = 128 * 1024 * 1024;
 const MAX_MEMORY_MAP_SIZE: usize = 1024 * 1024;
 const MAX_ELF_PROGRAM_HEADERS: usize = 1024;
 const PAGE_SIZE: u64 = 4096;
+const FDT_MAGIC: u32 = 0xd00d_feed;
+const MIN_FDT_HEADER_SIZE: u64 = 40;
+const MAX_FDT_SIZE: u64 = 16 * 1024 * 1024;
 const LOWEST_KERNEL_ADDRESS: u64 = 1024 * 1024;
 const IDENTITY_LIMIT: u64 = 1u64 << 32;
 const EFI_MEMORY_DESCRIPTOR_MIN_SIZE: usize = 40;
@@ -231,6 +234,35 @@ unsafe fn configuration_table_pointer(st:*mut SystemTable,guid:Guid)->u64 {
     0
 }
 
+unsafe fn validate_fdt_header(address:u64)->bool {
+    if address==0||address>usize::MAX as u64 { return false; }
+    let base=address as usize as *const u8;
+    let read_be_u32=|offset:usize| unsafe {
+        u32::from_be(read_unaligned(base.add(offset).cast::<u32>()))
+    };
+    if read_be_u32(0)!=FDT_MAGIC { return false; }
+    let total=read_be_u32(4) as u64;
+    let off_struct=read_be_u32(8) as u64;
+    let off_strings=read_be_u32(12) as u64;
+    let off_reservations=read_be_u32(16) as u64;
+    let version=read_be_u32(20);
+    let last_compatible=read_be_u32(24);
+    let size_strings=read_be_u32(32) as u64;
+    let size_struct=read_be_u32(36) as u64;
+    if total<MIN_FDT_HEADER_SIZE||total>MAX_FDT_SIZE
+        ||version<16||last_compatible>version||last_compatible>17
+    { return false; }
+    let Some(struct_end)=off_struct.checked_add(size_struct) else { return false; };
+    let Some(strings_end)=off_strings.checked_add(size_strings) else { return false; };
+    let Some(reservations_end)=off_reservations.checked_add(16) else { return false; };
+    off_struct>=MIN_FDT_HEADER_SIZE
+        &&off_strings>=MIN_FDT_HEADER_SIZE
+        &&off_reservations>=MIN_FDT_HEADER_SIZE
+        &&struct_end<=total
+        &&strings_end<=total
+        &&reservations_end<=total
+}
+
 unsafe fn protocol<T>(bs:*mut BootServices,h:Handle,g:*const Guid)->Result<*mut T,Status> {
     if bs.is_null()||h.is_null() { return Err(EFI_INVALID_PARAMETER); }
     let f=unsafe { (*bs).handle_protocol }.ok_or(EFI_UNSUPPORTED)?;
@@ -417,6 +449,10 @@ unsafe fn get_boot_info_and_exit(handle:Handle,st:*mut SystemTable,entry:u64)->R
         acpi_rsdp=unsafe { configuration_table_pointer(st,ACPI_10_TABLE_GUID) };
     }
     let device_tree=unsafe { configuration_table_pointer(st,DEVICE_TREE_TABLE_GUID) };
+    #[cfg(target_arch="aarch64")]
+    if device_tree==0||!unsafe{validate_fdt_header(device_tree)} {
+        return Err(EFI_NOT_FOUND);
+    }
     let info_mem=unsafe{allocate_pool(bs,core::mem::size_of::<BootInfo>())}?;
     let map_mem=match unsafe{allocate_pool(bs,MAX_MEMORY_MAP_SIZE)}{
         Ok(p)=>p,
@@ -556,7 +592,7 @@ pub extern "efiapi" fn efi_main(handle:Handle,st:*mut SystemTable)->Status {
         Ok(p)=>p,
         Err(status)=>{
             unsafe{cleanup_segments(bs);}
-            let msg=if status==EFI_UNSUPPORTED{FAIL_SERVICES.as_ptr()}else{FAIL_EXIT.as_ptr()};
+            let msg=if status==EFI_UNSUPPORTED{FAIL_SERVICES.as_ptr()}else if status==EFI_NOT_FOUND||status==EFI_LOAD_ERROR{FAIL_HANDOFF.as_ptr()}else{FAIL_EXIT.as_ptr()};
             let _=unsafe{serial.print(msg)};
             return status;
         }
