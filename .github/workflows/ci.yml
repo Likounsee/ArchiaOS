@@ -149,11 +149,27 @@ jobs:
         shell: bash
         run: |
           set +e
-          firmware_code="$(find /usr/share/OVMF /usr/share/ovmf -type f -iname 'OVMF_CODE*.fd' -print -quit 2>/dev/null)"
-          if [[ -z "$firmware_code" ]]; then echo "OVMF code image not found"; exit 1; fi
-          firmware_vars="${firmware_code/CODE/VARS}"
-          if [[ ! -f "$firmware_vars" ]]; then firmware_vars="$(find /usr/share/OVMF /usr/share/ovmf -type f -iname 'OVMF_VARS*.fd' -print -quit 2>/dev/null)"; fi
-          if [[ -z "$firmware_vars" || ! -f "$firmware_vars" ]]; then echo "OVMF variables image not found"; exit 1; fi
+          # Prefer plain, non-Secure-Boot firmware. An unsigned development loader
+          # is intentionally not accepted by OVMF's Secure Boot trust database.
+          firmware_code=""
+          firmware_vars=""
+          for suffix in "" "_4M"; do
+            for directory in /usr/share/OVMF /usr/share/ovmf; do
+              code="$directory/OVMF_CODE${suffix}.fd"
+              vars="$directory/OVMF_VARS${suffix}.fd"
+              if [[ -f "$code" && -f "$vars" ]]; then
+                firmware_code="$code"
+                firmware_vars="$vars"
+                break 2
+              fi
+            done
+          done
+          if [[ -z "$firmware_code" || -z "$firmware_vars" ]]; then
+            echo "A matching non-Secure-Boot OVMF CODE/VARS pair was not found"
+            find /usr/share/OVMF /usr/share/ovmf -type f -iname 'OVMF*.fd' -print 2>/dev/null || true
+            exit 1
+          fi
+          echo "Using non-Secure-Boot firmware: $firmware_code"
           cp "$firmware_vars" "$RUNNER_TEMP/OVMF_VARS.fd"
           timeout 20s qemu-system-x86_64 -machine q35 -m 512M -drive "if=pflash,format=raw,readonly=on,file=$firmware_code" -drive "if=pflash,format=raw,file=$RUNNER_TEMP/OVMF_VARS.fd" -drive "file=$RUNNER_TEMP/archiaos-uefi.img,format=raw,if=ide" -boot order=c -display none -serial stdio -monitor none -no-reboot -no-shutdown > "$RUNNER_TEMP/archiaos-uefi.log" 2>&1
           qemu_status=$?
