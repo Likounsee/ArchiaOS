@@ -60,6 +60,7 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 - [ ] Compléter l'audit du framebuffer et des autres plages plateforme ; BootInfo indique actuellement un framebuffer absent (base/taille à zéro).
 - [x] Vérifier en CI les rejets de libérations invalides/doubles, la cohérence bitmap (toute page libre est gérée, mémoire basse réservée), la réutilisation après libération et la restauration du compte de pages.
 - [x] Extraire la validation scalaire du contrat BootInfo en fonction testable sans déréférencer la carte mémoire, avec tests négatifs magic/version, taille de structure, pointeur absent/désaligné, taille de carte et métadonnées.
+- [x] Valider aussi l'adresse d'entrée noyau non nulle et la cohérence/non-débordement de la plage framebuffer, avec tests unitaires (validation CI du HEAD courant en attente).
 - [x] Ajouter une simulation d'épuisement mémoire isolée et déterministe sur des bitmaps locaux, incluant filtrage des frames réservées et réutilisation, sans consommer la mémoire firmware ni bloquer QEMU (validation CI en attente).
 - [x] Vérifier avant ExitBootServices que les buffers BootInfo/carte mémoire, les segments noyau, l'image du chargeur et l'arène de tables de pages ne chevauchent aucune plage UEFI conventionnelle.
 - [ ] Vérifier le framebuffer quand un vrai framebuffer sera exposé dans BootInfo et terminer l'audit des plages spécifiques à chaque plateforme.
