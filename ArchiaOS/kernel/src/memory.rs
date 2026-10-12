@@ -44,7 +44,7 @@ pub enum MemoryError {
     FreeFailed,
     DoubleFreeAccepted,
     FreeCountMismatch,
-    ReservedRangeCalculationMismatch,
+    RangeCalculationMismatch,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -108,6 +108,11 @@ fn reserved_frame_range(base: u64, length: u64) -> Option<(u64, u64)> {
     let clipped_end = end.min(MAX_PHYSICAL_ADDRESS);
     let rounded_end = clipped_end.checked_add(PAGE_SIZE - 1)? / PAGE_SIZE;
     Some((first, rounded_end.min(MAX_FRAMES)))
+}
+
+/// Number of managed frames shared by two half-open frame intervals.
+fn overlapping_frames(first: u64, last: u64, reserved_first: u64, reserved_last: u64) -> u64 {
+    last.min(reserved_last).saturating_sub(first.max(reserved_first))
 }
 
 unsafe fn set_bit_range(bitmap: *mut u64, first: u64, last: u64, value: bool) {
@@ -191,7 +196,7 @@ pub unsafe fn initialize_from_bootinfo<W: Write>(
             let first = first.max(ONE_MIB / PAGE_SIZE);
             let (fb_first, fb_last) = reserved_frame_range(info.framebuffer_base, info.framebuffer_size)
                 .ok_or(MemoryError::InvalidMemoryRange)?;
-            let framebuffer_overlap = last.min(fb_last).saturating_sub(first.max(fb_first));
+            let framebuffer_overlap = overlapping_frames(first, last, fb_first, fb_last);
             let usable_pages = last.saturating_sub(first).saturating_sub(framebuffer_overlap);
             if usable_pages != 0 {
                 usable_ranges = usable_ranges.checked_add(1)
@@ -384,9 +389,22 @@ pub fn free_page_count() -> u64 {
 }
 
 pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
-    // Exercise reservation rounding and clipping without mutating the global bitmaps.
-    // Framebuffer/MMIO ranges may be unaligned and may extend beyond the PMM's 4-GiB
-    // managed window; neither case may expose a partially covered page or overflow.
+    // Exercise page-range calculations and framebuffer overlap accounting without
+    // mutating the global bitmaps. All ranges are half-open and clipped to the PMM's
+    // supported [0, 4 GiB) window.
+    let frame_cases = [
+        ((0x1000, 0x1000), Some((1, 2))),
+        ((0x1001, 0x0fff), Some((2, 2))),
+        ((0x1000, 0x1001), Some((1, 2))),
+        ((MAX_PHYSICAL_ADDRESS, PAGE_SIZE), Some((MAX_FRAMES, MAX_FRAMES))),
+        ((u64::MAX - 1, 8), None),
+        ((0, 0), Some((0, 0))),
+    ];
+    for ((base, length), expected) in frame_cases {
+        if frame_range(base, length) != expected {
+            return Err(MemoryError::RangeCalculationMismatch);
+        }
+    }
     let reservation_cases = [
         ((0x1001, 1), Some((1, 2))),
         ((0x1fff, 2), Some((1, 3))),
@@ -397,10 +415,22 @@ pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
     ];
     for ((base, length), expected) in reservation_cases {
         if reserved_frame_range(base, length) != expected {
-            return Err(MemoryError::ReservedRangeCalculationMismatch);
+            return Err(MemoryError::RangeCalculationMismatch);
         }
     }
-    let _ = writeln!(log, "PMM test: reserved-range rounding, clipping, and overflow boundaries passed");
+    let overlap_cases = [
+        ((10, 20, 15, 25), 5),
+        ((10, 20, 0, 10), 0),
+        ((10, 20, 30, 40), 0),
+        ((10, 20, 0, 30), 10),
+        ((10, 20, 12, 12), 0),
+    ];
+    for ((first, last, reserved_first, reserved_last), expected) in overlap_cases {
+        if overlapping_frames(first, last, reserved_first, reserved_last) != expected {
+            return Err(MemoryError::RangeCalculationMismatch);
+        }
+    }
+    let _ = writeln!(log, "PMM test: usable/reserved frame ranges, clipping, and overlap accounting passed");
 
     let before = free_page_count();
     if before < PMM_SELF_TEST_PAGES as u64 {
