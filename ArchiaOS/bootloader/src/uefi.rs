@@ -995,6 +995,8 @@ unsafe fn build_x86_64_page_tables(
     elf: &archiaos_bootloader::elf::ElfFile,
     loader_image_start: u64,
     loader_image_end: u64,
+    framebuffer_base: u64,
+    framebuffer_size: u64,
 ) -> Result<u64, BootError> {
     arena.reset();
     let pml4 = arena.allocate_page()?;
@@ -1029,8 +1031,16 @@ unsafe fn build_x86_64_page_tables(
         let end = descriptor.physical_end()
             .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: memory descriptor overflow during page-table construction.\r\n\0"))?
             .min(MAX_KERNEL_PHYSICAL_ADDRESS);
+        // GOP memory is not ordinary RAM even if buggy firmware reports it
+        // inside an EfiConventionalMemory descriptor. Leave its identity PTE absent
+        // until the graphics subsystem installs an explicitly uncached MMIO mapping.
+        let framebuffer_end = framebuffer_base.checked_add(framebuffer_size)
+            .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer range overflow during page-table construction.\r\n\0"))?;
         while address < end {
-            if address != 0 {
+            let in_framebuffer = framebuffer_size != 0
+                && address < framebuffer_end
+                && framebuffer_base < address + EFI_PAGE_SIZE;
+            if address != 0 && !in_framebuffer {
                 let span = (address / (2 * 1024 * 1024)) as usize;
                 if span >= identity_tables.len() {
                     return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: physical memory span exceeds the identity map.\r\n\0"));
@@ -1655,6 +1665,8 @@ pub unsafe fn transfer_to_kernel(
                     _elf,
                     loader_image_start,
                     loader_image_end,
+                    framebuffer_base,
+                    framebuffer_size,
                 )?
             };
         }
@@ -1690,12 +1702,11 @@ pub unsafe fn transfer_to_kernel(
         // MMIO as conventional free memory.
         let framebuffer_base = unsafe { (*info_pointer).framebuffer_base };
         let framebuffer_size = unsafe { (*info_pointer).framebuffer_size };
-        if framebuffer_size != 0
-            && !parsed_map.range_is_fully_reserved(framebuffer_base, framebuffer_size)
-                .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid framebuffer range in final map.\r\n\0"))?
-        {
-            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer is incorrectly classified as conventional RAM.\r\n\0"));
-        }
+        // Some UEFI implementations expose GOP framebuffer MMIO inside a
+        // descriptor labelled EfiConventionalMemory. Do not reject the entire boot
+        // on that firmware defect: the x86-64 page-table builder excludes every
+        // framebuffer-overlapping page from its ordinary RAM identity map, and the
+        // kernel PMM independently reserves those frames before publishing alloc_page().
 
         audit_platform_table_ranges(&parsed_map, acpi_rsdp, device_tree, image_uses_highhalf(_elf))?;
 
