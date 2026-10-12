@@ -188,6 +188,7 @@ jobs:
           grep -Fq "ArchiaOS Bootloader: exiting UEFI boot services" "$RUNNER_TEMP/archiaos-uefi.log"
           grep -Fq "ArchiaOS UEFI test kernel: handoff received" "$RUNNER_TEMP/archiaos-uefi.log"
           grep -Fq "ArchiaOS UEFI test kernel: BootInfo validated" "$RUNNER_TEMP/archiaos-uefi.log"
+          grep -Fq "ArchiaOS UEFI test kernel: conventional memory pages:" "$RUNNER_TEMP/archiaos-uefi.log"
           grep -Fq "ArchiaOS UEFI test kernel: identity-mapped handoff passed" "$RUNNER_TEMP/archiaos-uefi.log"
 
   bootloader-aarch64-uefi-smoke:
@@ -303,3 +304,4 @@ jobs:
           grep -Fq "ArchiaOS AArch64: BootInfo validated" "$RUNNER_TEMP/archiaos-aarch64-uefi.log"
           grep -Fq "ArchiaOS AArch64: Device Tree header validated" "$RUNNER_TEMP/archiaos-aarch64-uefi.log"
           grep -Fq "ArchiaOS AArch64: UEFI memory-map descriptors validated" "$RUNNER_TEMP/archiaos-aarch64-uefi.log"
+          grep -Fq "ArchiaOS AArch64: conventional memory pages validated" "$RUNNER_TEMP/archiaos-aarch64-uefi.log"
