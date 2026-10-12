@@ -45,9 +45,13 @@ Les VM ne remplacent pas un essai sur machine physique. Lorsqu'une machine de te
 - [ ] Faire un redémarrage à froid et vérifier que le chemin de récupération du firmware reste accessible.
 - [ ] Documenter les échecs et ne déclarer que cette configuration testée, sans extrapoler à tout le matériel.
 
-## Dernière validation CI enregistrée
+## Historique et état de validation
 
-Le HEAD `1ec20483c4e699ae884a271d4b1613531d158070` a passé la CI complète : [compilations et démarrages QEMU/OVMF + AAVMF](https://github.com/Likounsee/ArchiaOS/actions/runs/38247434624) et [rejet BootInfo invalide](https://github.com/Likounsee/ArchiaOS/actions/runs/38247434330). La validation matérielle n'est pas incluse dans ces résultats.
+Les exécutions liées au HEAD `1ec20483c4e699ae884a271d4b1613531d158070` ont historiquement passé les tests complets [QEMU/OVMF + AAVMF](https://github.com/Likounsee/ArchiaOS/actions/runs/38247434624) et le [rejet BootInfo invalide](https://github.com/Likounsee/ArchiaOS/actions/runs/38247434330). Ces résultats concernent ce commit uniquement et ne valident pas les changements plus récents.
+
+Sur le HEAD `1802e427fa7552dc3062f313a871c64d4f42cea4`, le workflow de packaging EFI physique a réussi, mais la CI principale était en échec. Après les contrôles d’accessibilité ajoutés en P1, une nouvelle exécution de la CI principale a également échoué ; les workflows de démarrage étaient encore en cours au dernier relevé. Consulte les [exécutions de la branche ArchiaOS](https://github.com/Likounsee/ArchiaOS/actions?query=branch%3AArchiaOS) pour le résultat le plus récent avant de considérer ces changements validés.
+
+Le premier démarrage et l’écriture framebuffer ont été confirmés par l’utilisateur sur une machine physique. Ce résultat manuel ne remplace pas les tests CI et ne prouve pas la compatibilité universelle.
 
 ## Limites des tests
 
