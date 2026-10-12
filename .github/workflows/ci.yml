@@ -174,7 +174,12 @@ jobs:
           make_efi_image "$RUNNER_TEMP/archiaos-uefi.img" "$identity_kernel"
           make_efi_image "$RUNNER_TEMP/archiaos-highhalf-uefi.img" "$highhalf_kernel"
           make_efi_image "$RUNNER_TEMP/archiaos-production-uefi.img" "$production_kernel"
-          echo "UEFI images prepared for identity, high-half, and production kernels"
+
+          # Negative boot case: the loader must reject a non-ELF kernel before
+          # ExitBootServices and must never transfer control to a kernel.
+          printf 'NOT AN ELF IMAGE\n' > "$RUNNER_TEMP/archiaos-invalid-kernel.elf"
+          make_efi_image "$RUNNER_TEMP/archiaos-invalid-uefi.img" "$RUNNER_TEMP/archiaos-invalid-kernel.elf"
+          echo "UEFI images prepared: identity, high-half, production, and invalid-ELF rejection"
       - name: Boot custom loader with OVMF
         shell: bash
         run: |
@@ -200,6 +205,31 @@ jobs:
             exit 1
           fi
           echo "Using non-Secure-Boot firmware: $firmware_code"
+
+          # Boot an intentionally malformed kernel first. OVMF may remain in its
+          # boot manager after EFI_LOAD_ERROR, so timeout is an expected outcome.
+          cp "$firmware_vars" "$RUNNER_TEMP/OVMF_VARS_INVALID.fd"
+          set +e
+          timeout 12s qemu-system-x86_64 -machine q35 -m 512M -drive "if=pflash,format=raw,readonly=on,file=$firmware_code" -drive "if=pflash,format=raw,file=$RUNNER_TEMP/OVMF_VARS_INVALID.fd" -drive "file=$RUNNER_TEMP/archiaos-invalid-uefi.img,format=raw,if=ide" -boot order=c -display none -serial stdio -monitor none -no-reboot -no-shutdown > "$RUNNER_TEMP/archiaos-invalid-uefi.log" 2>&1
+          invalid_qemu_status=$?
+          set -e
+          cat "$RUNNER_TEMP/archiaos-invalid-uefi.log"
+          if [[ "$invalid_qemu_status" -ne 0 && "$invalid_qemu_status" -ne 124 ]]; then
+            echo "QEMU invalid-ELF case exited unexpectedly with status $invalid_qemu_status"
+            exit 1
+          fi
+          grep -Fq "ArchiaOS Bootloader: validating ELF64 kernel" "$RUNNER_TEMP/archiaos-invalid-uefi.log"
+          grep -Fq "ArchiaOS Bootloader: ELF64 validation failed" "$RUNNER_TEMP/archiaos-invalid-uefi.log"
+          if grep -Fq "ArchiaOS Bootloader: exiting UEFI boot services" "$RUNNER_TEMP/archiaos-invalid-uefi.log"; then
+            echo "Invalid ELF reached the UEFI handoff path unexpectedly" >&2
+            exit 1
+          fi
+          if grep -Fq "ArchiaOS UEFI test kernel: handoff received" "$RUNNER_TEMP/archiaos-invalid-uefi.log"; then
+            echo "Invalid ELF was executed as a kernel unexpectedly" >&2
+            exit 1
+          fi
+          echo "Invalid-ELF negative boot test passed"
+
           cp "$firmware_vars" "$RUNNER_TEMP/OVMF_VARS.fd"
           timeout 20s qemu-system-x86_64 -machine q35 -m 512M -drive "if=pflash,format=raw,readonly=on,file=$firmware_code" -drive "if=pflash,format=raw,file=$RUNNER_TEMP/OVMF_VARS.fd" -drive "file=$RUNNER_TEMP/archiaos-uefi.img,format=raw,if=ide" -boot order=c -display none -serial stdio -monitor none -no-reboot -no-shutdown > "$RUNNER_TEMP/archiaos-uefi.log" 2>&1
           qemu_status=$?

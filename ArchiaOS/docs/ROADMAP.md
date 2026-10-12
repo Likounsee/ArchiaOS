@@ -6,7 +6,7 @@
 
 | Priorité | Domaine | Avancement estimé | État / prochaine preuve attendue |
 |---|---|---:|---|
-| **P0** | Démarrage UEFI maison x86-64 par défaut | **88 %** | CI verte sur le commit `da556433` : builds x86-64/ARM64, démarrages OVMF/QEMU et AAVMF/QEMU, assertions CPU/PCI/BootInfo/PMM. Vérifier la nouvelle couverture renforcée sur le HEAD courant. |
+| **P0** | Démarrage UEFI maison x86-64 par défaut | **91 %** | CI verte sur `730ef2c` ; assertions de production et rejet d'un ELF invalide au démarrage ajoutés au pipeline. Les scénarios BootInfo invalide et mémoire insuffisante restent ouverts. |
 | **P1** | Fiabilité du chargeur, BootInfo et mémoire | **74 %** | Carte mémoire, ELF, BootInfo et autotests PMM validés ; ajouter des scénarios d'échec du chemin complet et approfondir l'audit des plages réservées. |
 | **P2** | Ordonnanceur et synchronisation | **0 %** | Non implémenté ; définir les primitives de tâches et le changement de contexte avant la préemption. |
 | **P3** | Espace utilisateur et ABI système | **0 %** | Non commencé ; dépend notamment des exceptions, syscalls et mécanismes mémoire isolés. |
@@ -24,7 +24,7 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 
 ## Ordre de travail prioritaire
 
-### P0 — Démarrage UEFI maison x86-64 — 88 %
+### P0 — Démarrage UEFI maison x86-64 — 91 %
 
 **Objectif :** faire du chemin UEFI ArchiaOS le démarrage par défaut fiable.
 
@@ -33,8 +33,10 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 - [x] Confirmer une CI verte sur le commit `cca0f07a96709cb099831cac711a3165037c7b7e` : compilation du noyau x86-64, chargeurs UEFI x86-64/ARM64 et démarrages QEMU/OVMF + AAVMF.
 - [x] Confirmer compilation et démarrage sous OVMF/QEMU et AAVMF/QEMU sur le commit `da556433`.
 - [x] Vérifier en CI les signatures de sortie CPU, inventaire PCI, BootInfo et autotests PMM.
-- [ ] Ajouter des tests de démarrage négatifs (image ELF invalide, BootInfo invalide, mémoire insuffisante) avec arrêt attendu et diagnostic série.
-- [ ] Documenter précisément les configurations testées et les limites restantes.
+- [x] Ajouter un démarrage négatif OVMF/QEMU avec ELF invalide : diagnostic série exigé, aucune sortie `ExitBootServices` ni exécution du noyau attendue.
+- [ ] Ajouter des tests de démarrage négatifs pour BootInfo invalide et mémoire insuffisante.
+- [x] Documenter les configurations CI : x86-64 sous OVMF/QEMU (Q35, 512 MiB, firmware sans Secure Boot), ARM64 sous AAVMF/QEMU (`virt`, Cortex-A57, 512 MiB) et prototype ARM64 en démarrage direct QEMU.
+- [ ] Valider sur matériel physique ; les tests virtuels ne garantissent pas la compatibilité universelle.
 
 **Critère de sortie :** build reproductible et tests de démarrage verts sur le HEAD courant, sans déclarer les essais QEMU comme une validation de tout matériel physique.
 
