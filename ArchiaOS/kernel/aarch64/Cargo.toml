@@ -11,6 +11,9 @@ path = "src/main.rs"
 test = false
 bench = false
 
+[dependencies]
+archiaos-bootloader = { path = "../../bootloader" }
+
 [profile.dev]
 panic = "abort"
 codegen-units = 1
