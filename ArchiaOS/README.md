@@ -1,10 +1,10 @@
 # ArchiaOS — documentation technique
 
-ArchiaOS est un OS expérimental en Rust `no_std`. Le chemin de démarrage standard reste l'ISO Limine, mais le noyau de production x86-64 peut maintenant être compilé avec `uefi-boot` et démarré de bout en bout via notre bootloader UEFI maison sous OVMF/QEMU en CI.
+ArchiaOS est un OS expérimental en Rust `no_std`. Le chemin de démarrage par défaut est le bootloader UEFI maison : le noyau reçoit BootInfo `ARCHIABI` et initialise le PMM depuis la carte mémoire UEFI.
 
 ## État
 
-- **Chemin standard :** l'ISO Limine démarre le noyau x86-64, vérifie la carte mémoire et passe l'auto-test PMM de 130 pages.
+- **Chemin standard :** `cargo build --release` compile le noyau high-half avec l'entrée UEFI ArchiaOS ; un job CI dédié teste le transfert sous OVMF/QEMU.
 - **Bootloader maison :** lit `\\EFI\\ArchiaOS\\kernel.elf`, valide ELF64, charge les segments, zero-fill BSS, prépare BootInfo, obtient la carte mémoire UEFI finale et appelle `ExitBootServices`.
 - **Production x86-64 via UEFI maison :** le build `--features uefi-boot` démarre sous OVMF/QEMU, valide BootInfo v1, parcourt les descripteurs conventionnels et passe le test PMM de 130 allocations/libérations.
 - **Pagination x86-64 :** le noyau high-half est mappé avec des pages de 4 Kio. Le test vérifie le code RO+X, les données RW+NX, les alias physiques du noyau RO+NX, le bit CR0.WP et EFER.NXE. Les segments ELF RWX sont refusés et le chargeur vérifie que le CPU supporte NX.
@@ -28,7 +28,7 @@ Depuis ce dossier :
 cargo build --release --target x86_64-unknown-none
 ```
 
-Ce build produit le noyau high-half qui reçoit BootInfo au lieu des réponses Limine. L'image EFI de test complète est actuellement construite par la CI ; le script ISO habituel conserve Limine par défaut jusqu'à une bascule intentionnelle.
+Le build par défaut produit le noyau high-half qui reçoit BootInfo du bootloader ArchiaOS. L'image EFI complète et son test OVMF/QEMU sont préparés dans la CI.
 
 ## Bootloader UEFI
 
