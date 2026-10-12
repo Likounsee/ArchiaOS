@@ -2322,6 +2322,32 @@ mod memory_map_tests {
     }
 
     #[test]
+    fn generic_coverage_handles_unaligned_ranges_across_adjacent_mixed_types() {
+        let mut bytes = descriptor(2, 0x1000, 1);
+        bytes.extend_from_slice(&descriptor(EFI_CONVENTIONAL_MEMORY, 0x2000, 2));
+        bytes.extend_from_slice(&descriptor(4, 0x4000, 1));
+        let map = UefiMemoryMap::parse(&bytes, 48).expect("valid adjacent map");
+
+        // The range starts and ends inside descriptors and crosses two descriptor
+        // boundaries; coverage depends on physical continuity, not memory type.
+        assert_eq!(map.range_is_fully_covered(0x1fff, 2), Ok(true));
+        assert_eq!(map.range_is_fully_covered(0x2fff, 0x1002), Ok(true));
+        assert_eq!(map.range_is_fully_covered(0x3fff, 2), Ok(true));
+        assert_eq!(map.range_is_fully_covered(0x4fff, 1), Ok(true));
+        assert_eq!(map.range_is_fully_covered(0x4fff, 2), Ok(false));
+    }
+
+    #[test]
+    fn generic_coverage_does_not_bridge_a_one_byte_gap() {
+        let mut bytes = descriptor(2, 0x1000, 1);
+        bytes.extend_from_slice(&descriptor(4, 0x2001, 1));
+        let map = UefiMemoryMap::parse(&bytes, 48).expect("valid map with one-byte gap");
+        assert_eq!(map.range_is_fully_covered(0x1000, 0x1000), Ok(true));
+        assert_eq!(map.range_is_fully_covered(0x1000, 0x1001), Ok(false));
+        assert_eq!(map.range_is_fully_covered(0x2001, 0x1000), Ok(true));
+    }
+
+    #[test]
     fn generic_coverage_rejects_a_gap_after_an_initially_covered_prefix() {
         let mut bytes = descriptor(2, 0x1000, 2);
         bytes.extend_from_slice(&descriptor(4, 0x4000, 1));
