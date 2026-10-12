@@ -435,7 +435,8 @@ pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
     if !validate_bitmap_invariants() {
         return Err(MemoryError::BitmapInvariantViolation);
     }
-    let _ = writeln!(log, "PMM test: free count restored and bitmap invariants preserved");
+    let _ = writeln!(log, "PMM test: free count restored");
+    let _ = writeln!(log, "PMM test: bitmap invariants preserved after allocation/free cycle");
     let first_page = unsafe { ptr::read(pages) };
     if free_page(first_page) {
         return Err(MemoryError::DoubleFreeAccepted);
