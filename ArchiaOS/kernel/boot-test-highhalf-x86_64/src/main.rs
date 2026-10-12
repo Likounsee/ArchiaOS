@@ -192,6 +192,38 @@ pub extern "C" fn rust_kernel_main(info: *const BootInfo) -> ! {
         halt();
     }
 
+    // Read back the protection controls used by the loader's CR3 transition.
+    let cr0: u64;
+    unsafe {
+        asm!(
+            "mov {}, cr0",
+            out(reg) cr0,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    if cr0 & (1 << 16) == 0 {
+        let _ = writeln!(serial, "ArchiaOS high-half test kernel: CR0.WP is not enabled");
+        halt();
+    }
+
+    let efer_low: u32;
+    let efer_high: u32;
+    unsafe {
+        asm!(
+            "rdmsr",
+            in("ecx") 0xC000_0080u32,
+            out("eax") efer_low,
+            out("edx") efer_high,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    let efer = ((efer_high as u64) << 32) | efer_low as u64;
+    if efer & (1 << 11) == 0 {
+        let _ = writeln!(serial, "ArchiaOS high-half test kernel: EFER.NXE is not enabled");
+        halt();
+    }
+    let _ = writeln!(serial, "ArchiaOS high-half test kernel: CR0.WP and EFER.NXE confirmed");
+
     // The custom page tables must be active, not merely prepared. Verify the
     // executable text leaf, a writable/non-executable data leaf, and the NX
     // physical identity alias of the currently executing text page.
