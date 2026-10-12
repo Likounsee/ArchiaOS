@@ -250,7 +250,7 @@ unsafe fn validate_fdt_header(address:u64)->bool {
     let size_strings=read_be_u32(32) as u64;
     let size_struct=read_be_u32(36) as u64;
     if total<MIN_FDT_HEADER_SIZE||total>MAX_FDT_SIZE
-        ||version<16||last_compatible>version||last_compatible>17
+        ||version<17||last_compatible>version||last_compatible>17
     { return false; }
     let Some(struct_end)=off_struct.checked_add(size_struct) else { return false; };
     let Some(strings_end)=off_strings.checked_add(size_strings) else { return false; };
