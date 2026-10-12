@@ -35,7 +35,7 @@ Cette structure est une cible de migration, pas une description des dossiers dé
 6. Contrat BootInfo versionné et carte mémoire finale : implémentés ; BootInfo transporte le RSDP/Device Tree disponible.
 7. `ExitBootServices` : implémenté avec nouvelle tentative pour une clé de carte périmée.
 8. Démarrage du noyau de production avec le bootloader maison : validé en CI sous OVMF/QEMU avec `uefi-boot`, BootInfo UEFI et auto-test PMM.
-9. Bascule du chemin par défaut : non faite. Limine reste dans la chaîne de démarrage standard jusqu'à davantage de validation, notamment sur matériel réel.
+9. Bascule du chemin par défaut : code basculé vers le bootloader maison ; la CI sur le nouveau HEAD et des essais sur matériel réel restent nécessaires avant de considérer la migration complètement validée.
 
 ## Jalons ARM64
 
