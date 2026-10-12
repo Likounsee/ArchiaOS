@@ -9,6 +9,7 @@ const BOOT_INFO_MAGIC: u64 = 0x4942_4149_4843_5241;
 const BOOT_INFO_VERSION: u32 = 1;
 const MIN_MEMORY_DESCRIPTOR_SIZE: u64 = 40;
 const MAX_MEMORY_MAP_BYTES: u64 = 1024 * 1024;
+const FDT_MAGIC: u32 = 0xd00d_feed;
 
 #[repr(C)]
 struct BootInfo {
@@ -110,7 +111,12 @@ fn validate_boot_info(info: *const BootInfo, serial: &mut Serial) {
     // first word before distinguishing those two entry contracts.
     let magic = unsafe { read_volatile(info.cast::<u64>()) };
     if magic != BOOT_INFO_MAGIC {
-        serial.write_str("ArchiaOS AArch64: no UEFI BootInfo (direct QEMU boot)\\n");
+        let fdt_magic = unsafe { u32::from_be(read_volatile(info.cast::<u32>())) };
+        if fdt_magic == FDT_MAGIC {
+            serial.write_str("ArchiaOS AArch64: direct QEMU Device Tree detected\\n");
+        } else {
+            serial.write_str("ArchiaOS AArch64: no UEFI BootInfo (direct QEMU boot)\\n");
+        }
         return;
     }
 
@@ -125,6 +131,7 @@ fn validate_boot_info(info: *const BootInfo, serial: &mut Serial) {
         || b.memory_map_descriptor_size < MIN_MEMORY_DESCRIPTOR_SIZE
         || b.memory_map_descriptor_size > 4096
         || b.memory_map_size % b.memory_map_descriptor_size != 0
+        || b.device_tree == 0
     {
         serial.write_str("ArchiaOS AArch64: BootInfo validation failed\\n");
         halt_forever();
@@ -137,6 +144,14 @@ fn validate_boot_info(info: *const BootInfo, serial: &mut Serial) {
         halt_forever();
     }
 
+    // UEFI publishes the flattened Device Tree via EFI_DTB_TABLE_GUID. Its
+    // header is big-endian, unlike the native-endian BootInfo fields.
+    let fdt_magic = unsafe { u32::from_be(read_volatile((b.device_tree as usize as *const u32))) };
+    if fdt_magic != FDT_MAGIC {
+        serial.write_str("ArchiaOS AArch64: Device Tree header rejected\\n");
+        halt_forever();
+    }
+
     // Touch every descriptor's type field to verify the handoff map is readable.
     for i in 0..count {
         let descriptor = unsafe { b.memory_map.add(i * stride) };
@@ -144,6 +159,7 @@ fn validate_boot_info(info: *const BootInfo, serial: &mut Serial) {
     }
 
     serial.write_str("ArchiaOS AArch64: BootInfo validated\\n");
+    serial.write_str("ArchiaOS AArch64: Device Tree header validated\\n");
     serial.write_str("ArchiaOS AArch64: UEFI memory-map descriptors readable\\n");
 }
 
