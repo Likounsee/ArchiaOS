@@ -29,7 +29,7 @@ Le firmware UEFI standard reste fourni par la machine. ArchiaOS développe son p
 12. **A4 — Architecture portable : à faire.** Extraire les abstractions communes et tester séparément les implémentations x86-64/AArch64.
 13. **B7 — Démarrage du noyau principal : à faire.** Le noyau de production est high-half lié, dépend encore de Limine et utilise ses réponses mémoire ; il faut établir les tables de pages/contrat de mémoire avant de retirer Limine du chemin de démarrage.
 
-La prise en charge ARM64 ne sera annoncée comme validée qu'après un test UEFI AAVMF/QEMU de bout en bout qui confirme l'entrée du noyau, la validation de BootInfo et du FDT. La compilation seule ne suffit pas.
+Le chemin UEFI vers le noyau de test ARM64 est validé sur AAVMF/QEMU, y compris la voie ACPI SPCR actuellement utilisée. Cela ne démontre pas une compatibilité générale avec tout matériel ARM64 : MMU, timers, contrôleurs d'interruptions, translation des bus et pilotes restent à faire.
 
 ## Conditions d’intégration d’OpenFS
 
