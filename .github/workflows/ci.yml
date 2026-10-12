@@ -137,6 +137,16 @@ jobs:
           readelf -lW "$image" | awk '$1 == "LOAD" && $3 ~ /^0xffffffff/ { high = 1 } END { exit !high }'
       - name: Build production kernel with custom UEFI entry
         run: cargo build --manifest-path Cargo.toml --release --features uefi-boot --target x86_64-unknown-none --target-dir target/production-kernel-uefi
+      - name: Reject Limine request symbols in the production UEFI kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="target/production-kernel-uefi/x86_64-unknown-none/release/archiaos-kernel"
+          if nm -a "$image" | grep -E 'LIMINE_(BASE_REVISION|MEMMAP_REQUEST)|LimineMemmap(Entry|Response|Request)?'; then
+            echo "Production UEFI kernel unexpectedly contains legacy Limine memory-map code" >&2
+            exit 1
+          fi
+          echo "Production UEFI kernel has no legacy Limine request symbols"
       - name: Build first-party UEFI loader
         run: cargo build --manifest-path bootloader/Cargo.toml --release --target x86_64-unknown-uefi --target-dir target
       - name: Prepare identity and high-half UEFI FAT disk images
