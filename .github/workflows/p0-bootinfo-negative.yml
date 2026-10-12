@@ -1,0 +1,92 @@
+name: ArchiaOS P0 BootInfo negative boot
+
+on:
+  push:
+    branches: [ArchiaOS]
+  pull_request:
+    branches: [ArchiaOS]
+
+permissions:
+  contents: read
+
+jobs:
+  invalid-bootinfo-uefi:
+    name: Reject invalid BootInfo after UEFI handoff
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ArchiaOS
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Rust targets and UEFI test dependencies
+        run: |
+          rustup target add x86_64-unknown-none x86_64-unknown-uefi
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf dosfstools mtools
+      - name: Build identity-mapped handoff test kernel
+        run: |
+          cd kernel/boot-test-x86_64
+          RUSTFLAGS="-C link-arg=-Tlinker.ld -C relocation-model=static -C no-redzone=yes" cargo build --release --target x86_64-unknown-none --target-dir ../../target/boot-test-x86_64
+      - name: Build loader with dedicated invalid-BootInfo injection
+        run: cargo build --manifest-path bootloader/Cargo.toml --release --features test-invalid-bootinfo --target x86_64-unknown-uefi --target-dir target
+      - name: Prepare EFI disk image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="$RUNNER_TEMP/archiaos-invalid-bootinfo.img"
+          loader="target/x86_64-unknown-uefi/release/archiaos-bootloader.efi"
+          kernel="target/boot-test-x86_64/x86_64-unknown-none/release/archiaos-boot-handoff-test"
+          test -s "$loader"
+          test -s "$kernel"
+          truncate -s 128M "$image"
+          mkfs.vfat -F 32 "$image"
+          mmd -i "$image" ::/EFI
+          mmd -i "$image" ::/EFI/BOOT
+          mmd -i "$image" ::/EFI/ArchiaOS
+          mcopy -i "$image" "$loader" ::/EFI/BOOT/BOOTX64.EFI
+          mcopy -i "$image" "$kernel" ::/EFI/ArchiaOS/kernel.elf
+      - name: Boot and require kernel rejection of invalid BootInfo
+        shell: bash
+        run: |
+          set -euo pipefail
+          firmware_code=""
+          firmware_vars=""
+          for suffix in "" "_4M"; do
+            for directory in /usr/share/OVMF /usr/share/ovmf; do
+              code="$directory/OVMF_CODE${suffix}.fd"
+              vars="$directory/OVMF_VARS${suffix}.fd"
+              if [[ -f "$code" && -f "$vars" ]]; then
+                firmware_code="$code"
+                firmware_vars="$vars"
+                break 2
+              fi
+            done
+          done
+          if [[ -z "$firmware_code" || -z "$firmware_vars" ]]; then
+            echo "A matching non-Secure-Boot OVMF CODE/VARS pair was not found" >&2
+            exit 1
+          fi
+          cp "$firmware_vars" "$RUNNER_TEMP/OVMF_VARS_INVALID_BOOTINFO.fd"
+          set +e
+          timeout 20s qemu-system-x86_64 -machine q35 -m 512M \
+            -drive "if=pflash,format=raw,readonly=on,file=$firmware_code" \
+            -drive "if=pflash,format=raw,file=$RUNNER_TEMP/OVMF_VARS_INVALID_BOOTINFO.fd" \
+            -drive "file=$RUNNER_TEMP/archiaos-invalid-bootinfo.img,format=raw,if=ide" \
+            -boot order=c -display none -serial stdio -monitor none -no-reboot -no-shutdown \
+            > "$RUNNER_TEMP/archiaos-invalid-bootinfo.log" 2>&1
+          qemu_status=$?
+          set -e
+          cat "$RUNNER_TEMP/archiaos-invalid-bootinfo.log"
+          if [[ "$qemu_status" -ne 0 && "$qemu_status" -ne 124 ]]; then
+            echo "QEMU invalid-BootInfo case exited unexpectedly with status $qemu_status" >&2
+            exit 1
+          fi
+          grep -Fq "ArchiaOS Bootloader: exiting UEFI boot services" "$RUNNER_TEMP/archiaos-invalid-bootinfo.log"
+          grep -Fq "ArchiaOS UEFI test kernel: handoff received" "$RUNNER_TEMP/archiaos-invalid-bootinfo.log"
+          grep -Fq "ArchiaOS UEFI test kernel: BootInfo validation failed" "$RUNNER_TEMP/archiaos-invalid-bootinfo.log"
+          if grep -Fq "ArchiaOS UEFI test kernel: BootInfo validated" "$RUNNER_TEMP/archiaos-invalid-bootinfo.log"; then
+            echo "Kernel accepted the deliberately invalid BootInfo" >&2
+            exit 1
+          fi
+          echo "Invalid-BootInfo negative boot test passed"
