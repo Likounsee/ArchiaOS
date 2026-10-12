@@ -1360,6 +1360,35 @@ pub unsafe fn transfer_to_kernel(
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: memory-map buffer is incorrectly marked conventional RAM.\r\n\0"));
         }
 
+        // Every PT_LOAD segment was reserved with AllocateAddress before this
+        // final snapshot. Confirm firmware still marks each rounded physical range
+        // as loader-owned/reserved instead of conventional RAM.
+        for segment_index in 0.._elf.program_header_count() {
+            let segment = match archiaos_bootloader::elf::load_segment(
+                _kernel_image,
+                _elf,
+                segment_index,
+            ) {
+                Ok(segment) => segment,
+                Err(archiaos_bootloader::elf::ElfError::NotLoadableSegment) => continue,
+                Err(_) => return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ELF segment while auditing final memory map.\r\n\0")),
+            };
+            let segment_end = segment.physical_address
+                .checked_add(segment.memory_size)
+                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF range overflow during final memory-map audit.\r\n\0"))?;
+            let rounded_end = segment_end
+                .checked_add(EFI_PAGE_SIZE - 1)
+                .map(|value| value & !(EFI_PAGE_SIZE - 1))
+                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF rounded range overflow during final memory-map audit.\r\n\0"))?;
+            if parsed_map.range_overlaps_conventional(
+                segment.physical_address,
+                rounded_end.checked_sub(segment.physical_address)
+                    .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ELF range during final memory-map audit.\r\n\0"))?,
+            ).map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: malformed ELF range in final memory map.\r\n\0"))? {
+                return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: kernel segment is incorrectly marked conventional RAM.\r\n\0"));
+            }
+        }
+
         #[cfg(target_arch = "x86_64")]
         if let Some((loader_start, loader_end)) = loader_image_range {
             if parsed_map.range_overlaps_conventional(
