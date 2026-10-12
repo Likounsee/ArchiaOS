@@ -1,40 +1,22 @@
 # ArchiaOS
 
-**ArchiaOS est un système d’exploitation expérimental en cours de construction.** Le noyau x86-64 Rust `no_std` démarre avec Limine et est testé sous QEMU par GitHub Actions.
+**ArchiaOS est un système d'exploitation expérimental en cours de construction.** Le noyau x86-64 Rust `no_std` démarre actuellement avec Limine et est testé sous QEMU. Le développement d'un bootloader UEFI maison et la préparation d'ARM64 ont commencé sur la branche `ArchiaOS`.
 
-## État actuel
+## État du projet
 
-- **Démarrage :** l’ISO Limine BIOS/UEFI se construit et le noyau atteint son entrée Rust en mode long x86-64 ; la sortie COM1 est vérifiée par le smoke test QEMU.
-- **Carte mémoire :** la réponse Limine est contrôlée pour les pointeurs, le nombre d’entrées, les longueurs nulles et les débordements.
-- **Mémoire physique :** allocateur bitmap expérimental pour les pages sous 4 Gio. Le test QEMU confirme l’allocation de 130 pages distinctes, traversant plusieurs mots bitmap, l’alignement, la baisse puis le rétablissement du compteur, le rejet des libérations invalides et le rejet du double-free.
-- **Langages :** Rust pour le noyau ; un petit stub assembleur aligne la pile à l’entrée. C/C++ ne sont pas ajoutés sans besoin démontré.
-- **Build :** Cargo, linker ELF avec segments virtuels hauts, génération d’ISO Limine, vérification des segments ELF et CI de démarrage.
+- Noyau x86-64 : entrée, sortie série, validation de la carte mémoire et allocateur bitmap physique expérimental testés en QEMU.
+- Bootloader maison : prototype Rust UEFI sans dépendance externe, qui affiche un diagnostic. Il ne charge pas encore le noyau et ne remplace pas Limine.
+- ARM64 : prototype de noyau AArch64 distinct avec entrée assembleur et console PL011 pour QEMU virt ; la CI vérifie sa compilation, mais le démarrage en exécution reste à valider.
+- CI : tests de démarrage x86-64 existants et compilations des cibles UEFI x86-64/AArch64 et du prototype noyau AArch64.
 
-Le noyau ne fournit pas encore d’IDT, de gestionnaire d’exceptions, d’ordonnanceur, de processus isolés, d’appels système, de stockage, de système de fichiers, de réseau ni d’interface graphique. L’allocateur est limité à 4 Gio, initialisé une seule fois et non synchronisé pour SMP ; il reste expérimental.
+Le firmware UEFI standard de la machine reste utilisé. La compilation du prototype ARM64 ne signifie pas encore que l'ensemble du noyau ArchiaOS est compatible avec ARM64. Le bootloader maison ne deviendra le chemin par défaut qu'après un chargement de noyau validé de bout en bout.
 
-## Compilation et lancement
+## Documentation
 
-Prérequis : Rust stable, cible `x86_64-unknown-none`, `curl`, `make`, `xorriso` et QEMU x86-64. Depuis le dossier du projet :
+- [Documentation technique et commandes de build](ArchiaOS/README.md)
+- [Roadmap et critères](ArchiaOS/docs/ROADMAP.md)
+- [Architecture bootloader et ARM64](ArchiaOS/docs/BOOT_AND_ARCHITECTURES.md)
+- [Prototype de bootloader UEFI](ArchiaOS/bootloader/README.md)
+- [Prototype noyau AArch64](ArchiaOS/kernel/aarch64/README.md)
 
-```sh
-cd ArchiaOS
-rustup target add x86_64-unknown-none
-cargo build --release
-scripts/make-iso.sh
-qemu-system-x86_64 -cdrom build/archiaos.iso -boot d -serial stdio -display none -no-reboot -no-shutdown
-```
-
-Le script télécharge Limine v12.9.1 et vérifie son SHA-256. Les instructions détaillées se trouvent dans [ArchiaOS/README.md](ArchiaOS/README.md).
-
-## Roadmap P0–P7
-
-- **P0 — Fondations :** build reproductible, diagnostics, CI, tests et documentation alignés sur le code.
-- **P1 — Noyau et matériel :** exceptions, interruptions, validation mémoire et allocateur de pages.
-- **P2 — Exécution :** contextes, threads noyau, synchronisation et ordonnanceur.
-- **P3 — Espace utilisateur :** protection, appels système, chargeur et programmes isolés.
-- **P4 — Stockage :** interface bloc, pilote virtuel, système de fichiers et tests de corruption.
-- **P5 — Interface utilisateur :** entrées, rendu graphique, composition et applications.
-- **P6 — Réseau et performances :** réseau, compatibilité et mesures reproductibles.
-- **P7 — Stabilisation :** audit de sécurité, tests prolongés et procédure de distribution.
-
-Les phases ne seront terminées qu’après validation de leurs critères et tests. Le développement se fait exclusivement sur la branche **`ArchiaOS`** ; `main` ne doit pas être modifiée.
+Le développement se fait exclusivement sur la branche **`ArchiaOS`** ; `main` ne doit pas être modifiée.
