@@ -1466,6 +1466,11 @@ fn range_is_identity_mapped_ram(
     Ok(true)
 }
 
+/// Validate the ACPI signature before interpreting firmware-controlled RSDP fields.
+fn rsdp_signature_is_valid(signature: &[u8]) -> bool {
+    signature == archiaos_bootloader::acpi::RSDP_SIGNATURE
+}
+
 /// Enforce the distinct ACPI 1.0 and extended RSDP minimum lengths during handoff.
 /// Extended RSDPs include fields through byte 35; accepting a 20-byte prefix for
 /// revision >= 2 would let mutated firmware metadata pass the final-map audit.
@@ -1521,6 +1526,10 @@ fn audit_platform_table_ranges(
         let rsdp = acpi_rsdp as *const u8;
         // SAFETY: the fixed prefix is covered by reserved RAM and (for high-half
         // x86-64) the identity map, as checked above.
+        let signature = unsafe { core::slice::from_raw_parts(rsdp, 8) };
+        if !rsdp_signature_is_valid(signature) {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ACPI RSDP signature during final memory-map audit.\r\n\0"));
+        }
         let revision = unsafe { ptr::read(rsdp.add(15)) };
         let length = if revision < 2 {
             20
@@ -2068,6 +2077,19 @@ mod fdt_handoff_header_tests {
             )),
             None
         );
+    }
+}
+
+#[cfg(test)]
+mod rsdp_handoff_signature_tests {
+    use super::rsdp_signature_is_valid;
+
+    #[test]
+    fn accepts_only_the_acpi_rsdp_signature() {
+        assert!(rsdp_signature_is_valid(archiaos_bootloader::acpi::RSDP_SIGNATURE));
+        assert!(!rsdp_signature_is_valid(b"BAD PTR "));
+        assert!(!rsdp_signature_is_valid(b"RSD PTR"));
+        assert!(!rsdp_signature_is_valid(b""));
     }
 }
 
