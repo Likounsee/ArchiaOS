@@ -1,28 +1,31 @@
 # ArchiaOS
 
-**ArchiaOS est un système d'exploitation expérimental en cours de construction.** Le firmware UEFI standard de la machine reste utilisé ; le bootloader est désormais développé par ArchiaOS. Le chemin de démarrage par défaut du noyau x86-64 utilise maintenant le bootloader UEFI développé par ArchiaOS. Le noyau principal reçoit le contrat BootInfo maison et initialise son allocateur physique depuis la carte mémoire UEFI.
+**ArchiaOS est un système d'exploitation expérimental en cours de construction.** La machine conserve son firmware UEFI standard ; le chargeur est développé par ArchiaOS. Le chemin par défaut du noyau x86-64 utilise le chargeur UEFI maison et le contrat BootInfo versionné.
 
-## État technique (CI à revalider après la bascule)
+## État technique
 
-- Compilation du noyau principal x86-64 avec l’entrée UEFI maison par défaut.
-- Le chemin de démarrage du vrai noyau x86-64 via OVMF/QEMU avait un test CI dédié avant cette migration ; il doit être relancé pour valider les derniers changements.
-- Tests des parseurs BootInfo, ELF64, ACPI, Device Tree et carte mémoire.
-- Compilation du bootloader maison pour UEFI x86-64 et AArch64.
-- Démarrage UEFI du noyau de production x86-64 high-half avec BootInfo UEFI et auto-test PMM réussi.
-- Contrôle x86-64 des permissions de page W^X/NX : code high-half en lecture seule/exécutable, données RW/NX, alias physique du code RO/NX, CR0.WP et EFER.NXE vérifiés.
-- Démarrage UEFI ARM64 sous AAVMF/QEMU, avec console PL011 découverte via ACPI SPCR, validation BootInfo/carte mémoire, auto-test PMM et exception synchrone piégée.
-- Démarrage direct du prototype noyau AArch64 sous QEMU `virt`.
+- Le noyau x86-64 par défaut compile avec l'entrée UEFI ArchiaOS.
+- La CI compile les chargeurs UEFI x86-64 et AArch64 et exécute les tests des parseurs BootInfo, ELF64, ACPI, Device Tree et carte mémoire.
+- Le démarrage du noyau de production x86-64 sous OVMF/QEMU valide le transfert UEFI, BootInfo, la carte mémoire et l'auto-test PMM.
+- Le chemin x86-64 high-half teste les permissions W^X/NX, CR0.WP et EFER.NXE.
+- Un workflow dédié a validé le rejet d'un BootInfo volontairement invalide après le handoff UEFI.
+- Les tests négatifs UEFI couvrent ELF invalide, plage physique indisponible et noyau absent.
+- Le prototype noyau AArch64 se compile et démarre en QEMU direct ; le transfert UEFI AArch64 est testé sous AAVMF/QEMU, avec console PL011, BootInfo/carte mémoire, PMM et une exception synchrone contrôlée.
+
+Les résultats sont propres aux configurations virtuelles exécutées par la CI. Le statut du dernier ensemble CI doit être consulté dans [GitHub Actions](https://github.com/Likounsee/ArchiaOS/actions/workflows/ci.yml) ; une exécution encore en cours ne doit pas être présentée comme entièrement verte.
 
 ## Limites actuelles
 
-Les adresses physiques chargées, les buffers de transfert et le chargeur x86-64 doivent être dans la fenêtre identité sous 4 Gio ; le fichier noyau est limité à 64 Mio et les segments cumulés à 128 Mio. Le chemin high-half testé concerne x86-64. Le prototype ARM64 utilise encore les mappings du firmware et n'a pas une MMU propre au noyau. Les tests valident des configurations QEMU, pas tout le matériel réel. Le chemin Limine a été retiré du démarrage opérationnel ; la CI doit encore confirmer la bascule sur le nouveau HEAD.
+Le chemin de chargement testé impose des contraintes de mémoire physique sous 4 Gio ; le fichier noyau est limité à 64 Mio et les segments cumulés à 128 Mio. Le chargement high-half est pris en charge sur x86-64, tandis que le chemin ARM64 utilise encore des segments identité et n'a pas de transition MMU propre au noyau. La validation sur matériel physique reste nécessaire pour chaque configuration revendiquée. Le chemin Limine a été retiré du démarrage opérationnel.
 
 ## Documentation
 
 - [Documentation technique et compilation](ArchiaOS/README.md)
-- [Roadmap](ArchiaOS/docs/ROADMAP.md)
-- [Architecture bootloader et ARM64](ArchiaOS/docs/BOOT_AND_ARCHITECTURES.md)
-- [Prototype UEFI](ArchiaOS/bootloader/README.md)
+- [Roadmap P0–P10](ArchiaOS/docs/ROADMAP.md)
+- [Démarrage UEFI](ArchiaOS/docs/BOOT.md)
+- [Stratégie de tests](ArchiaOS/docs/TESTING.md)
+- [Architecture du bootloader et ARM64](ArchiaOS/docs/BOOT_AND_ARCHITECTURES.md)
+- [Implémentation du bootloader](ArchiaOS/bootloader/README.md)
 - [Prototype noyau AArch64](ArchiaOS/kernel/aarch64/README.md)
 
 Le développement se fait exclusivement sur la branche **`ArchiaOS`**.
