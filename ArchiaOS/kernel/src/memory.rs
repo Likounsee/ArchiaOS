@@ -31,6 +31,8 @@ pub enum MemoryError {
     MissingMemoryMap,
     InvalidMemoryMapMetadata,
     InvalidMemoryRange,
+    UsableRangeCountOverflow,
+    ManagedBytesOverflow,
     UsableMemoryTotalOverflow,
     NoFreePages,
     AllocationFailed,
@@ -180,9 +182,9 @@ pub unsafe fn initialize_from_bootinfo<W: Write>(
             let usable_pages = (last - first).saturating_sub(framebuffer_overlap);
             if usable_pages != 0 {
                 usable_ranges = usable_ranges.checked_add(1)
-                    .ok_or(MemoryError::UsableMemoryTotalOverflow)?;
+                    .ok_or(MemoryError::UsableRangeCountOverflow)?;
                 let managed_bytes = usable_pages.checked_mul(PAGE_SIZE)
-                    .ok_or(MemoryError::UsableMemoryTotalOverflow)?;
+                    .ok_or(MemoryError::ManagedBytesOverflow)?;
                 usable_bytes = usable_bytes.checked_add(managed_bytes)
                     .ok_or(MemoryError::UsableMemoryTotalOverflow)?;
             }
