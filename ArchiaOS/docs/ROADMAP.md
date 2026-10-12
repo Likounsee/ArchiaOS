@@ -1,8 +1,8 @@
 # Roadmap et critères
 
-- **P0 — Noyau principal sans Limine : migration en cours.** Le noyau par défaut utilise l’entrée UEFI maison ; le chemin mémoire Limine, `limine.conf` et le script ISO Limine ont été retirés. La CI propre doit confirmer compilation et démarrage OVMF/QEMU sur le nouveau HEAD.
+- **P0 — Noyau principal sans Limine : bascule du code effectuée, validation finale en attente.** Le noyau par défaut exige l’entrée UEFI maison ; le chemin mémoire Limine, `limine.conf` et le script ISO Limine ont été retirés. La CI doit confirmer compilation et démarrage OVMF/QEMU sur le HEAD courant.
 - **P1 — Bootloader maison : fondations en place.** Validation ELF64, chargement high-half x86-64, BootInfo, `ExitBootServices` et tests de permissions sont implémentés ; restent les cas d’échec, le rollback et un audit plus large des réservations.
-- **P2 — Ordonnanceur : non commencé.** Pas de contexte de tâche, synchronisation multiprocesseur ni ordonnancement.
+- **P2 — Ordonnanceur : 0 % (non commencé).** Pas encore de contexte de tâche, mécanisme de changement de contexte, ordonnanceur préemptif ni synchronisation multiprocesseur.
 - **P3 — Espace utilisateur : non commencé.** Pas de syscall, chargeur, ABI ni processus isolés.
 - **P4 — Stockage : non commencé.** Pas de pilote bloc ni de système de fichiers. Préparer une couche **VFS (Virtual File System)** indépendante du format de stockage.
 - **P4.1 — Préparation à OpenFS : à concevoir.** Définir le contrat d’intégration avec **Likounsee/OpenFS** : types et erreurs, fichiers/répertoires, volumes, propriété mémoire, synchronisation, limites de blocs et versionnement. Garder un adaptateur distinct du cœur du noyau.
