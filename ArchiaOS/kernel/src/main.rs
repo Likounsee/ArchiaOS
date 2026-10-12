@@ -7,27 +7,7 @@ use core::arch::{asm, global_asm};
 use core::fmt::{self, Write};
 use core::panic::PanicInfo;
 
-#[cfg(not(feature = "uefi-boot"))]
-#[used]
-#[link_section = ".limine_requests_start"]
-static LIMINE_REQUESTS_START_MARKER: [u64; 4] = [
-    0xf6b8_f4b3_9de7_d1ae,
-    0xfab9_1a69_40fc_b9cf,
-    0x785c_6ed0_15d3_e316,
-    0x181e_920a_7852_b9d9,
-];
-
-#[cfg(not(feature = "uefi-boot"))]
-#[used]
-#[link_section = ".limine_requests_end"]
-static LIMINE_REQUESTS_END_MARKER: [u64; 2] = [
-    0xadc0_e053_1bb1_0d03,
-    0x9572_709f_3176_4c62,
-];
-
-// Keep the linker-defined first PT_LOAD non-empty in the UEFI-only build.
-// This is an ArchiaOS marker, not a Limine request; the custom loader ignores it.
-#[cfg(feature = "uefi-boot")]
+// Keep the first load segment non-empty with an ArchiaOS-owned marker.
 #[used]
 #[link_section = ".archiaos_image_marker"]
 static ARCHIAOS_UEFI_IMAGE_MARKER: [u64; 1] = [0x4152_4348_4941_5545];
@@ -48,7 +28,6 @@ global_asm!(
     "jmp .Lhalt",
 );
 
-#[cfg(feature = "uefi-boot")]
 global_asm!(
     ".section .text.boot, \"ax\"",
     ".global _start",
@@ -60,7 +39,7 @@ global_asm!(
     "lea rsp, [rip + __boot_stack_top]",
     "and rsp, -16",
     // Bootloader contract: BootInfo arrives in RDI and is preserved into Rust.
-    "call rust_kernel_main_uefi",
+    "call rust_kernel_main",
     ".Lhalt_uefi:",
     "cli",
     "hlt",
@@ -123,38 +102,8 @@ fn halt_forever() -> ! {
     loop { unsafe { asm!("cli; hlt", options(nomem, nostack)) }; }
 }
 
-#[cfg(not(feature = "uefi-boot"))]
 #[no_mangle]
-pub extern "C" fn rust_kernel_main() -> ! {
-    let mut serial = Serial;
-    serial.init();
-    let _ = writeln!(serial, "ArchiaOS: Limine entered x86_64 kernel");
-    let _ = writeln!(serial, "ArchiaOS: serial diagnostics are online");
-
-    let _ = writeln!(serial, "ArchiaOS: initializing physical page allocator");
-    let stats = match memory::initialize(&mut serial) {
-        Ok(stats) => stats,
-        Err(error) => {
-            let _ = writeln!(serial, "ArchiaOS: memory initialization failed: {:?}", error);
-            halt_forever();
-        }
-    };
-    let _ = writeln!(serial, "ArchiaOS: memory map entries validated: {}", stats.map_entries);
-    let _ = writeln!(serial, "ArchiaOS: usable memory ranges: {}, bytes: {}", stats.usable_ranges, stats.usable_bytes);
-    let _ = writeln!(serial, "ArchiaOS: free physical pages below 4 GiB: {}", stats.free_pages);
-
-    if let Err(error) = memory::self_test(&mut serial) {
-        let _ = writeln!(serial, "ArchiaOS: PMM self-test failed: {:?}", error);
-        halt_forever();
-    }
-    let _ = writeln!(serial, "ArchiaOS: PMM allocation/free self-test passed");
-    let _ = writeln!(serial, "ArchiaOS: interrupts and scheduling are not initialized yet");
-    halt_forever();
-}
-
-#[cfg(feature = "uefi-boot")]
-#[no_mangle]
-pub extern "C" fn rust_kernel_main_uefi(
+pub extern "C" fn rust_kernel_main(
     boot_info: *const archiaos_bootloader::bootinfo::BootInfo,
 ) -> ! {
     let mut serial = Serial;
@@ -182,7 +131,7 @@ pub extern "C" fn rust_kernel_main_uefi(
         halt_forever();
     }
     let _ = writeln!(serial, "ArchiaOS: UEFI PMM allocation/free self-test passed");
-    let _ = writeln!(serial, "ArchiaOS: Limine-independent kernel entry validated");
+    let _ = writeln!(serial, "ArchiaOS: UEFI kernel entry validated");
     halt_forever();
 }
 
