@@ -1,0 +1,95 @@
+name: ArchiaOS P0 physical USB package
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ArchiaOS]
+    paths:
+      - "ArchiaOS/Cargo.toml"
+      - "ArchiaOS/Cargo.lock"
+      - "ArchiaOS/kernel/**"
+      - "ArchiaOS/bootloader/**"
+      - "ArchiaOS/linker.ld"
+      - ".cargo/config.toml"
+      - ".github/workflows/hardware-p0-usb.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-usb-package:
+    name: Build x86_64 UEFI package for physical testing
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ArchiaOS
+    steps:
+      - name: Checkout ArchiaOS branch
+        uses: actions/checkout@v4
+
+      - name: Install Rust target and packaging tools
+        run: |
+          rustup target add x86_64-unknown-none x86_64-unknown-uefi
+          sudo apt-get update
+          sudo apt-get install -y binutils zip
+
+      - name: Build production kernel for the custom UEFI handoff
+        run: |
+          cargo build --manifest-path Cargo.toml \
+            --release --features uefi-boot \
+            --target x86_64-unknown-none \
+            --target-dir target/production-kernel-uefi
+
+      - name: Build ArchiaOS UEFI loader
+        run: |
+          cargo build --manifest-path bootloader/Cargo.toml \
+            --release --target x86_64-unknown-uefi \
+            --target-dir target
+
+      - name: Validate and package USB directory layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          loader="target/x86_64-unknown-uefi/release/archiaos-bootloader.efi"
+          kernel="target/production-kernel-uefi/x86_64-unknown-none/release/archiaos-kernel"
+          test -s "$loader"
+          test -s "$kernel"
+          readelf -h "$kernel" | grep -Fq "ELF64"
+          package="$RUNNER_TEMP/archiaos-p0-usb"
+          mkdir -p "$package/EFI/BOOT" "$package/EFI/ArchiaOS"
+          install -m 0644 "$loader" "$package/EFI/BOOT/BOOTX64.EFI"
+          install -m 0644 "$kernel" "$package/EFI/ArchiaOS/kernel.elf"
+          cat > "$package/README-FR.txt" <<'EOF'
+          ArchiaOS — paquet USB de test matériel P0 (UEFI x86-64)
+
+          Contenu :
+            EFI/BOOT/BOOTX64.EFI       chargeur UEFI ArchiaOS
+            EFI/ArchiaOS/kernel.elf    noyau ArchiaOS compilé
+
+          Préparation sûre :
+          1. Utilisez une clé USB dédiée, dont le contenu peut être effacé.
+          2. Dans Windows, identifiez la clé par sa capacité dans Gestion des disques.
+          3. Formatez UNIQUEMENT cette clé en FAT32.
+          4. Copiez le dossier EFI de ce paquet à la racine de la clé.
+          5. N'utilisez pas diskpart clean et ne touchez pas au disque interne.
+          6. Démarrez via le menu UEFI en sélectionnant la clé USB.
+          7. Les binaires de développement ne sont pas nécessairement signés ;
+             si Secure Boot les bloque, notez le message avant de changer un réglage.
+
+          Ce paquet ne constitue pas une garantie de compatibilité matérielle.
+          La validation P0 reste en attente des résultats observés sur une vraie machine.
+          EOF
+          (cd "$RUNNER_TEMP" && zip -qr archiaos-p0-usb.zip archiaos-p0-usb)
+          echo "## Paquet USB ArchiaOS P0" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Le ZIP contient le chargeur et le noyau compilés, avec l'arborescence EFI attendue." >> "$GITHUB_STEP_SUMMARY"
+          echo "Copier le dossier EFI à la racine d'une clé FAT32 dédiée après avoir vérifié son identité." >> "$GITHUB_STEP_SUMMARY"
+          echo "Le test matériel physique reste à effectuer ; aucun support local n'a été modifié par ce workflow." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload ready-to-copy USB package
+        uses: actions/upload-artifact@v4
+        with:
+          name: archiaos-p0-usb-x86_64
+          path: ${{ runner.temp }}/archiaos-p0-usb.zip
+          if-no-files-found: error
+          retention-days: 14
