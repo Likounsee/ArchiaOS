@@ -1508,6 +1508,20 @@ fn validated_fdt_prefix_length(header: &[u8]) -> Option<u64> {
     Some(length)
 }
 
+/// Conservatively reject overlapping handoff ranges; arithmetic overflow fails closed.
+fn physical_ranges_overlap(first_start: u64, first_length: u64, second_start: u64, second_length: u64) -> bool {
+    if first_length == 0 || second_length == 0 {
+        return false;
+    }
+    let Some(first_end) = first_start.checked_add(first_length) else {
+        return true;
+    };
+    let Some(second_end) = second_start.checked_add(second_length) else {
+        return true;
+    };
+    first_start < second_end && second_start < first_end
+}
+
 /// Ensure firmware platform-table storage remains reserved in the final handoff map.
 /// These pointers are consumed after ExitBootServices, so they must never be reclassified
 /// as conventional RAM that the physical allocator could hand to another subsystem.
@@ -1932,6 +1946,64 @@ pub unsafe fn transfer_to_kernel(
             framebuffer_base.checked_add(framebuffer_size)
                 .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer range overflow in BootInfo.\\r\\n\\0"))?;
         }
+
+        // The framebuffer is an MMIO aperture, not ordinary memory. Even if its
+        // arithmetic is valid, it must not alias memory that the loader or kernel
+        // will use for executable code, BootInfo, the final map, or page tables.
+        if framebuffer_base != 0 {
+            let framebuffer_conflicts_with = |start: u64, length: u64| {
+                physical_ranges_overlap(framebuffer_base, framebuffer_size, start, length)
+            };
+            if framebuffer_conflicts_with(
+                info_storage_start,
+                core::mem::size_of::<BootInfo>() as u64,
+            ) || framebuffer_conflicts_with(map_storage_start, MAX_MEMORY_MAP_SIZE as u64) {
+                return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer overlaps BootInfo or memory-map storage.\\r\\n\\0"));
+            }
+
+            for segment_index in 0.._elf.program_header_count() {
+                let segment = match archiaos_bootloader::elf::load_segment(
+                    _kernel_image,
+                    _elf,
+                    segment_index,
+                ) {
+                    Ok(segment) => segment,
+                    Err(archiaos_bootloader::elf::ElfError::NotLoadableSegment) => continue,
+                    Err(_) => return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ELF segment during framebuffer overlap audit.\\r\\n\\0")),
+                };
+                let segment_end = segment.physical_address
+                    .checked_add(segment.memory_size)
+                    .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF range overflow during framebuffer overlap audit.\\r\\n\\0"))?;
+                let rounded_start = segment.physical_address & !(EFI_PAGE_SIZE - 1);
+                let rounded_end = segment_end
+                    .checked_add(EFI_PAGE_SIZE - 1)
+                    .map(|value| value & !(EFI_PAGE_SIZE - 1))
+                    .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF rounded range overflow during framebuffer overlap audit.\\r\\n\\0"))?;
+                if framebuffer_conflicts_with(rounded_start, rounded_end - rounded_start) {
+                    return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer overlaps a loaded kernel segment.\\r\\n\\0"));
+                }
+            }
+
+            #[cfg(target_arch = "x86_64")]
+            if let Some((loader_start, loader_end)) = loader_image_range {
+                if framebuffer_conflicts_with(
+                    loader_start,
+                    loader_end.checked_sub(loader_start)
+                        .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: inverted loader-image range during framebuffer overlap audit.\\r\\n\\0"))?,
+                ) {
+                    return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer overlaps the UEFI loader image.\\r\\n\\0"));
+                }
+            }
+            #[cfg(target_arch = "x86_64")]
+            if let Some(arena) = page_table_arena.as_ref() {
+                let arena_bytes = (PAGE_TABLE_ARENA_PAGES as u64)
+                    .checked_mul(EFI_PAGE_SIZE)
+                    .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: page-table arena size overflow during framebuffer overlap audit.\\r\\n\\0"))?;
+                if framebuffer_conflicts_with(arena.physical_base, arena_bytes) {
+                    return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer overlaps page-table storage.\\r\\n\\0"));
+                }
+            }
+        }
         // Some UEFI implementations expose GOP framebuffer MMIO inside a
         // descriptor labelled EfiConventionalMemory. Do not reject the entire boot
         // on that firmware defect: the x86-64 page-table builder excludes every
@@ -2197,5 +2269,32 @@ mod configuration_table_bounds_tests {
         assert!(!configuration_table_range_is_bounded(0x1000, 0));
         assert!(!configuration_table_range_is_bounded(0x1000, 4097));
         assert!(!configuration_table_range_is_bounded(usize::MAX - 7, 1));
+    }
+}
+
+#[cfg(test)]
+mod physical_range_overlap_tests {
+    use super::physical_ranges_overlap;
+
+    #[test]
+    fn detects_partial_contained_and_exact_overlaps() {
+        assert!(physical_ranges_overlap(0x1000, 0x3000, 0x2000, 0x1000));
+        assert!(physical_ranges_overlap(0x2000, 0x1000, 0x1000, 0x3000));
+        assert!(physical_ranges_overlap(0x1000, 0x1000, 0x1000, 0x1000));
+        assert!(physical_ranges_overlap(0x1000, 0x3000, 0x1000, 0x3000));
+    }
+
+    #[test]
+    fn allows_disjoint_adjacent_and_empty_ranges() {
+        assert!(!physical_ranges_overlap(0x1000, 0x1000, 0x2000, 0x1000));
+        assert!(!physical_ranges_overlap(0x3000, 0x1000, 0x1000, 0x1000));
+        assert!(!physical_ranges_overlap(0x1000, 0, 0x1000, 0x1000));
+        assert!(!physical_ranges_overlap(0x1000, 0x1000, 0x1000, 0));
+    }
+
+    #[test]
+    fn treats_wrapping_ranges_as_conflicting() {
+        assert!(physical_ranges_overlap(u64::MAX - 3, 8, 0x1000, 0x1000));
+        assert!(physical_ranges_overlap(0x1000, 0x1000, u64::MAX - 3, 8));
     }
 }
