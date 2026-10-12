@@ -645,6 +645,7 @@ pub unsafe fn load_kernel_segments(
             .checked_add(EFI_PAGE_SIZE - 1)
             .map(|value| value & !(EFI_PAGE_SIZE - 1))
             .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF virtual page-range overflow.\r\n\0"))?;
+        #[cfg(target_arch = "x86_64")]
         if high_half_image && rounded_virtual_end > X86_64_HIGH_HALF_END {
             return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: rounded high-half segment exceeds the page-table window.\r\n\0"));
         }
