@@ -67,9 +67,9 @@ jobs:
       - name: Install UEFI Rust targets
         run: rustup target add x86_64-unknown-uefi aarch64-unknown-uefi
       - name: Build x86_64 UEFI application
-        run: cargo build --manifest-path bootloader/Cargo.toml --release --target x86_64-unknown-uefi
+        run: cargo build --manifest-path bootloader/Cargo.toml --release --target x86_64-unknown-uefi --target-dir target
       - name: Build AArch64 UEFI application
-        run: cargo build --manifest-path bootloader/Cargo.toml --release --target aarch64-unknown-uefi
+        run: cargo build --manifest-path bootloader/Cargo.toml --release --target aarch64-unknown-uefi --target-dir target
 
   kernel-aarch64-build:
     name: Compile AArch64 kernel bring-up prototype
@@ -121,7 +121,7 @@ jobs:
           cd kernel/boot-test-x86_64
           RUSTFLAGS="-C link-arg=-Tlinker.ld -C relocation-model=static -C no-redzone=yes" cargo build --release --target x86_64-unknown-none --target-dir ../../target/boot-test-x86_64
       - name: Build first-party UEFI loader
-        run: cargo build --manifest-path bootloader/Cargo.toml --release --target x86_64-unknown-uefi
+        run: cargo build --manifest-path bootloader/Cargo.toml --release --target x86_64-unknown-uefi --target-dir target
       - name: Prepare UEFI FAT disk image
         shell: bash
         run: |
@@ -129,15 +129,21 @@ jobs:
           image="$RUNNER_TEMP/archiaos-uefi.img"
           loader="target/x86_64-unknown-uefi/release/archiaos-bootloader.efi"
           kernel="target/boot-test-x86_64/x86_64-unknown-none/release/archiaos-boot-handoff-test"
+          echo "Checking loader artifact: $loader"
+          ls -lh "$loader"
+          echo "Checking kernel artifact: $kernel"
+          ls -lh "$kernel"
           test -s "$loader"
           test -s "$kernel"
-          truncate -s 64M "$image"
+          truncate -s 128M "$image"
           mkfs.vfat -F 32 "$image"
           mmd -i "$image" ::/EFI
           mmd -i "$image" ::/EFI/BOOT
           mmd -i "$image" ::/EFI/ArchiaOS
           mcopy -i "$image" "$loader" ::/EFI/BOOT/BOOTX64.EFI
           mcopy -i "$image" "$kernel" ::/EFI/ArchiaOS/kernel.elf
+          mdir -i "$image" ::/EFI/BOOT
+          mdir -i "$image" ::/EFI/ArchiaOS
           echo "UEFI disk image prepared with BOOTX64.EFI and kernel.elf"
       - name: Boot custom loader with OVMF
         shell: bash
