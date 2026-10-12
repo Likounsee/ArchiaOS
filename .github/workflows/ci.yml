@@ -192,7 +192,7 @@ jobs:
 
           source, destination = sys.argv[1:]
           data = bytearray(open(source, "rb").read())
-          if data[:4] != b"\\x7fELF" or data[4] != 2 or data[5] != 1:
+          if data[:4] != b"\x7fELF" or data[4] != 2 or data[5] != 1:
               raise SystemExit("identity fixture is not little-endian ELF64")
           entry = struct.unpack_from("<Q", data, 24)[0]
           phoff = struct.unpack_from("<Q", data, 32)[0]
@@ -204,7 +204,7 @@ jobs:
           for i in range(phnum):
               off = phoff + i * phentsize
               if struct.unpack_from("<I", data, off)[0] == 1:
-                  p_vaddr, p_paddr, p_memsz = struct.unpack_from("<QQ", data, off + 16)
+                  p_vaddr, p_paddr = struct.unpack_from("<QQ", data, off + 16)
                   p_memsz = struct.unpack_from("<Q", data, off + 40)[0]
                   loads.append((off, p_vaddr, p_paddr, p_memsz))
           if not loads:
