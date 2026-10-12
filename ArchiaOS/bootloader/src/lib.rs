@@ -625,7 +625,7 @@ pub mod device_tree {
         }
         let mut value = 0u64;
         for index in 0..cell_count {
-            value = (value << 32) | be32(bytes, index * 4)?;
+            value = (value << 32) | (be32(bytes, index * 4)? as u64);
         }
         Ok(value)
     }
@@ -1394,7 +1394,7 @@ mod device_tree_tests {
 
         append_token(&mut image, 1); // UART node
         append_cstring(&mut image, b"pl011@9000000");
-        let mut compatible_value = b"arm,pl011\0arm,primecell\0".to_vec();
+        let compatible_value = b"arm,pl011\0arm,primecell\0".to_vec();
         append_property(&mut image, offset_compatible, &compatible_value);
         let mut reg = Vec::new();
         for cell in [0u32, 0x0900_0000, 0, 0x1000] {
