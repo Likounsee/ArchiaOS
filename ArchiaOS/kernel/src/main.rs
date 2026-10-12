@@ -13,20 +13,7 @@ use core::panic::PanicInfo;
 static ARCHIAOS_UEFI_IMAGE_MARKER: [u64; 1] = [0x4152_4348_4941_5545];
 
 #[cfg(not(feature = "uefi-boot"))]
-global_asm!(
-    ".section .text.boot, \"ax\"",
-    ".global _start",
-    ".type _start, @function",
-    "_start:",
-    "cli",
-    "cld",
-    "and rsp, -16",
-    "call rust_kernel_main",
-    ".Lhalt:",
-    "cli",
-    "hlt",
-    "jmp .Lhalt",
-);
+compile_error!("ArchiaOS production kernel requires the uefi-boot feature");
 
 #[cfg(feature = "uefi-boot")]
 global_asm!(
