@@ -1466,6 +1466,14 @@ fn range_is_identity_mapped_ram(
     Ok(true)
 }
 
+/// Enforce the distinct ACPI 1.0 and extended RSDP minimum lengths during handoff.
+/// Extended RSDPs include fields through byte 35; accepting a 20-byte prefix for
+/// revision >= 2 would let mutated firmware metadata pass the final-map audit.
+fn rsdp_length_is_valid(revision: u8, length: u64) -> bool {
+    let minimum = if revision < 2 { 20 } else { 36 };
+    (minimum..=archiaos_bootloader::acpi::MAX_RSDP_SIZE as u64).contains(&length)
+}
+
 /// Ensure firmware platform-table storage remains reserved in the final handoff map.
 /// These pointers are consumed after ExitBootServices, so they must never be reclassified
 /// as conventional RAM that the physical allocator could hand to another subsystem.
@@ -1504,7 +1512,7 @@ fn audit_platform_table_ranges(
             let field = unsafe { core::slice::from_raw_parts(rsdp.add(20), 4) };
             u32::from_le_bytes([field[0], field[1], field[2], field[3]]) as u64
         };
-        if !(20..=archiaos_bootloader::acpi::MAX_RSDP_SIZE as u64).contains(&length) {
+        if !rsdp_length_is_valid(revision, length) {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid RSDP size during final memory-map audit.\r\n\0"));
         }
         if !memory_map.range_is_fully_reserved(acpi_rsdp, length)
@@ -2005,6 +2013,33 @@ unsafe fn jump_to_kernel(entry: u64, info: *const BootInfo) -> ! {
     }
 }
 
+
+#[cfg(test)]
+mod rsdp_handoff_length_tests {
+    use super::rsdp_length_is_valid;
+
+    #[test]
+    fn accepts_legacy_and_complete_extended_rsdp_lengths() {
+        assert!(rsdp_length_is_valid(0, 20));
+        assert!(rsdp_length_is_valid(1, 20));
+        assert!(rsdp_length_is_valid(2, 36));
+        assert!(rsdp_length_is_valid(
+            2,
+            archiaos_bootloader::acpi::MAX_RSDP_SIZE as u64
+        ));
+    }
+
+    #[test]
+    fn rejects_truncated_extended_rsdp_and_oversized_lengths() {
+        assert!(!rsdp_length_is_valid(2, 20));
+        assert!(!rsdp_length_is_valid(2, 35));
+        assert!(!rsdp_length_is_valid(
+            2,
+            archiaos_bootloader::acpi::MAX_RSDP_SIZE as u64 + 1
+        ));
+        assert!(!rsdp_length_is_valid(0, 19));
+    }
+}
 
 #[cfg(test)]
 mod configuration_table_bounds_tests {
