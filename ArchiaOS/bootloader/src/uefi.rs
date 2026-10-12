@@ -1479,6 +1479,18 @@ fn rsdp_length_is_valid(revision: u8, length: u64) -> bool {
     (minimum..=archiaos_bootloader::acpi::MAX_RSDP_SIZE as u64).contains(&length)
 }
 
+/// Recheck ACPI RSDP checksums at handoff, not only during initial discovery.
+/// ACPI 2.0+ requires both the legacy first-20-byte checksum and the full-table checksum.
+fn rsdp_checksums_are_valid(bytes: &[u8], revision: u8, length: u64) -> bool {
+    if !rsdp_length_is_valid(revision, length) || bytes.len() as u64 != length {
+        return false;
+    }
+    if bytes[..20].iter().fold(0u8, |sum, byte| sum.wrapping_add(*byte)) != 0 {
+        return false;
+    }
+    revision < 2 || bytes.iter().fold(0u8, |sum, byte| sum.wrapping_add(*byte)) == 0
+}
+
 /// Parse only the fixed FDT header prefix without trusting firmware-provided lengths.
 fn validated_fdt_prefix_length(header: &[u8]) -> Option<u64> {
     if header.len() < 8
@@ -1551,6 +1563,12 @@ fn audit_platform_table_ranges(
             && !range_is_identity_mapped_ram(memory_map, acpi_rsdp, length)?
         {
             return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: ACPI RSDP is outside identity-mapped RAM for the high-half kernel.\r\n\0"));
+        }
+        // SAFETY: the complete length is bounded, reserved, and identity-mapped
+        // where required, as checked above.
+        let complete = unsafe { core::slice::from_raw_parts(rsdp, length as usize) };
+        if !rsdp_checksums_are_valid(complete, revision, length) {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ACPI RSDP checksum during final memory-map audit.\r\n\0"));
         }
     }
 
@@ -2090,6 +2108,39 @@ mod rsdp_handoff_signature_tests {
         assert!(!rsdp_signature_is_valid(b"BAD PTR "));
         assert!(!rsdp_signature_is_valid(b"RSD PTR"));
         assert!(!rsdp_signature_is_valid(b""));
+    }
+}
+
+#[cfg(test)]
+mod rsdp_handoff_checksum_tests {
+    use super::rsdp_checksums_are_valid;
+
+    #[test]
+    fn accepts_zero_sum_legacy_and_extended_rsdp_tables() {
+        assert!(rsdp_checksums_are_valid(&[0; 20], 0, 20));
+        assert!(rsdp_checksums_are_valid(&[0; 36], 2, 36));
+    }
+
+    #[test]
+    fn rejects_bad_legacy_or_extended_checksums() {
+        let mut legacy = [0; 20];
+        legacy[19] = 1;
+        assert!(!rsdp_checksums_are_valid(&legacy, 0, 20));
+
+        let mut extended_legacy_bad = [0; 36];
+        extended_legacy_bad[0] = 1;
+        assert!(!rsdp_checksums_are_valid(&extended_legacy_bad, 2, 36));
+
+        let mut extended_full_bad = [0; 36];
+        extended_full_bad[35] = 1;
+        assert!(!rsdp_checksums_are_valid(&extended_full_bad, 2, 36));
+    }
+
+    #[test]
+    fn rejects_mismatched_lengths_and_truncated_tables() {
+        assert!(!rsdp_checksums_are_valid(&[0; 19], 0, 19));
+        assert!(!rsdp_checksums_are_valid(&[0; 20], 2, 20));
+        assert!(!rsdp_checksums_are_valid(&[0; 36], 2, 37));
     }
 }
 
