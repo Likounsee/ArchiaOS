@@ -1474,6 +1474,23 @@ fn rsdp_length_is_valid(revision: u8, length: u64) -> bool {
     (minimum..=archiaos_bootloader::acpi::MAX_RSDP_SIZE as u64).contains(&length)
 }
 
+/// Parse only the fixed FDT header prefix without trusting firmware-provided lengths.
+fn validated_fdt_prefix_length(header: &[u8]) -> Option<u64> {
+    if header.len() < 8
+        || u32::from_be_bytes([header[0], header[1], header[2], header[3]])
+            != archiaos_bootloader::device_tree::FDT_MAGIC
+    {
+        return None;
+    }
+    let length = u32::from_be_bytes([header[4], header[5], header[6], header[7]]) as u64;
+    if !(archiaos_bootloader::device_tree::HEADER_SIZE as u64
+        ..=archiaos_bootloader::device_tree::MAX_TOTAL_SIZE as u64).contains(&length)
+    {
+        return None;
+    }
+    Some(length)
+}
+
 /// Ensure firmware platform-table storage remains reserved in the final handoff map.
 /// These pointers are consumed after ExitBootServices, so they must never be reclassified
 /// as conventional RAM that the physical allocator could hand to another subsystem.
@@ -1545,12 +1562,8 @@ fn audit_platform_table_ranges(
         let dtb = device_tree as *const u8;
         // SAFETY: the fixed prefix is reserved and mapped, as checked above.
         let header = unsafe { core::slice::from_raw_parts(dtb, FDT_FIXED_PREFIX as usize) };
-        let length = u32::from_be_bytes([header[4], header[5], header[6], header[7]]) as u64;
-        if !(archiaos_bootloader::device_tree::HEADER_SIZE as u64
-            ..=archiaos_bootloader::device_tree::MAX_TOTAL_SIZE as u64).contains(&length)
-        {
-            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid Device Tree size during final memory-map audit.\r\n\0"));
-        }
+        let length = validated_fdt_prefix_length(header)
+            .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid Device Tree header during final memory-map audit.\r\n\0"))?;
         if !memory_map.range_is_fully_reserved(device_tree, length)
             .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: malformed Device Tree range in final memory map.\r\n\0"))?
         {
@@ -2013,6 +2026,50 @@ unsafe fn jump_to_kernel(entry: u64, info: *const BootInfo) -> ! {
     }
 }
 
+
+#[cfg(test)]
+mod fdt_handoff_header_tests {
+    use super::validated_fdt_prefix_length;
+
+    fn header(magic: u32, length: u32) -> [u8; 8] {
+        let mut bytes = [0; 8];
+        bytes[..4].copy_from_slice(&magic.to_be_bytes());
+        bytes[4..].copy_from_slice(&length.to_be_bytes());
+        bytes
+    }
+
+    #[test]
+    fn accepts_valid_fdt_prefix() {
+        let bytes = header(
+            archiaos_bootloader::device_tree::FDT_MAGIC,
+            archiaos_bootloader::device_tree::HEADER_SIZE as u32,
+        );
+        assert_eq!(
+            validated_fdt_prefix_length(&bytes),
+            Some(archiaos_bootloader::device_tree::HEADER_SIZE as u64)
+        );
+    }
+
+    #[test]
+    fn rejects_wrong_magic_short_prefix_and_invalid_lengths() {
+        assert_eq!(validated_fdt_prefix_length(&[0; 7]), None);
+        assert_eq!(validated_fdt_prefix_length(&header(0, 40)), None);
+        assert_eq!(
+            validated_fdt_prefix_length(&header(
+                archiaos_bootloader::device_tree::FDT_MAGIC,
+                (archiaos_bootloader::device_tree::HEADER_SIZE - 1) as u32,
+            )),
+            None
+        );
+        assert_eq!(
+            validated_fdt_prefix_length(&header(
+                archiaos_bootloader::device_tree::FDT_MAGIC,
+                archiaos_bootloader::device_tree::MAX_TOTAL_SIZE as u32 + 1,
+            )),
+            None
+        );
+    }
+}
 
 #[cfg(test)]
 mod rsdp_handoff_length_tests {
