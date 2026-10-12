@@ -4,7 +4,7 @@
 
 ArchiaOS est un projet d’OS bare-metal en développement. Le dépôt contient un noyau sans environnement standard (`no_std`), un chargeur UEFI maintenu dans le projet et les tests qui accompagnent ces fondations. L’objectif actuel est de rendre le transfert firmware → chargeur → noyau prévisible et sûr avant d’ajouter les services d’un système d’exploitation complet.
 
-> **État actuel :** le démarrage UEFI x86-64 a été essayé sur un PC physique et le noyau a produit un premier affichage framebuffer (fond bleu foncé avec une bande bleu clair). C’est une preuve de démarrage et d’écriture vidéo bas niveau, **pas encore un bureau ni une pile graphique complète**. La CI du HEAD courant doit encore être stabilisée après les derniers changements P1.
+> **État actuel :** le démarrage UEFI x86-64 a été essayé sur un PC physique et le noyau a produit un premier affichage framebuffer (fond bleu foncé avec une bande bleu clair). C’est une preuve de démarrage et d’écriture vidéo bas niveau, **pas encore un bureau ni une pile graphique complète**. La CI du commit `a5f2e574` est verte pour la compilation, les démarrages virtuels, le test négatif BootInfo et le paquet USB ; les tests de couverture mémoire supplémentaires sont en cours de validation.
 
 ## Ce qui existe aujourd’hui
 
