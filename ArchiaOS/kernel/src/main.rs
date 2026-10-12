@@ -8,6 +8,7 @@ mod pci;
 use core::arch::{asm, global_asm};
 use core::fmt::{self, Write};
 use core::panic::PanicInfo;
+use core::ptr;
 
 // Keep the first load segment non-empty with an ArchiaOS-owned marker.
 #[used]
