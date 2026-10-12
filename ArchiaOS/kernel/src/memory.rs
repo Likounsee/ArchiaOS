@@ -415,5 +415,22 @@ pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
         return Err(MemoryError::DoubleFreeAccepted);
     }
     let _ = writeln!(log, "PMM test: double-free rejected");
+
+    // Prove that a correctly freed frame remains reusable and that recycling
+    // does not change the allocator's total free-page accounting.
+    let recycled = alloc_page().ok_or(MemoryError::AllocationFailed)?;
+    let recycled_frame = recycled / PAGE_SIZE;
+    if !unsafe { bit_is_set(managed_bitmap_ptr(), recycled_frame) }
+        || unsafe { bit_is_set(free_bitmap_ptr(), recycled_frame) }
+    {
+        return Err(MemoryError::BitmapInvariantViolation);
+    }
+    if !free_page(recycled) {
+        return Err(MemoryError::FreeFailed);
+    }
+    if free_page_count() != before || !validate_bitmap_invariants() {
+        return Err(MemoryError::FreeCountMismatch);
+    }
+    let _ = writeln!(log, "PMM test: freed pages are reusable and accounting is stable");
     Ok(())
 }
