@@ -26,9 +26,41 @@ global_asm!(
     "_start:",
     "cli",
     "cld",
+    // Bring up COM1 in assembly before touching the new stack. These single-byte
+    // stage markers distinguish reaching the ELF entry from a stack/Rust failure.
+    // They use no UEFI services and remain available after ExitBootServices.
+    "mov dx, 0x3f9",
+    "xor al, al",
+    "out dx, al",
+    "mov dx, 0x3fb",
+    "mov al, 0x80",
+    "out dx, al",
+    "mov dx, 0x3f8",
+    "mov al, 0x03",
+    "out dx, al",
+    "mov dx, 0x3f9",
+    "xor al, al",
+    "out dx, al",
+    "mov dx, 0x3fb",
+    "mov al, 0x03",
+    "out dx, al",
+    "mov dx, 0x3fa",
+    "mov al, 0xc7",
+    "out dx, al",
+    "mov dx, 0x3fc",
+    "mov al, 0x0b",
+    "out dx, al",
+    // 'E' means the ELF entry was reached after the UEFI handoff/page-table switch.
+    "mov dx, 0x3f8",
+    "mov al, 0x45",
+    "out dx, al",
     // Do not depend on the EFI application's inherited stack after handoff.
     "lea rsp, [rip + __boot_stack_top]",
     "and rsp, -16",
+    // 'S' means the kernel-owned boot stack is installed and aligned.
+    "mov dx, 0x3f8",
+    "mov al, 0x53",
+    "out dx, al",
     // Bootloader contract: BootInfo arrives in RDI and is preserved into Rust.
     "call rust_kernel_main",
     ".Lhalt_uefi:",
