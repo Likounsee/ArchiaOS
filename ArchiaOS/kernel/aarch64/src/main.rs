@@ -5,7 +5,7 @@ use core::arch::{asm, global_asm};
 use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
 use archiaos_bootloader::bootinfo::{BootInfo, BOOT_INFO_MAGIC, BOOT_INFO_VERSION};
-use archiaos_bootloader::device_tree::{validate_tree as validate_fdt_tree, FDT_MAGIC, HEADER_SIZE as FDT_HEADER_SIZE, MAX_TOTAL_SIZE as MAX_FDT_SIZE};
+use archiaos_bootloader::device_tree::{find_compatible_reg, validate_tree as validate_fdt_tree, FDT_MAGIC, HEADER_SIZE as FDT_HEADER_SIZE, MAX_TOTAL_SIZE as MAX_FDT_SIZE};
 use archiaos_bootloader::memory_map::UefiMemoryMap;
 
 const MIN_MEMORY_DESCRIPTOR_SIZE: u64 = 40;
@@ -36,37 +36,48 @@ global_asm!(
     "__stack_top:",
 );
 
-const PL011_BASE: usize = 0x0900_0000;
-const UART_DR: usize = PL011_BASE;
-const UART_FR: usize = PL011_BASE + 0x18;
-const UART_IBRD: usize = PL011_BASE + 0x24;
-const UART_FBRD: usize = PL011_BASE + 0x28;
-const UART_LCR_H: usize = PL011_BASE + 0x2C;
-const UART_CR: usize = PL011_BASE + 0x30;
-const UART_ICR: usize = PL011_BASE + 0x44;
+const FALLBACK_PL011_BASE: usize = 0x0900_0000;
+const UART_DR_OFFSET: usize = 0x00;
+const UART_FR_OFFSET: usize = 0x18;
+const UART_IBRD_OFFSET: usize = 0x24;
+const UART_FBRD_OFFSET: usize = 0x28;
+const UART_LCR_H_OFFSET: usize = 0x2C;
+const UART_CR_OFFSET: usize = 0x30;
+const UART_ICR_OFFSET: usize = 0x44;
+const UART_REQUIRED_SIZE: u64 = 0x48;
 const UART_FR_TXFF: u32 = 1 << 5;
+static mut EARLY_SERIAL_BASE: usize = FALLBACK_PL011_BASE;
 
-struct Serial;
+struct Serial {
+    base: usize,
+}
 
 impl Serial {
+    const fn new(base: usize) -> Self {
+        Self { base }
+    }
+
+    fn register(&self, offset: usize) -> *mut u32 {
+        (self.base + offset) as *mut u32
+    }
+
     fn init(&mut self) {
-        // QEMU virt exposes a PL011 UART at 0x09000000 with a 24 MHz clock.
-        // This early prototype is platform-specific and is not a generic ARM64
-        // console driver.
+        // Use a compatible/reg pair from the validated Device Tree when present.
+        // The QEMU virt address remains an early-console fallback only.
         unsafe {
-            write_volatile(UART_CR as *mut u32, 0);
-            write_volatile(UART_ICR as *mut u32, 0x7ff);
-            write_volatile(UART_IBRD as *mut u32, 13);
-            write_volatile(UART_FBRD as *mut u32, 1);
-            write_volatile(UART_LCR_H as *mut u32, 0x70);
-            write_volatile(UART_CR as *mut u32, 0x301);
+            write_volatile(self.register(UART_CR_OFFSET), 0);
+            write_volatile(self.register(UART_ICR_OFFSET), 0x7ff);
+            write_volatile(self.register(UART_IBRD_OFFSET), 13);
+            write_volatile(self.register(UART_FBRD_OFFSET), 1);
+            write_volatile(self.register(UART_LCR_H_OFFSET), 0x70);
+            write_volatile(self.register(UART_CR_OFFSET), 0x301);
         }
     }
 
     fn write_byte(&mut self, byte: u8) {
         for _ in 0..1_000_000 {
-            if unsafe { read_volatile(UART_FR as *const u32) } & UART_FR_TXFF == 0 {
-                unsafe { write_volatile(UART_DR as *mut u32, byte as u32) };
+            if unsafe { read_volatile(self.register(UART_FR_OFFSET)) } & UART_FR_TXFF == 0 {
+                unsafe { write_volatile(self.register(UART_DR_OFFSET), byte as u32) };
                 return;
             }
             core::hint::spin_loop();
@@ -81,6 +92,51 @@ impl Serial {
             self.write_byte(byte);
         }
     }
+}
+
+unsafe fn boot_info_device_tree(info: *const BootInfo) -> u64 {
+    if info.is_null() {
+        return 0;
+    }
+    let first_word = unsafe { read_volatile(info.cast::<u64>()) };
+    if first_word == BOOT_INFO_MAGIC {
+        let boot_info = unsafe { &*info };
+        if boot_info.version == BOOT_INFO_VERSION
+            && boot_info.struct_size == core::mem::size_of::<BootInfo>() as u32
+        {
+            return boot_info.device_tree;
+        }
+        return 0;
+    }
+
+    let first_u32 = unsafe { u32::from_be(read_volatile(info.cast::<u32>())) };
+    if first_u32 == FDT_MAGIC {
+        info as usize as u64
+    } else {
+        0
+    }
+}
+
+unsafe fn discover_pl011_base(address: u64) -> Option<usize> {
+    if address == 0 || address > usize::MAX as u64 {
+        return None;
+    }
+    let base = address as usize as *const u8;
+    let total = unsafe { u32::from_be(read_volatile(base.add(4).cast::<u32>())) as usize };
+    if total < FDT_HEADER_SIZE || total > MAX_FDT_SIZE {
+        return None;
+    }
+    let image = unsafe { core::slice::from_raw_parts(base, total) };
+    validate_fdt_tree(image).ok()?;
+    let reg = find_compatible_reg(image, b"arm,pl011").ok()??;
+    if reg.address > usize::MAX as u64
+        || reg.address % core::mem::align_of::<u32>() as u64 != 0
+        || reg.size < UART_REQUIRED_SIZE
+        || reg.address.checked_add(UART_REQUIRED_SIZE).is_none()
+    {
+        return None;
+    }
+    Some(reg.address as usize)
 }
 
 unsafe fn validate_fdt_at_address(address: u64) -> bool {
@@ -178,10 +234,19 @@ fn validate_boot_info(info: *const BootInfo, serial: &mut Serial) {
 
 #[no_mangle]
 pub extern "C" fn rust_kernel_main(info: *const BootInfo) -> ! {
-    let mut serial = Serial;
+    let device_tree = unsafe { boot_info_device_tree(info) };
+    let discovered_base = unsafe { discover_pl011_base(device_tree) };
+    let serial_base = discovered_base.unwrap_or(FALLBACK_PL011_BASE);
+    unsafe { write_volatile(core::ptr::addr_of_mut!(EARLY_SERIAL_BASE), serial_base); }
+    let mut serial = Serial::new(serial_base);
     serial.init();
     serial.write_str("ArchiaOS AArch64: kernel entry reached\\n");
     serial.write_str("ArchiaOS AArch64: PL011 diagnostics initialized\\n");
+    if discovered_base.is_some() {
+        serial.write_str("ArchiaOS AArch64: PL011 base discovered from Device Tree\\n");
+    } else {
+        serial.write_str("ArchiaOS AArch64: using QEMU virt PL011 fallback\\n");
+    }
     validate_boot_info(info, &mut serial);
     serial.write_str("ArchiaOS AArch64: bring-up prototype; MMU and exceptions pending\\n");
     halt_forever();
@@ -195,7 +260,8 @@ fn halt_forever() -> ! {
 
 #[panic_handler]
 fn panic(_info: &PanicInfo<'_>) -> ! {
-    let mut serial = Serial;
+    let base = unsafe { read_volatile(core::ptr::addr_of!(EARLY_SERIAL_BASE)) };
+    let mut serial = Serial::new(base);
     serial.init();
     serial.write_str("ArchiaOS AArch64: PANIC\\n");
     halt_forever();
