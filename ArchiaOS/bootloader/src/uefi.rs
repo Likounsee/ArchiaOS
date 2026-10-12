@@ -90,6 +90,12 @@ const EFI_DTB_TABLE_GUID: Guid = Guid {
     data3: 0x41a5,
     data4: [0x83, 0x0b, 0xd9, 0x15, 0x2c, 0x69, 0xaa, 0xe0],
 };
+const GRAPHICS_OUTPUT_PROTOCOL_GUID: Guid = Guid {
+    data1: 0x9042_a9de,
+    data2: 0x23dc,
+    data3: 0x4a38,
+    data4: [0x96, 0xfb, 0x7a, 0xde, 0xd0, 0x80, 0x51, 0x6a],
+};
 
 #[repr(C)]
 pub struct TableHeader {
@@ -144,9 +150,42 @@ struct ConfigurationTable {
     vendor_table: *mut c_void,
 }
 
+#[repr(C)]
+struct GraphicsOutputProtocol {
+    query_mode: usize,
+    set_mode: usize,
+    blt: usize,
+    mode: *mut GraphicsOutputProtocolMode,
+}
+
+#[repr(C)]
+struct GraphicsOutputProtocolMode {
+    max_mode: u32,
+    mode: u32,
+    info: *mut GraphicsOutputModeInformation,
+    size_of_info: usize,
+    framebuffer_base: u64,
+    framebuffer_size: usize,
+}
+
+#[repr(C)]
+struct GraphicsOutputModeInformation {
+    version: u32,
+    horizontal_resolution: u32,
+    vertical_resolution: u32,
+    pixel_format: u32,
+    pixel_information: [u32; 4],
+    pixels_per_scan_line: u32,
+}
+
 type HandleProtocolFn = unsafe extern "efiapi" fn(
     handle: Handle,
     protocol: *const Guid,
+    interface: *mut *mut c_void,
+) -> Status;
+type LocateProtocolFn = unsafe extern "efiapi" fn(
+    protocol: *const Guid,
+    registration: *mut c_void,
     interface: *mut *mut c_void,
 ) -> Status;
 type AllocatePoolFn = unsafe extern "efiapi" fn(
@@ -211,7 +250,7 @@ pub struct BootServices {
     open_protocol_information: usize,
     protocols_per_handle: usize,
     locate_handle_buffer: usize,
-    locate_protocol: usize,
+    locate_protocol: Option<LocateProtocolFn>,
     install_multiple_protocol_interfaces: usize,
     uninstall_multiple_protocol_interfaces: usize,
     calculate_crc32: usize,
@@ -1210,6 +1249,51 @@ unsafe fn validated_device_tree(pointer: *mut c_void) -> u64 {
     }
 }
 
+/// Return the active GOP framebuffer range when firmware exposes a usable mode.
+/// This is metadata discovery only: it does not write pixels or assume a pixel format.
+unsafe fn discover_framebuffer(boot_services: *mut BootServices) -> (u64, u64) {
+    if boot_services.is_null() {
+        return (0, 0);
+    }
+    let Some(locate_protocol) = (unsafe { (*boot_services).locate_protocol }) else {
+        return (0, 0);
+    };
+    let mut raw = ptr::null_mut();
+    // SAFETY: GOP is queried while UEFI boot services are active; the output is writable.
+    let status = unsafe {
+        locate_protocol(
+            &GRAPHICS_OUTPUT_PROTOCOL_GUID,
+            ptr::null_mut(),
+            &mut raw,
+        )
+    };
+    if status != EFI_SUCCESS || raw.is_null() {
+        return (0, 0);
+    }
+    let gop = raw.cast::<GraphicsOutputProtocol>();
+    // SAFETY: LocateProtocol returned the GOP interface for the active firmware mode.
+    let mode = unsafe { (*gop).mode };
+    if mode.is_null() {
+        return (0, 0);
+    }
+    // SAFETY: a valid GOP mode carries its mode information and framebuffer range.
+    let mode_info = unsafe { (*mode).info };
+    let base = unsafe { (*mode).framebuffer_base };
+    let size = unsafe { (*mode).framebuffer_size } as u64;
+    if mode_info.is_null() || base == 0 || size == 0 || base.checked_add(size).is_none() {
+        return (0, 0);
+    }
+    // A mode with no scan lines or resolution is not useful framebuffer metadata.
+    let info = unsafe { &*mode_info };
+    if info.horizontal_resolution == 0
+        || info.vertical_resolution == 0
+        || info.pixels_per_scan_line < info.horizontal_resolution
+    {
+        return (0, 0);
+    }
+    (base, size)
+}
+
 fn platform_tables(system_table: *mut SystemTable) -> (u64, u64) {
     let acpi20 = configuration_table(system_table, &ACPI_20_TABLE_GUID);
     let acpi10 = configuration_table(system_table, &ACPI_10_TABLE_GUID);
@@ -1298,6 +1382,9 @@ pub unsafe fn transfer_to_kernel(
     } else {
         None
     };
+    // Query GOP before the final memory-map snapshot. A missing or malformed GOP
+    // is a supported headless mode; a discovered range is audited below as reserved.
+    let (framebuffer_base, framebuffer_size) = unsafe { discover_framebuffer(boot_services) };
     let mut leaked_info = ptr::null_mut::<BootInfo>();
     let mut leaked_map = ptr::null_mut::<u8>();
 
@@ -1452,8 +1539,8 @@ pub unsafe fn transfer_to_kernel(
                     flags: 0,
                     acpi_rsdp,
                     device_tree,
-                    framebuffer_base: 0,
-                    framebuffer_size: 0,
+                    framebuffer_base,
+                    framebuffer_size,
                 },
             );
         }
