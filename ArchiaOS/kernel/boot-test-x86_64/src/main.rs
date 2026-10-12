@@ -3,8 +3,8 @@
 use core::arch::{asm, global_asm};
 use core::fmt::{self, Write};
 use core::panic::PanicInfo;
-use core::ptr::read_volatile;
 use archiaos_bootloader::bootinfo::{BootInfo, BOOT_INFO_MAGIC, BOOT_INFO_VERSION};
+use archiaos_bootloader::memory_map::UefiMemoryMap;
 const COM1:u16=0x3f8;
 const MIN_DESC:u64=40;
 global_asm!(
@@ -34,9 +34,14 @@ pub extern "C" fn rust_kernel_main(info:*const BootInfo)->!{
  let desc_size=b.memory_map_descriptor_size as usize;
  let count=(b.memory_map_size/b.memory_map_descriptor_size) as usize;
  if count==0||count>65536{let _=writeln!(serial,"ArchiaOS UEFI test kernel: map entry count rejected");halt();}
- for i in 0..count {let d=unsafe{b.memory_map.add(i*desc_size)};let _kind=unsafe{read_volatile(d.cast::<u32>())};}
+ let map_bytes=unsafe{core::slice::from_raw_parts(b.memory_map,b.memory_map_size as usize)};
+ let memory_map=match UefiMemoryMap::parse(map_bytes,desc_size){
+  Ok(map) if map.len()==count=>map,
+  _=>{let _=writeln!(serial,"ArchiaOS UEFI test kernel: UEFI memory map rejected");halt();}
+ };
+ if memory_map.is_empty(){let _=writeln!(serial,"ArchiaOS UEFI test kernel: memory map is empty");halt();}
  let _=writeln!(serial,"ArchiaOS UEFI test kernel: BootInfo validated");
- let _=writeln!(serial,"ArchiaOS UEFI test kernel: memory map descriptors: {}",count);
+ let _=writeln!(serial,"ArchiaOS UEFI test kernel: memory map descriptors validated: {}",memory_map.len());
  let _=writeln!(serial,"ArchiaOS UEFI test kernel: identity-mapped handoff passed");
  halt()
 }
