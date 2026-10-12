@@ -7,7 +7,7 @@ It is linked at identity addresses starting at 2 MiB, receives `BootInfo` in RDI
 CI build command from this directory:
 
 ```sh
-RUSTFLAGS="-C link-arg=-Tlinker.ld -C relocation-model=static -C code-model=small -C no-redzone=yes" cargo build --release --target x86_64-unknown-none --target-dir ../../target/boot-test-x86_64
+RUSTFLAGS="-C link-arg=-Tlinker.ld -C relocation-model=static -C no-redzone=yes" cargo build --release --target x86_64-unknown-none --target-dir ../../target/boot-test-x86_64
 ```
 
 This verifies the loader handoff only, not production MMU, IDT, scheduler or kernel memory management.

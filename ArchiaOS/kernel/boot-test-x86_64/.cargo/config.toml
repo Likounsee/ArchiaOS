@@ -2,6 +2,5 @@
 rustflags = [
   "-C", "link-arg=-Tlinker.ld",
   "-C", "relocation-model=static",
-  "-C", "code-model=small",
   "-C", "no-redzone=yes",
 ]

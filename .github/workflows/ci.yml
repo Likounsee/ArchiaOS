@@ -119,7 +119,7 @@ jobs:
         shell: bash
         run: |
           cd kernel/boot-test-x86_64
-          RUSTFLAGS="-C link-arg=-Tlinker.ld -C relocation-model=static -C code-model=small -C no-redzone=yes" cargo build --release --target x86_64-unknown-none --target-dir ../../target/boot-test-x86_64
+          RUSTFLAGS="-C link-arg=-Tlinker.ld -C relocation-model=static -C no-redzone=yes" cargo build --release --target x86_64-unknown-none --target-dir ../../target/boot-test-x86_64
       - name: Build first-party UEFI loader
         run: cargo build --manifest-path bootloader/Cargo.toml --release --target x86_64-unknown-uefi
       - name: Prepare UEFI FAT disk image
