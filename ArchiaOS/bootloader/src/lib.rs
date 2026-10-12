@@ -36,6 +36,8 @@ pub mod bootinfo {
         InvalidMemoryMapSize,
         InvalidDescriptorMetadata,
         UnalignedMemoryMap,
+        InvalidKernelEntry,
+        InvalidFramebufferRange,
     }
 
     /// Validate scalar ABI fields before the caller dereferences the memory map.
@@ -43,6 +45,9 @@ pub mod bootinfo {
     pub fn validate_header(info: &BootInfo) -> Result<(), BootInfoError> {
         if info.magic != BOOT_INFO_MAGIC {
             return Err(BootInfoError::BadMagic);
+        }
+        if info.kernel_entry == 0 {
+            return Err(BootInfoError::InvalidKernelEntry);
         }
         if info.version != BOOT_INFO_VERSION {
             return Err(BootInfoError::UnsupportedVersion);
@@ -61,6 +66,14 @@ pub mod bootinfo {
         }
         if (info.memory_map as usize) % core::mem::align_of::<u64>() != 0 {
             return Err(BootInfoError::UnalignedMemoryMap);
+        }
+        // A disabled framebuffer is represented by two zero fields. If enabled,
+        // its physical range must be non-empty and must not wrap the address space.
+        if (info.framebuffer_base == 0) != (info.framebuffer_size == 0)
+            || (info.framebuffer_size != 0
+                && info.framebuffer_base.checked_add(info.framebuffer_size).is_none())
+        {
+            return Err(BootInfoError::InvalidFramebufferRange);
         }
         Ok(())
     }
@@ -1214,6 +1227,30 @@ mod tests {
     #[test]
     fn boot_info_header_accepts_valid_contract() {
         assert_eq!(validate_header(&valid_boot_info()), Ok(()));
+    }
+
+    #[test]
+    fn boot_info_header_rejects_zero_kernel_entry() {
+        let mut info = valid_boot_info();
+        info.kernel_entry = 0;
+        assert_eq!(validate_header(&info), Err(BootInfoError::InvalidKernelEntry));
+    }
+
+    #[test]
+    fn boot_info_header_rejects_inconsistent_or_overflowing_framebuffer() {
+        let mut info = valid_boot_info();
+        info.framebuffer_base = 0x8000_0000;
+        assert_eq!(validate_header(&info), Err(BootInfoError::InvalidFramebufferRange));
+
+        let mut info = valid_boot_info();
+        info.framebuffer_base = u64::MAX - 0xFFF;
+        info.framebuffer_size = 0x2000;
+        assert_eq!(validate_header(&info), Err(BootInfoError::InvalidFramebufferRange));
+
+        let mut info = valid_boot_info();
+        info.framebuffer_base = 0x8000_0000;
+        info.framebuffer_size = 0x1000;
+        assert_eq!(validate_header(&info), Ok(()));
     }
 
     #[test]
