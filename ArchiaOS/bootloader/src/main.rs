@@ -29,9 +29,6 @@ const MAX_KERNEL_MEMORY_SIZE: u64 = 128 * 1024 * 1024;
 const MAX_MEMORY_MAP_SIZE: usize = 1024 * 1024;
 const MAX_ELF_PROGRAM_HEADERS: usize = 1024;
 const PAGE_SIZE: u64 = 4096;
-const FDT_MAGIC: u32 = 0xd00d_feed;
-const MIN_FDT_HEADER_SIZE: u64 = 40;
-const MAX_FDT_SIZE: u64 = 16 * 1024 * 1024;
 const LOWEST_KERNEL_ADDRESS: u64 = 1024 * 1024;
 const IDENTITY_LIMIT: u64 = 1u64 << 32;
 const EFI_MEMORY_DESCRIPTOR_MIN_SIZE: usize = 40;
@@ -235,32 +232,18 @@ unsafe fn configuration_table_pointer(st:*mut SystemTable,guid:Guid)->u64 {
 }
 
 unsafe fn validate_fdt_header(address:u64)->bool {
+    use archiaos_bootloader::device_tree::{parse_header, HEADER_SIZE, MAX_TOTAL_SIZE};
     if address==0||address>usize::MAX as u64 { return false; }
     let base=address as usize as *const u8;
-    let read_be_u32=|offset:usize| unsafe {
-        u32::from_be(read_unaligned(base.add(offset).cast::<u32>()))
+    // The EFI Device Tree configuration entry points to a readable FDT blob.
+    // Read its advertised total size only after checking the header prefix, then
+    // pass a bounded slice to the shared, unit-tested parser.
+    let total=unsafe {
+        u32::from_be(read_unaligned(base.add(4).cast::<u32>())) as usize
     };
-    if read_be_u32(0)!=FDT_MAGIC { return false; }
-    let total=read_be_u32(4) as u64;
-    let off_struct=read_be_u32(8) as u64;
-    let off_strings=read_be_u32(12) as u64;
-    let off_reservations=read_be_u32(16) as u64;
-    let version=read_be_u32(20);
-    let last_compatible=read_be_u32(24);
-    let size_strings=read_be_u32(32) as u64;
-    let size_struct=read_be_u32(36) as u64;
-    if total<MIN_FDT_HEADER_SIZE||total>MAX_FDT_SIZE
-        ||version<17||last_compatible>version||last_compatible>17
-    { return false; }
-    let Some(struct_end)=off_struct.checked_add(size_struct) else { return false; };
-    let Some(strings_end)=off_strings.checked_add(size_strings) else { return false; };
-    let Some(reservations_end)=off_reservations.checked_add(16) else { return false; };
-    off_struct>=MIN_FDT_HEADER_SIZE
-        &&off_strings>=MIN_FDT_HEADER_SIZE
-        &&off_reservations>=MIN_FDT_HEADER_SIZE
-        &&struct_end<=total
-        &&strings_end<=total
-        &&reservations_end<=total
+    if total<HEADER_SIZE||total>MAX_TOTAL_SIZE { return false; }
+    let image=unsafe { core::slice::from_raw_parts(base,total) };
+    parse_header(image).is_ok()
 }
 
 unsafe fn protocol<T>(bs:*mut BootServices,h:Handle,g:*const Guid)->Result<*mut T,Status> {
