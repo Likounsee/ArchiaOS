@@ -7,6 +7,7 @@ use core::arch::{asm, global_asm};
 use core::fmt::{self, Write};
 use core::panic::PanicInfo;
 
+#[cfg(not(feature = "uefi-boot"))]
 #[used]
 #[link_section = ".limine_requests_start"]
 static LIMINE_REQUESTS_START_MARKER: [u64; 4] = [
@@ -16,6 +17,7 @@ static LIMINE_REQUESTS_START_MARKER: [u64; 4] = [
     0x181e_920a_7852_b9d9,
 ];
 
+#[cfg(not(feature = "uefi-boot"))]
 #[used]
 #[link_section = ".limine_requests_end"]
 static LIMINE_REQUESTS_END_MARKER: [u64; 2] = [
@@ -23,6 +25,7 @@ static LIMINE_REQUESTS_END_MARKER: [u64; 2] = [
     0x9572_709f_3176_4c62,
 ];
 
+#[cfg(not(feature = "uefi-boot"))]
 global_asm!(
     ".section .text.boot, \"ax\"",
     ".global _start",
@@ -36,6 +39,32 @@ global_asm!(
     "cli",
     "hlt",
     "jmp .Lhalt",
+);
+
+#[cfg(feature = "uefi-boot")]
+global_asm!(
+    ".section .text.boot, \"ax\"",
+    ".global _start",
+    ".type _start, @function",
+    "_start:",
+    "cli",
+    "cld",
+    // Do not depend on the EFI application's inherited stack after handoff.
+    "lea rsp, [rip + __boot_stack_top]",
+    "and rsp, -16",
+    // Bootloader contract: BootInfo arrives in RDI and is preserved into Rust.
+    "call rust_kernel_main_uefi",
+    ".Lhalt_uefi:",
+    "cli",
+    "hlt",
+    "jmp .Lhalt_uefi",
+    ".section .bss.stack, \"aw\", @nobits",
+    ".balign 4096",
+    ".global __boot_stack_bottom",
+    "__boot_stack_bottom:",
+    ".skip 65536",
+    ".global __boot_stack_top",
+    "__boot_stack_top:",
 );
 
 const COM1: u16 = 0x3F8;
@@ -87,6 +116,7 @@ fn halt_forever() -> ! {
     loop { unsafe { asm!("cli; hlt", options(nomem, nostack)) }; }
 }
 
+#[cfg(not(feature = "uefi-boot"))]
 #[no_mangle]
 pub extern "C" fn rust_kernel_main() -> ! {
     let mut serial = Serial;
@@ -112,6 +142,40 @@ pub extern "C" fn rust_kernel_main() -> ! {
     }
     let _ = writeln!(serial, "ArchiaOS: PMM allocation/free self-test passed");
     let _ = writeln!(serial, "ArchiaOS: interrupts and scheduling are not initialized yet");
+    halt_forever();
+}
+
+#[cfg(feature = "uefi-boot")]
+#[no_mangle]
+pub extern "C" fn rust_kernel_main_uefi(
+    boot_info: *const archiaos_bootloader::bootinfo::BootInfo,
+) -> ! {
+    let mut serial = Serial;
+    serial.init();
+    let _ = writeln!(serial, "ArchiaOS: custom UEFI bootloader entered production kernel");
+    let _ = writeln!(serial, "ArchiaOS: validating ARCHIABI BootInfo and UEFI memory map");
+
+    // The custom loader maps the handoff allocation and provides this pointer in
+    // RDI. The initializer verifies alignment, version, structure size, bounds,
+    // descriptor stride and every memory range before seeding the PMM bitmap.
+    let stats = match unsafe { memory::initialize_from_bootinfo(&mut serial, boot_info) } {
+        Ok(stats) => stats,
+        Err(error) => {
+            let _ = writeln!(serial, "ArchiaOS: UEFI memory initialization failed: {:?}", error);
+            halt_forever();
+        }
+    };
+    let _ = writeln!(serial, "ArchiaOS: UEFI BootInfo validated");
+    let _ = writeln!(serial, "ArchiaOS: UEFI memory map entries: {}", stats.map_entries);
+    let _ = writeln!(serial, "ArchiaOS: conventional memory ranges: {}, bytes: {}", stats.usable_ranges, stats.usable_bytes);
+    let _ = writeln!(serial, "ArchiaOS: free physical pages below 4 GiB: {}", stats.free_pages);
+
+    if let Err(error) = memory::self_test(&mut serial) {
+        let _ = writeln!(serial, "ArchiaOS: UEFI PMM self-test failed: {:?}", error);
+        halt_forever();
+    }
+    let _ = writeln!(serial, "ArchiaOS: UEFI PMM allocation/free self-test passed");
+    let _ = writeln!(serial, "ArchiaOS: Limine-independent kernel entry validated");
     halt_forever();
 }
 
