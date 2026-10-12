@@ -36,6 +36,34 @@ global_asm!(
     ".skip 65536",
     ".global __stack_top",
     "__stack_top:",
+    ".section .text.vectors, \"ax\"",
+    ".balign 2048",
+    ".global __exception_vectors",
+    ".type __exception_vectors, %function",
+    "__exception_vectors:",
+    "mov x0, #0", "b aarch64_exception_vector_handler", ".space 120",
+    "mov x0, #1", "b aarch64_exception_vector_handler", ".space 120",
+    "mov x0, #2", "b aarch64_exception_vector_handler", ".space 120",
+    "mov x0, #3", "b aarch64_exception_vector_handler", ".space 120",
+    "mov x0, #4", "b aarch64_exception_vector_handler", ".space 120",
+    "mov x0, #5", "b aarch64_exception_vector_handler", ".space 120",
+    "mov x0, #6", "b aarch64_exception_vector_handler", ".space 120",
+    "mov x0, #7", "b aarch64_exception_vector_handler", ".space 120",
+    "mov x0, #8", "b aarch64_exception_vector_handler", ".space 120",
+    "mov x0, #9", "b aarch64_exception_vector_handler", ".space 120",
+    "mov x0, #10", "b aarch64_exception_vector_handler", ".space 120",
+    "mov x0, #11", "b aarch64_exception_vector_handler", ".space 120",
+    "mov x0, #12", "b aarch64_exception_vector_handler", ".space 120",
+    "mov x0, #13", "b aarch64_exception_vector_handler", ".space 120",
+    "mov x0, #14", "b aarch64_exception_vector_handler", ".space 120",
+    "mov x0, #15", "b aarch64_exception_vector_handler", ".space 120",
+    ".section .text, \"ax\"",
+    ".global aarch64_exception_vector_handler",
+    "aarch64_exception_vector_handler:",
+    "bl rust_exception_handler",
+    "1:",
+    "wfe",
+    "b 1b",
 );
 
 const FALLBACK_PL011_BASE: usize = 0x0900_0000;
@@ -49,6 +77,10 @@ const UART_ICR_OFFSET: usize = 0x44;
 const UART_REQUIRED_SIZE: u64 = 0x48;
 const UART_FR_TXFF: u32 = 1 << 5;
 static mut EARLY_SERIAL_BASE: usize = FALLBACK_PL011_BASE;
+
+extern "C" {
+    static __exception_vectors: u8;
+}
 
 struct Serial {
     base: usize,
@@ -92,6 +124,14 @@ impl Serial {
                 self.write_byte(b'\\r');
             }
             self.write_byte(byte);
+        }
+    }
+
+    fn write_hex(&mut self, value: u64) {
+        const HEX: &[u8; 16] = b"0123456789abcdef";
+        self.write_str("0x");
+        for shift in (0..16).rev() {
+            self.write_byte(HEX[((value >> (shift * 4)) & 0xf) as usize]);
         }
     }
 }
@@ -142,6 +182,117 @@ unsafe fn discover_pl011_base(address: u64) -> Option<usize> {
         return None;
     }
     Some(reg.address as usize)
+}
+
+fn install_exception_vectors() -> bool {
+    // The vector table contains sixteen 128-byte slots and must be 2 KiB aligned.
+    let base = unsafe { core::ptr::addr_of!(__exception_vectors) as u64 };
+    if base & 0x7ff != 0 {
+        return false;
+    }
+
+    let current_el: u64;
+    unsafe {
+        asm!(
+            "mrs {level}, CurrentEL",
+            level = out(reg) current_el,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    match current_el & 0x0c {
+        0x04 => unsafe {
+            asm!("msr VBAR_EL1, {base}", base = in(reg) base, options(nostack, preserves_flags));
+        },
+        0x08 => unsafe {
+            asm!("msr VBAR_EL2, {base}", base = in(reg) base, options(nostack, preserves_flags));
+        },
+        0x0c => unsafe {
+            asm!("msr VBAR_EL3, {base}", base = in(reg) base, options(nostack, preserves_flags));
+        },
+        _ => return false,
+    }
+    unsafe { asm!("dsb sy", "isb", options(nostack, preserves_flags)); }
+    true
+}
+
+fn exception_registers() -> Option<(u64, u64, u64)> {
+    let current_el: u64;
+    unsafe {
+        asm!(
+            "mrs {level}, CurrentEL",
+            level = out(reg) current_el,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+
+    let esr: u64;
+    let elr: u64;
+    let far: u64;
+    match current_el & 0x0c {
+        0x04 => unsafe {
+            asm!(
+                "mrs {esr}, ESR_EL1",
+                "mrs {elr}, ELR_EL1",
+                "mrs {far}, FAR_EL1",
+                esr = out(reg) esr,
+                elr = out(reg) elr,
+                far = out(reg) far,
+                options(nomem, nostack, preserves_flags)
+            );
+        },
+        0x08 => unsafe {
+            asm!(
+                "mrs {esr}, ESR_EL2",
+                "mrs {elr}, ELR_EL2",
+                "mrs {far}, FAR_EL2",
+                esr = out(reg) esr,
+                elr = out(reg) elr,
+                far = out(reg) far,
+                options(nomem, nostack, preserves_flags)
+            );
+        },
+        0x0c => unsafe {
+            asm!(
+                "mrs {esr}, ESR_EL3",
+                "mrs {elr}, ELR_EL3",
+                "mrs {far}, FAR_EL3",
+                esr = out(reg) esr,
+                elr = out(reg) elr,
+                far = out(reg) far,
+                options(nomem, nostack, preserves_flags)
+            );
+        },
+        _ => return None,
+    }
+    Some((esr, elr, far))
+}
+
+#[no_mangle]
+pub extern "C" fn rust_exception_handler(vector: u64) -> ! {
+    let base = unsafe { read_volatile(core::ptr::addr_of!(EARLY_SERIAL_BASE)) };
+    let mut serial = Serial::new(base);
+    serial.write_str("ArchiaOS AArch64: exception vector entered\\n");
+    serial.write_str("ArchiaOS AArch64: vector=");
+    serial.write_hex(vector);
+    serial.write_str("\\n");
+
+    if let Some((esr, elr, far)) = exception_registers() {
+        serial.write_str("ArchiaOS AArch64: ESR=");
+        serial.write_hex(esr);
+        serial.write_str(" ELR=");
+        serial.write_hex(elr);
+        serial.write_str(" FAR=");
+        serial.write_hex(far);
+        serial.write_str("\\n");
+    } else {
+        serial.write_str("ArchiaOS AArch64: unknown exception level\\n");
+    }
+
+    // The bring-up test executes BRK while running with SPx, which is vector 4.
+    if vector == 4 {
+        serial.write_str("ArchiaOS AArch64: expected synchronous exception trapped\\n");
+    }
+    halt_forever()
 }
 
 unsafe fn validate_fdt_at_address(address: u64) -> bool {
@@ -279,8 +430,15 @@ pub extern "C" fn rust_kernel_main(info: *const BootInfo) -> ! {
     } else {
         serial.write_str("ArchiaOS AArch64: using QEMU virt PL011 fallback\\n");
     }
+    if install_exception_vectors() {
+        serial.write_str("ArchiaOS AArch64: exception vectors installed\\n");
+    } else {
+        serial.write_str("ArchiaOS AArch64: exception vector installation failed\\n");
+        halt_forever();
+    }
     validate_boot_info(info, &mut serial);
-    serial.write_str("ArchiaOS AArch64: bring-up prototype; MMU and exceptions pending\\n");
+    serial.write_str("ArchiaOS AArch64: executing synchronous exception self-test\\n");
+    unsafe { asm!("brk #0", options(nostack)); }
     halt_forever();
 }
 
