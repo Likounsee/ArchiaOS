@@ -43,7 +43,7 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 
 **Critère de sortie :** build reproductible et tests de démarrage verts sur le HEAD courant, sans déclarer les essais QEMU comme une validation de tout matériel physique.
 
-### P1 — Fiabilité du chargeur et de la mémoire — 83 %
+### P1 — Fiabilité du chargeur et de la mémoire — 86 %
 
 **État : EN COURS.** CI verte sur le HEAD `1ab767a` : tests unitaires du chargeur, démarrage UEFI OVMF en identité et high-half, test négatif BootInfo, smoke test AAVMF/ARM64 et paquet USB. P1 continue sur l'audit des plages réservées spécifiques aux plateformes et les scénarios matériels.
 
@@ -68,6 +68,8 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 - [x] Valider la cohérence et l'absence de débordement de la plage framebuffer dans BootInfo. Le framebuffer GOP est une plage MMIO : elle peut légitimement être absente des descripteurs UEFI ; elle est mappée séparément en uncached et exclue de la RAM allocatable. Les tests de couverture générique rejettent les trous sans imposer à tort que le MMIO soit décrit comme mémoire système.
 - [ ] Terminer l'audit des autres plages réservées spécifiques à chaque plateforme.
 - [x] Étendre les tests de couverture mémoire aux sous-plages non alignées, aux frontières entre descripteurs de types différents et aux trous entre descripteurs ; CI verte sur `1ab767a`.
+- [x] Durcir le calcul des plages PMM réservées : écrêtage à la fenêtre gérée sous 4 Gio avant l'arrondi, sans débordement inutile pour une plage MMIO située hors fenêtre ; auto-vérifications au démarrage pour les limites, les plages non alignées et les longueurs nulles (commit `a8654bf`).
+- [x] Centraliser le calcul du chevauchement entre intervalles de frames et ajouter des auto-vérifications déterministes pour les plages libres, réservées, adjacentes, disjointes, incluses et vides ; validation de démarrage OVMF et tests négatifs BootInfo verts sur le code correspondant (commit `b22d509`).
 - [x] Confirmer les contrôles de transfert, mappings et BootInfo par la CI du HEAD `00bcb8c` : compilation x86-64/ARM64, démarrage UEFI OVMF, BootInfo négatif et paquet USB tous verts.
 - [x] Réinitialiser les bitmaps PMM après la prévalidation et avant chaque tentative de population, afin qu'une tentative échouée ne laisse pas d'état périmé pour une reprise.
 - [x] Refuser l'allocation lorsque le bitmap ne contient aucune frame à la fois libre et gérée ; la simulation locale teste l'épuisement déterministe.
