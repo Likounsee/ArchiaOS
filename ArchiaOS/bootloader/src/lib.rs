@@ -380,4 +380,58 @@ mod tests {
             Err(ElfError::EntryNotExecutable)
         );
     }
+
+    #[test]
+    fn rejects_non_power_of_two_alignment() {
+        let mut image = valid_elf(X86_64);
+        put_u64(&mut image, 112, 3);
+        assert_eq!(
+            parse_elf64(&image, X86_64),
+            Err(ElfError::InvalidAlignment)
+        );
+    }
+
+    #[test]
+    fn rejects_file_segment_outside_image() {
+        let mut image = valid_elf(X86_64);
+        put_u64(&mut image, 72, 0x1ff);
+        assert_eq!(
+            parse_elf64(&image, X86_64),
+            Err(ElfError::SegmentOutOfBounds)
+        );
+    }
+
+    #[test]
+    fn rejects_overlapping_load_segments() {
+        let mut image = valid_elf(X86_64);
+        image.resize(0x1104, 0);
+        put_u16(&mut image, 56, 2);
+
+        // The second PT_LOAD has a matching file/virtual alignment, but maps
+        // the same virtual range as the first one. Such an image is ambiguous.
+        put_u32(&mut image, 120, 1);
+        put_u32(&mut image, 124, 4);
+        put_u64(&mut image, 128, 0x1100);
+        put_u64(&mut image, 136, 0x4008_0100);
+        put_u64(&mut image, 144, 0x4008_0100);
+        put_u64(&mut image, 152, 4);
+        put_u64(&mut image, 160, 16);
+        put_u64(&mut image, 168, 0x1000);
+        image[0x1100..0x1104].copy_from_slice(b"DATA");
+
+        assert_eq!(
+            parse_elf64(&image, X86_64),
+            Err(ElfError::OverlappingSegments)
+        );
+    }
+
+    #[test]
+    fn rejects_entry_outside_loadable_executable_range() {
+        let mut image = valid_elf(X86_64);
+        put_u64(&mut image, 24, 0xffff_ffff_9000_0000);
+        assert_eq!(
+            parse_elf64(&image, X86_64),
+            Err(ElfError::EntryNotExecutable)
+        );
+    }
 }
