@@ -10,6 +10,7 @@
 - **P5 — Graphique : non commencé.** Pas de framebuffer ou de compositeur.
 - **P6 — Réseau et performances : non commencé.** Pas de pile réseau ni de benchmarks.
 - **P7 — Distribution : non commencé.** Pas de version distribuable ni d’audit de sécurité final.
+- **P8 — Contrôle matériel bas niveau : objectif produit à préparer dès maintenant, implémentation non commencée.** Concevoir une couche commune de découverte/capteurs/actionneurs, des pilotes isolés par matériel, puis un service privilégié et une API pour les courbes de ventilation, températures, RGB et profils. Ne pas coder les protocoles fabricants directement dans le cœur du noyau. Les commandes doivent être explicites, vérifiées et limitées aux périphériques pris en charge ; la protection thermique et un retour à un état sûr priment toujours sur les profils personnalisés. Voir [l'architecture de contrôle matériel](HARDWARE_CONTROL.md).
 
 ## Piste parallèle — bootloader maison et ARM64
 
