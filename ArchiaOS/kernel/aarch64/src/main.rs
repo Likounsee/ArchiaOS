@@ -128,7 +128,10 @@ unsafe fn discover_pl011_base(address: u64) -> Option<usize> {
     }
     let image = unsafe { core::slice::from_raw_parts(base, total) };
     validate_fdt_tree(image).ok()?;
-    let reg = find_compatible_reg(image, b"arm,pl011").ok()??;
+    let reg = match find_compatible_reg(image, b"arm,pl011") {
+        Ok(Some(reg)) => reg,
+        Ok(None) | Err(_) => return None,
+    };
     if reg.address > usize::MAX as u64
         || reg.address % core::mem::align_of::<u32>() as u64 != 0
         || reg.size < UART_REQUIRED_SIZE
