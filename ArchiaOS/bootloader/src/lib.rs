@@ -270,6 +270,42 @@ pub mod memory_map {
             Ok(false)
         }
 
+        /// Return true only when the entire non-empty physical range is covered
+        /// continuously by descriptors that are not conventional RAM. A range that
+        /// crosses an unreported gap is not considered reserved.
+        pub fn range_is_fully_reserved(
+            &self,
+            physical_start: u64,
+            byte_length: u64,
+        ) -> Result<bool, MemoryMapError> {
+            if byte_length == 0 {
+                return Err(MemoryMapError::EmptyRange);
+            }
+            let target_end = physical_start
+                .checked_add(byte_length)
+                .ok_or(MemoryMapError::RangeOverflow)?;
+            let mut cursor = physical_start;
+            while cursor < target_end {
+                let mut covered_until = cursor;
+                for index in 0..self.count {
+                    let descriptor = self.entry(index)?;
+                    let descriptor_end = descriptor.physical_end()?;
+                    if descriptor.physical_start <= cursor && cursor < descriptor_end {
+                        if descriptor.is_conventional() {
+                            return Ok(false);
+                        }
+                        covered_until = descriptor_end.min(target_end);
+                        break;
+                    }
+                }
+                if covered_until == cursor {
+                    return Ok(false);
+                }
+                cursor = covered_until;
+            }
+            Ok(true)
+        }
+
         /// Sum pages explicitly classified by UEFI as conventional and available
         /// for general allocation. This does not itself reserve kernel or DMA ranges.
         pub fn conventional_page_count(&self) -> Result<u64, MemoryMapError> {
@@ -2072,6 +2108,21 @@ mod memory_map_tests {
         assert_eq!(map.range_overlaps_conventional(0x7000, 0x1000), Ok(false));
         assert_eq!(map.range_overlaps_conventional(0x1000, 0), Err(MemoryMapError::EmptyRange));
         assert_eq!(map.range_overlaps_conventional(u64::MAX - 1, 8), Err(MemoryMapError::RangeOverflow));
+    }
+
+    #[test]
+    fn requires_reserved_ranges_to_be_fully_covered_without_gaps() {
+        let mut bytes = descriptor(2, 0x1000, 1);
+        bytes.extend_from_slice(&descriptor(4, 0x2000, 1));
+        bytes.extend_from_slice(&descriptor(2, 0x3000, 1));
+        let map = UefiMemoryMap::parse(&bytes, 48).expect("valid map");
+        assert_eq!(map.range_is_fully_reserved(0x1000, 0x3000), Ok(true));
+        assert_eq!(map.range_is_fully_reserved(0x1000, 0x1000), Ok(true));
+        assert_eq!(map.range_is_fully_reserved(0x1000, 0x2000), Ok(false));
+        assert_eq!(map.range_is_fully_reserved(0x1800, 0x2000), Ok(false));
+        assert_eq!(map.range_is_fully_reserved(0x4000, 0x1000), Ok(false));
+        assert_eq!(map.range_is_fully_reserved(0x1000, 0), Err(MemoryMapError::EmptyRange));
+        assert_eq!(map.range_is_fully_reserved(u64::MAX - 3, 8), Err(MemoryMapError::RangeOverflow));
     }
 
     #[test]
