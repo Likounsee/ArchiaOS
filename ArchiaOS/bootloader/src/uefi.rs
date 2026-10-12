@@ -1269,19 +1269,35 @@ pub unsafe fn transfer_to_kernel(
 #[cfg(target_arch = "x86_64")]
 unsafe fn jump_to_kernel(entry: u64, info: *const BootInfo, page_table_root: u64) -> ! {
     // RDI carries BootInfo. High-half images receive fresh identity + kernel mappings;
-    // identity test kernels keep the firmware translation tables by passing root=0.
+    // identity test kernels keep firmware paging by passing root=0. Before using
+    // the new NX-marked mappings, enable EFER.NXE; CR0.WP also makes supervisor
+    // writes respect read-only kernel text/rodata pages.
     unsafe {
         core::arch::asm!(
             "cli",
             "cld",
             "test rdx, rdx",
             "jz 2f",
-            "mov cr3, rdx",
+            // Preserve the entry and CR3 inputs before RDMSR overwrites EDX:EAX.
+            "mov r8, rax",
+            "mov r9, rdx",
+            "mov ecx, 0xC0000080",
+            "rdmsr",
+            "or eax, 0x800",
+            "wrmsr",
+            "mov rax, cr0",
+            "or rax, 0x10000",
+            "mov cr0, rax",
+            "mov cr3, r9",
+            "mov rax, r8",
             "2:",
             "jmp rax",
-            in("rax") entry,
+            inout("rax") entry => _,
             in("rdi") info,
-            in("rdx") page_table_root,
+            inout("rdx") page_table_root => _,
+            out("rcx") _,
+            out("r8") _,
+            out("r9") _,
             options(noreturn)
         )
     }
