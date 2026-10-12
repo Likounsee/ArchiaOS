@@ -25,6 +25,13 @@ static LIMINE_REQUESTS_END_MARKER: [u64; 2] = [
     0x9572_709f_3176_4c62,
 ];
 
+// Keep the linker-defined first PT_LOAD non-empty in the UEFI-only build.
+// This is an ArchiaOS marker, not a Limine request; the custom loader ignores it.
+#[cfg(feature = "uefi-boot")]
+#[used]
+#[link_section = ".limine_requests"]
+static ARCHIAOS_UEFI_IMAGE_MARKER: [u64; 1] = [0x4152_4348_4941_5545];
+
 #[cfg(not(feature = "uefi-boot"))]
 global_asm!(
     ".section .text.boot, \"ax\"",
