@@ -29,7 +29,7 @@ static LIMINE_REQUESTS_END_MARKER: [u64; 2] = [
 // This is an ArchiaOS marker, not a Limine request; the custom loader ignores it.
 #[cfg(feature = "uefi-boot")]
 #[used]
-#[link_section = ".limine_requests"]
+#[link_section = ".archiaos_image_marker"]
 static ARCHIAOS_UEFI_IMAGE_MARKER: [u64; 1] = [0x4152_4348_4941_5545];
 
 #[cfg(not(feature = "uefi-boot"))]
