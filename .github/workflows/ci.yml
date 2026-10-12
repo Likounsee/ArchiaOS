@@ -177,7 +177,10 @@ jobs:
 
           # Negative boot case: the loader must reject a non-ELF kernel before
           # ExitBootServices and must never transfer control to a kernel.
-          printf 'NOT AN ELF IMAGE\n' > "$RUNNER_TEMP/archiaos-invalid-kernel.elf"
+          # Keep the fixture above the loader's minimum image-size bound so
+          # this exercises ELF validation rather than the earlier size guard.
+          dd if=/dev/zero of="$RUNNER_TEMP/archiaos-invalid-kernel.elf" bs=4096 count=1 status=none
+          printf 'NOT AN ELF IMAGE\n' | dd of="$RUNNER_TEMP/archiaos-invalid-kernel.elf" conv=notrunc status=none
           make_efi_image "$RUNNER_TEMP/archiaos-invalid-uefi.img" "$RUNNER_TEMP/archiaos-invalid-kernel.elf"
           echo "UEFI images prepared: identity, high-half, production, and invalid-ELF rejection"
       - name: Boot custom loader with OVMF
