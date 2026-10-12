@@ -39,17 +39,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y qemu-system-x86 ovmf dosfstools mtools
 
+      - name: Build standalone UEFI boot files
+        shell: bash
+        run: make uefi-files
+
       - name: Build and validate local UEFI boot
         shell: bash
         run: make boot-local
 
-      - name: Upload UEFI disk image and serial log
+      - name: Upload standalone UEFI files and serial log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: archiaos-p0-local-uefi-${{ github.run_number }}
           path: |
-            ArchiaOS/build/local-uefi/archiaos-uefi.img
+            ArchiaOS/build/uefi-files/**
             ArchiaOS/build/local-uefi/serial.log
           if-no-files-found: warn
           retention-days: 14
