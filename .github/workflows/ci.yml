@@ -62,7 +62,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Test BootInfo, ELF, ACPI RSDP and Device Tree parsers on host
+      - name: Test BootInfo, ELF, ACPI, Device Tree and memory-map parsers on host
         run: cargo test --manifest-path bootloader/Cargo.toml --lib --target x86_64-unknown-linux-gnu
       - name: Install UEFI Rust targets
         run: rustup target add x86_64-unknown-uefi aarch64-unknown-uefi
