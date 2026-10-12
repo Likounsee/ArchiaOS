@@ -783,6 +783,51 @@ fn image_uses_highhalf(elf: &archiaos_bootloader::elf::ElfFile) -> bool {
 }
 
 #[cfg(target_arch = "x86_64")]
+unsafe fn loaded_image_physical_range(
+    image_handle: Handle,
+    system_table: *mut SystemTable,
+) -> Result<(u64, u64), BootError> {
+    if image_handle.is_null() || system_table.is_null() {
+        return Err(error(EFI_INVALID_PARAMETER, b"ArchiaOS: invalid handle while locating loader image.\r\n\0"));
+    }
+    // SAFETY: SystemTable comes from the active UEFI application entry point.
+    let boot_services = unsafe { (*system_table).boot_services };
+    if boot_services.is_null() {
+        return Err(error(EFI_INVALID_PARAMETER, b"ArchiaOS: Boot Services unavailable while locating loader image.\r\n\0"));
+    }
+    let handle_protocol = unsafe { (*boot_services).handle_protocol }
+        .ok_or_else(|| error(EFI_UNSUPPORTED, b"ArchiaOS: HandleProtocol is unavailable for loader-image mapping.\r\n\0"))?;
+    let mut loaded_image_raw = ptr::null_mut();
+    // SAFETY: the protocol GUID and output pointer are valid during boot services.
+    let status = unsafe { handle_protocol(image_handle, &LOADED_IMAGE_GUID, &mut loaded_image_raw) };
+    if status != EFI_SUCCESS || loaded_image_raw.is_null() {
+        return Err(error(
+            if status == EFI_SUCCESS { EFI_LOAD_ERROR } else { status },
+            b"ArchiaOS: cannot query loaded-image range for the page-table transition.\r\n\0",
+        ));
+    }
+    let loaded = loaded_image_raw.cast::<LoadedImageProtocol>();
+    // SAFETY: HandleProtocol returned the LoadedImageProtocol interface.
+    let (image_base, image_size) = unsafe {
+        ((*loaded).image_base as u64, (*loaded).image_size)
+    };
+    let image_end = image_base.checked_add(image_size)
+        .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: loader-image range overflow.\r\n\0"))?;
+    let start = image_base & !(EFI_PAGE_SIZE - 1);
+    let end = image_end.checked_add(EFI_PAGE_SIZE - 1)
+        .map(|value| value & !(EFI_PAGE_SIZE - 1))
+        .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: rounded loader-image range overflow.\r\n\0"))?;
+    if image_base == 0
+        || image_size == 0
+        || start >= end
+        || end > MAX_KERNEL_PHYSICAL_ADDRESS
+    {
+        return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: loader image is outside the supported identity-mapped 4 GiB range.\r\n\0"));
+    }
+    Ok((start, end))
+}
+
+#[cfg(target_arch = "x86_64")]
 struct PageTableArena {
     physical_base: u64,
     base: *mut u64,
@@ -888,6 +933,8 @@ unsafe fn build_x86_64_page_tables(
     memory_map: &UefiMemoryMap<'_>,
     image: &[u8],
     elf: &archiaos_bootloader::elf::ElfFile,
+    loader_image_start: u64,
+    loader_image_end: u64,
 ) -> Result<u64, BootError> {
     arena.reset();
     let pml4 = arena.allocate_page()?;
@@ -950,6 +997,53 @@ unsafe fn build_x86_64_page_tables(
             address = address.checked_add(EFI_PAGE_SIZE)
                 .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: identity-map page iteration overflow.\r\n\0"))?;
         }
+    }
+
+    // The default identity map is RW+NX. Override the kernel PT_LOAD pages so
+    // their identity aliases cannot bypass high-half W^X: kernel code and rodata
+    // are read-only/NX, while data is writable/NX.
+    for index in 0..elf.program_header_count() {
+        let segment = match archiaos_bootloader::elf::load_segment(image, elf, index) {
+            Ok(segment) => segment,
+            Err(archiaos_bootloader::elf::ElfError::NotLoadableSegment) => continue,
+            Err(_) => return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ELF segment while protecting identity aliases.\r\n\0")),
+        };
+        let segment_end = segment.physical_address.checked_add(segment.memory_size)
+            .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: physical segment range overflow while protecting identity aliases.\r\n\0"))?;
+        let rounded_end = segment_end.checked_add(EFI_PAGE_SIZE - 1)
+            .map(|value| value & !(EFI_PAGE_SIZE - 1))
+            .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: rounded physical segment overflow while protecting identity aliases.\r\n\0"))?;
+        let flags = 0x1
+            | if segment.flags & PF_W != 0 { 0x2 } else { 0 }
+            | X86_64_PTE_NX;
+        let mut address = segment.physical_address;
+        while address < rounded_end {
+            let span = (address / (2 * 1024 * 1024)) as usize;
+            if span >= identity_tables.len() || identity_tables[span] == 0 {
+                return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: kernel identity alias lacks a page table.\r\n\0"));
+            }
+            let table = identity_tables[span] as *mut u64;
+            let pte_index = ((address >> 12) & 0x1ff) as usize;
+            unsafe { ptr::write(table.add(pte_index), address | flags) };
+            address = address.checked_add(EFI_PAGE_SIZE)
+                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: kernel identity-map iteration overflow.\r\n\0"))?;
+        }
+    }
+
+    // The CR3 transition instructions execute from the UEFI loader image after
+    // the switch. Keep that image read-only/executable in the identity map,
+    // while all kernel physical aliases remain NX.
+    let mut loader_address = loader_image_start;
+    while loader_address < loader_image_end {
+        let span = (loader_address / (2 * 1024 * 1024)) as usize;
+        if span >= identity_tables.len() || identity_tables[span] == 0 {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: loader image is outside mapped RAM.\r\n\0"));
+        }
+        let table = identity_tables[span] as *mut u64;
+        let pte_index = ((loader_address >> 12) & 0x1ff) as usize;
+        unsafe { ptr::write(table.add(pte_index), loader_address | 0x1) };
+        loader_address = loader_address.checked_add(EFI_PAGE_SIZE)
+            .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: loader-image identity-map iteration overflow.\r\n\0"))?;
     }
 
     // Map each validated ELF segment at its high-half virtual address, using
@@ -1152,6 +1246,12 @@ pub unsafe fn transfer_to_kernel(
     let info_address = info_allocation.pointer.cast::<BootInfo>();
     let map_address = map_allocation.pointer;
     #[cfg(target_arch = "x86_64")]
+    let loader_image_range = if image_uses_highhalf(_elf) {
+        Some(unsafe { loaded_image_physical_range(image_handle, system_table)? })
+    } else {
+        None
+    };
+    #[cfg(target_arch = "x86_64")]
     let mut page_table_arena = if image_uses_highhalf(_elf) {
         Some(unsafe { PageTableArena::allocate(boot_services)? })
     } else {
@@ -1204,8 +1304,17 @@ pub unsafe fn transfer_to_kernel(
         if let Some(arena) = page_table_arena.as_mut() {
             // The arena and all handoff buffers were allocated before this snapshot.
             // Building tables does not call firmware and therefore preserves the map key.
+            let (loader_image_start, loader_image_end) = loader_image_range
+                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: high-half page tables require a loader image range.\r\n\0"))?;
             kernel_page_table_root = unsafe {
-                build_x86_64_page_tables(arena, &parsed_map, _kernel_image, _elf)?
+                build_x86_64_page_tables(
+                    arena,
+                    &parsed_map,
+                    _kernel_image,
+                    _elf,
+                    loader_image_start,
+                    loader_image_end,
+                )?
             };
         }
 
