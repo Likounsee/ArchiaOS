@@ -13,6 +13,7 @@ pub const EFI_SUCCESS: Status = 0;
 pub const EFI_INVALID_PARAMETER: Status = EFI_ERROR_BIT | 2;
 pub const EFI_LOAD_ERROR: Status = EFI_ERROR_BIT | 1;
 pub const EFI_UNSUPPORTED: Status = EFI_ERROR_BIT | 3;
+#[cfg(target_arch = "aarch64")]
 const EFI_NOT_FOUND: Status = EFI_ERROR_BIT | 14;
 const EFI_LOADER_CODE: u32 = 1;
 const EFI_LOADER_DATA: u32 = 2;
@@ -26,13 +27,19 @@ const MAX_KERNEL_IMAGE_SIZE: usize = 64 * 1024 * 1024;
 const MAX_MEMORY_MAP_SIZE: usize = 1024 * 1024;
 const MAX_LOAD_SEGMENTS: usize = 1024;
 const MAX_TOTAL_KERNEL_MEMORY_SIZE: u64 = 128 * 1024 * 1024;
+#[cfg(target_arch = "x86_64")]
 const X86_64_HIGH_HALF_BASE: u64 = 0xffff_ffff_8000_0000;
+#[cfg(target_arch = "x86_64")]
 const X86_64_HIGH_HALF_END: u64 = X86_64_HIGH_HALF_BASE + MAX_TOTAL_KERNEL_MEMORY_SIZE;
+#[cfg(target_arch = "x86_64")]
 const X86_64_IDENTITY_PT_SPANS: usize = (MAX_KERNEL_PHYSICAL_ADDRESS / (2 * 1024 * 1024)) as usize;
+#[cfg(target_arch = "x86_64")]
 const X86_64_HIGH_PT_SPANS: usize = (MAX_TOTAL_KERNEL_MEMORY_SIZE / (2 * 1024 * 1024)) as usize;
+#[cfg(target_arch = "x86_64")]
 const PAGE_TABLE_ARENA_PAGES: usize = 2200;
 const MAX_EXIT_BOOT_SERVICES_ATTEMPTS: usize = 3;
 const PF_X: u32 = 1;
+#[cfg(target_arch = "x86_64")]
 const PF_W: u32 = 2;
 
 #[repr(C)]
@@ -802,7 +809,7 @@ impl PageTableArena {
             }
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: firmware returned an invalid page-table arena.\r\n\0"));
         }
-        let mut arena = Self {
+        let arena = Self {
             physical_base,
             base: physical_base as *mut u64,
             used_pages: 0,
@@ -1099,8 +1106,8 @@ pub unsafe fn transfer_to_kernel(
     image_handle: Handle,
     system_table: *mut SystemTable,
     kernel_entry: u64,
-    kernel_image: &[u8],
-    elf: &archiaos_bootloader::elf::ElfFile,
+    _kernel_image: &[u8],
+    _elf: &archiaos_bootloader::elf::ElfFile,
 ) -> Result<Infallible, BootError> {
     if image_handle.is_null() || system_table.is_null() || kernel_entry == 0 {
         return Err(error(EFI_INVALID_PARAMETER, b"ArchiaOS: invalid kernel handoff arguments.\r\n\0"));
@@ -1183,7 +1190,7 @@ pub unsafe fn transfer_to_kernel(
             // The arena and all handoff buffers were allocated before this snapshot.
             // Building tables does not call firmware and therefore preserves the map key.
             kernel_page_table_root = unsafe {
-                build_x86_64_page_tables(arena, &parsed_map, kernel_image, elf)?
+                build_x86_64_page_tables(arena, &parsed_map, _kernel_image, _elf)?
             };
         }
 
