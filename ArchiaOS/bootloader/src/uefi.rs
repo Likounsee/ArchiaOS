@@ -1294,6 +1294,56 @@ unsafe fn discover_framebuffer(boot_services: *mut BootServices) -> (u64, u64) {
     (base, size)
 }
 
+/// Ensure firmware platform-table storage remains reserved in the final handoff map.
+/// These pointers are consumed after ExitBootServices, so they must never be reclassified
+/// as conventional RAM that the physical allocator could hand to another subsystem.
+fn audit_platform_table_ranges(
+    memory_map: &UefiMemoryMap<'_>,
+    acpi_rsdp: u64,
+    device_tree: u64,
+) -> Result<(), BootError> {
+    if acpi_rsdp != 0 {
+        let rsdp = acpi_rsdp as *const u8;
+        // SAFETY: platform_tables only returns an RSDP after validating its signature,
+        // checksum(s), revision and bounded extended length.
+        let revision = unsafe { ptr::read(rsdp.add(15)) };
+        let length = if revision < 2 {
+            20u64
+        } else {
+            // SAFETY: a validated extended RSDP contains its 36-byte fixed prefix.
+            let field = unsafe { core::slice::from_raw_parts(rsdp.add(20), 4) };
+            u32::from_le_bytes([field[0], field[1], field[2], field[3]]) as u64
+        };
+        if !(20..=archiaos_bootloader::acpi::MAX_RSDP_SIZE as u64).contains(&length) {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid RSDP size during final memory-map audit.\\r\\n\\0"));
+        }
+        if !memory_map.range_is_fully_reserved(acpi_rsdp, length)
+            .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: malformed RSDP range in final memory map.\\r\\n\\0"))?
+        {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI RSDP storage is not fully reserved in the final memory map.\\r\\n\\0"));
+        }
+    }
+
+    if device_tree != 0 {
+        let dtb = device_tree as *const u8;
+        // SAFETY: platform_tables only returns a DTB after validating its bounded header
+        // and complete tree structure.
+        let header = unsafe { core::slice::from_raw_parts(dtb, 8) };
+        let length = u32::from_be_bytes([header[4], header[5], header[6], header[7]]) as u64;
+        if !(archiaos_bootloader::device_tree::HEADER_SIZE as u64
+            ..=archiaos_bootloader::device_tree::MAX_TOTAL_SIZE as u64).contains(&length)
+        {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid Device Tree size during final memory-map audit.\\r\\n\\0"));
+        }
+        if !memory_map.range_is_fully_reserved(device_tree, length)
+            .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: malformed Device Tree range in final memory map.\\r\\n\\0"))?
+        {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: Device Tree storage is not fully reserved in the final memory map.\\r\\n\\0"));
+        }
+    }
+    Ok(())
+}
+
 fn platform_tables(system_table: *mut SystemTable) -> (u64, u64) {
     let acpi20 = configuration_table(system_table, &ACPI_20_TABLE_GUID);
     let acpi10 = configuration_table(system_table, &ACPI_10_TABLE_GUID);
@@ -1557,6 +1607,8 @@ pub unsafe fn transfer_to_kernel(
         {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer is incorrectly classified as conventional RAM.\r\n\0"));
         }
+
+        audit_platform_table_ranges(&parsed_map, acpi_rsdp, device_tree)?;
 
         // Stop tracking the two pool buffers before the first EBS call, so no
         // destructor can call FreePool after boot services have been terminated.
