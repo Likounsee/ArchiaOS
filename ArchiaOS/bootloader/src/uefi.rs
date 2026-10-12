@@ -1475,7 +1475,13 @@ fn rsdp_signature_is_valid(signature: &[u8]) -> bool {
 /// Extended RSDPs include fields through byte 35; accepting a 20-byte prefix for
 /// revision >= 2 would let mutated firmware metadata pass the final-map audit.
 fn rsdp_length_is_valid(revision: u8, length: u64) -> bool {
-    let minimum = if revision < 2 { 20 } else { 36 };
+    // ACPI revision 1 is reserved. Only revision 0 uses the 20-byte legacy
+    // structure; revision 2 and later must expose the complete extended prefix.
+    let minimum = match revision {
+        0 => 20,
+        1 => return false,
+        _ => 36,
+    };
     (minimum..=archiaos_bootloader::acpi::MAX_RSDP_SIZE as u64).contains(&length)
 }
 
@@ -2233,7 +2239,6 @@ mod rsdp_handoff_length_tests {
     #[test]
     fn accepts_legacy_and_complete_extended_rsdp_lengths() {
         assert!(rsdp_length_is_valid(0, 20));
-        assert!(rsdp_length_is_valid(1, 20));
         assert!(rsdp_length_is_valid(2, 36));
         assert!(rsdp_length_is_valid(
             2,
@@ -2243,6 +2248,8 @@ mod rsdp_handoff_length_tests {
 
     #[test]
     fn rejects_truncated_extended_rsdp_and_oversized_lengths() {
+        assert!(!rsdp_length_is_valid(1, 20));
+        assert!(!rsdp_length_is_valid(1, 36));
         assert!(!rsdp_length_is_valid(2, 20));
         assert!(!rsdp_length_is_valid(2, 35));
         assert!(!rsdp_length_is_valid(
