@@ -9,7 +9,7 @@ ArchiaOS conserve le firmware UEFI standard de la machine, mais développe son p
 - **Noyau de production x86-64 :** il démarre encore avec Limine et utilise les réponses Limine pour initialiser la carte mémoire. Son image est liée en high-half ; le chargeur maison actuel refuse les segments qui nécessitent une traduction virtuelle.
 - **Bootloader maison :** lit `\\EFI\\ArchiaOS\\kernel.elf`, borne sa taille, valide ELF64, réserve les pages physiques exactes pour les segments identité, copie les octets et met le BSS à zéro. Il construit le BootInfo versionné `ARCHIABI`, collecte la carte mémoire finale et quitte les Boot Services avec une logique de nouvelle tentative pour une clé de carte périmée.
 - **Handoff x86-64 :** une image de test identité distincte démarre sous OVMF/QEMU et vérifie BootInfo. Le BootInfo reçoit l'adresse RSDP si les tables de configuration UEFI fournissent ACPI 2.0/1.0. Ce n'est pas encore le démarrage du noyau de production.
-- **Handoff AArch64 :** le même chemin d'allocation et de transfert est activé pour la cible UEFI AArch64, avec maintenance du cache d'instructions avant l'exécution. Le chargeur trouve le Device Tree via `EFI_DTB_TABLE_GUID`, valide l'en-tête, les blocs, les jetons et les noms de propriétés et passe le pointeur dans BootInfo. Le noyau prototype reçoit BootInfo dans `x0`, valide l'ABI, la structure FDT complète et les descripteurs mémoire. Un job AAVMF/QEMU de bout en bout est ajouté à la CI ; son résultat doit être confirmé avant d'annoncer la compatibilité ARM64 validée.
+- **Handoff AArch64 :** le même chemin d'allocation et de transfert est activé pour la cible UEFI AArch64, avec maintenance du cache d'instructions avant l'exécution. Le chargeur trouve le Device Tree via `EFI_DTB_TABLE_GUID`, valide l'en-tête, les blocs, les jetons et les noms de propriétés et passe le pointeur dans BootInfo. Le noyau prototype reçoit BootInfo dans `x0`, valide l'ABI, la structure FDT complète et les descripteurs mémoire, et découvre la console PL011 via `compatible`/`reg`. Un job AAVMF/QEMU de bout en bout est ajouté à la CI ; son résultat doit être confirmé avant d'annoncer la compatibilité ARM64 validée.
 - **Firmware :** UEFI standard fourni par le matériel ou la machine virtuelle ; aucun firmware maison n'est développé.
 
 ## Architecture cible
@@ -42,7 +42,7 @@ Cette structure est une cible de migration, pas une description des dossiers dé
 3. Transmission et validation de BootInfo, de la carte mémoire et du header Device Tree : implémentées dans le prototype.
 4. Chargement de segments identité et synchronisation I-cache : implémentés dans le loader, en attente du test QEMU UEFI de bout en bout.
 5. Vecteurs d'exceptions, MMU/TLB, timer et contrôleur d'interruptions : à implémenter.
-6. Interprétation sémantique du Device Tree (address/size-cells, régions mémoire, compatibles, reg, interruptions) et abstractions de plateforme : à implémenter.
+6. Découverte des régions mémoire et des interruptions/timers, gestion des propriétés `ranges` pour les bus non identitaires et abstractions de plateforme : à implémenter.
 7. Partage progressif du cœur portable et tests de non-régression x86-64/AArch64 : à faire.
 
 La prise en charge ARM64 ne sera annoncée comme validée qu'après un test UEFI AAVMF/QEMU de bout en bout qui confirme l'entrée du noyau, le transfert BootInfo et le Device Tree. La compilation seule ne suffit pas.
