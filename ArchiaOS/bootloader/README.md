@@ -1,29 +1,35 @@
 # ArchiaOS first-party UEFI bootloader
 
-ArchiaOS owns this Rust `no_std` loader; there are no third-party Rust dependencies. The standard machine/VM UEFI firmware remains in use.
+This crate implements a first-party UEFI loader using Rust and `core`, with no third-party Rust dependencies. Standard UEFI firmware remains a platform prerequisite; the loader code itself is maintained by ArchiaOS.
 
-## Implemented
+## Current implementation
 
-- UEFI entry point and firmware-console diagnostics, mirrored to COM1 on x86-64 for headless tests.
-- Opens `\\EFI\\ArchiaOS\\kernel.elf` from the EFI system volume using Loaded Image and Simple File System protocols.
-- Bounds the image at 64 MiB and the `EFI_FILE_INFO` query allocation at 4 KiB.
-- Validates ELF64 headers and load-segment bounds, arithmetic overflow, alignment, overlap and executable entry coverage.
-- On x86-64, validates the complete identity-mapped segment plan below 4 GiB, allocates the physical pages, copies file content and zeros BSS tails.
-- Defines versioned `BootInfo`, gets the final UEFI memory map, retries stale map keys and calls `ExitBootServices` without an intervening firmware call.
-- CI includes a small identity-linked kernel that validates the handoff under QEMU/OVMF.
+- UEFI entry point and diagnostic console output.
+- Opens `\\EFI\\ArchiaOS\\kernel.elf` on the same device from which the loader was started.
+- Bounds the image size, reads the file (including partial reads), and validates ELF64 for the current target architecture.
+- Validates headers and loadable segments, checked arithmetic, file bounds, alignment, virtual overlap and executable entry coverage.
+- Reserves pages at the ELF physical addresses, rejects non-identity mappings and addresses outside the supported sub-4-GiB range, copies each segment and zeroes its BSS tail.
+- On AArch64, synchronizes the data and instruction caches for executable ranges before transferring control.
+- Builds the versioned `ARCHIABI` BootInfo structure and obtains the final UEFI memory map immediately before `ExitBootServices`; retries stale map keys without making unrelated service calls after the first exit attempt.
+- Passes BootInfo in `RDI` on x86-64 or `x0` on AArch64 and branches to the ELF entry point.
+- CI includes an OVMF/QEMU x86-64 handoff test and an AAVMF/QEMU AArch64 handoff test. The AArch64 job's result must pass before the full path is considered validated.
 
-## Deliberate restrictions
+## Build and test
 
-The production kernel is still high-half linked and uses Limine responses; this loader explicitly rejects its address model. The end-to-end test only proves a low identity-mapped test image boots. Page-table construction for the main kernel remains future work.
-
-The AArch64 target still only builds the loader and parses ELF; its own physical loader policy, platform mappings, MMU state and handoff must be implemented/tested before claiming end-to-end ARM64 boot. ACPI/Device Tree and framebuffer fields are zero for now.
-
-## Build
-
-From `ArchiaOS/`:
+From the `ArchiaOS` directory:
 
 ```sh
 cargo test --manifest-path bootloader/Cargo.toml --lib --target x86_64-unknown-linux-gnu
 cargo build --manifest-path bootloader/Cargo.toml --release --target x86_64-unknown-uefi
 cargo build --manifest-path bootloader/Cargo.toml --release --target aarch64-unknown-uefi
 ```
+
+The current loading contract is intentionally limited to identity-mapped ELF64 segments below 4 GiB, at most 128 MiB of total segment memory, and images no larger than 64 MiB. That permits dedicated bring-up test kernels but does not yet support the high-half linked production x86-64 kernel. The new loader is not yet the default boot path for ArchiaOS.
+
+## Next
+
+1. Confirm both OVMF/AAVMF QEMU end-to-end jobs on the current commit.
+2. Move the identity-mapped test path into reusable platform-independent tests where possible.
+3. Extend BootInfo with validated platform tables such as ACPI RSDP (x86-64) and Device Tree (AArch64).
+4. Design the production kernel's page-table/bootstrap contract before supporting high-half loading.
+5. Add broader malformed ELF tests and CI fuzz-style parser cases.
