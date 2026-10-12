@@ -6,9 +6,9 @@ This is an isolated `no_std` kernel prototype for advancing AArch64 support with
 
 - AArch64 `_start` masks interrupts and installs a dedicated 64 KiB stack.
 - The first-argument register `x0` is preserved across stack setup and passed to Rust as a potential BootInfo pointer.
-- PL011 diagnostics use the QEMU `virt` UART at `0x09000000`.
+- PL011 diagnostics discover the UART base by matching the Device Tree node's `compatible` and `reg` properties; `0x09000000` is retained only as a QEMU `virt` fallback.
 - The kernel shares the exact `BootInfo` ABI with the loader through an internal path dependency, validates the versioned `ARCHIABI` structure, and uses the common allocation-free memory-map parser to validate each descriptor's stride, page alignment, non-zero range and overflow-safe physical end.
-- Direct QEMU `-kernel` smoke testing remains supported: in that mode `x0` normally points to the Device Tree, which is distinguished from BootInfo by its magic value. Both direct boot and the UEFI path use the shared FDT header/token parser, including reservation-map termination and property-name bounds.
+- Direct QEMU `-kernel` smoke testing remains supported: in that mode `x0` normally points to the Device Tree, which is distinguished from BootInfo by its magic value. Both direct boot and the UEFI path use the shared FDT parser, including reservation-map termination, property-name bounds, and compatible/reg discovery for the early UART.
 - The UEFI loader now has an AArch64 identity-mapped ELF load/handoff path, including executable-cache synchronization, `ExitBootServices`, and transfer to `_start`. A dedicated OVMF/AAVMF QEMU job tests this end-to-end path.
 
 ## Build and direct QEMU smoke test
@@ -24,4 +24,4 @@ The project CI also compiles the UEFI application and attempts to boot this kern
 
 ## Limits
 
-This is not yet a general ARM64 kernel. The current loader requires identity-mapped ELF64 segments below 4 GiB and the kernel is tailored to QEMU `virt`. The kernel does not yet establish its own MMU tables, exception vectors, timer, interrupt controller, or semantic Device Tree discovery for address/size cells, memory ranges, interrupt controllers and UART properties. It does not yet share the x86-64 PMM implementation. No production ARM64 compatibility is claimed yet.
+This is not yet a general ARM64 kernel. The current loader requires identity-mapped ELF64 segments below 4 GiB and the kernel is tailored to QEMU `virt`. The kernel does not yet establish its own MMU tables, exception vectors, timer, interrupt controller, or a full platform discovery layer for memory nodes, `ranges` translation, interrupt controllers and timers. It does not yet share the x86-64 PMM implementation. No production ARM64 compatibility is claimed yet.
