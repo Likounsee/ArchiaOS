@@ -6,7 +6,7 @@
 
 | Priorité | Domaine | Avancement estimé | État / prochaine preuve attendue |
 |---|---|---:|---|
-| **P0** | Démarrage UEFI maison x86-64 par défaut | **98 %** | CI verte sur le HEAD `1ec20483c4e699ae884a271d4b1613531d158070` : compilations x86-64/ARM64, démarrages QEMU/OVMF + AAVMF et rejet BootInfo invalide. Validation sur matériel physique toujours ouverte. |
+| **P0** | Démarrage UEFI maison x86-64 par défaut | **98 %** | **Seul reste le test sur le PC physique** : démarrer depuis la clé USB avec l’artefact `archiaos-p0-usb-x86_64`, vérifier les diagnostics réels puis redémarrer à froid. Le workflow de packaging a réussi sur le commit `977fa0c5088f015f48f7f5a5261ffcc3c8cec7d8`; cela valide la compilation et l’artefact, pas encore le démarrage matériel. P0 reste ouvert jusqu’à ce test. |
 | **P1** | Fiabilité du chargeur, BootInfo et mémoire | **74 %** | Carte mémoire, ELF, BootInfo et autotests PMM validés ; ajouter des scénarios d'échec du chemin complet et approfondir l'audit des plages réservées. |
 | **P2** | Ordonnanceur et synchronisation | **0 %** | Non implémenté ; définir les primitives de tâches et le changement de contexte avant la préemption. |
 | **P3** | Espace utilisateur et ABI système | **0 %** | Non commencé ; dépend notamment des exceptions, syscalls et mécanismes mémoire isolés. |
@@ -38,11 +38,14 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 - [x] Ajouter un démarrage négatif OVMF avec volume EFI valide mais noyau absent : diagnostic du fichier manquant attendu, sans validation ELF ni transfert au noyau.
 - [x] Ajouter un test de démarrage négatif BootInfo invalide via une feature dédiée au build CI (`test-invalid-bootinfo`) ; le chargeur normal reste inchangé sans cette feature.
 - [x] Documenter les configurations CI : x86-64 sous OVMF/QEMU (Q35, 512 MiB, firmware sans Secure Boot), ARM64 sous AAVMF/QEMU (`virt`, Cortex-A57, 512 MiB) et prototype ARM64 en démarrage direct QEMU.
-- [ ] Valider sur matériel physique ; les tests virtuels ne garantissent pas la compatibilité universelle.
+- [x] Compiler et empaqueter les fichiers de test USB x86-64 dans GitHub Actions ; workflow `ArchiaOS P0 physical USB package` réussi sur le commit `977fa0c5088f015f48f7f5a5261ffcc3c8cec7d8`, artefact `archiaos-p0-usb-x86_64` disponible.
+- [ ] **SEUL POINT RESTANT POUR TERMINER P0 — validation sur le PC physique** : démarrer depuis la clé USB sans toucher au disque interne, relever les messages réels BootInfo/PMM/entrée noyau, effectuer un redémarrage à froid et vérifier le retour au firmware. Les tests virtuels ne garantissent pas la compatibilité universelle. En attendant que le PC soit disponible, poursuivre P1 sans déclarer P0 terminé.
 
 **Critère de sortie :** build reproductible et tests de démarrage verts sur le HEAD courant, sans déclarer les essais QEMU comme une validation de tout matériel physique.
 
 ### P1 — Fiabilité du chargeur et de la mémoire — 74 %
+
+**État : EN COURS.** P1 peut avancer pendant que la validation physique P0 attend la disponibilité du PC ; P0 reste à 98 % et ne sera fermé qu’après le test USB réel.
 
 **Objectif :** sécuriser le transfert UEFI → noyau et la gestion de la mémoire physique.
 
