@@ -44,6 +44,7 @@ pub enum MemoryError {
     FreeFailed,
     DoubleFreeAccepted,
     FreeCountMismatch,
+    ReservedRangeCalculationMismatch,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -98,7 +99,14 @@ fn reserved_frame_range(base: u64, length: u64) -> Option<(u64, u64)> {
     }
     let end = base.checked_add(length)?;
     let first = (base / PAGE_SIZE).min(MAX_FRAMES);
-    let rounded_end = end.checked_add(PAGE_SIZE - 1)? / PAGE_SIZE;
+    // This allocator manages only physical addresses below 4 GiB. Clip before
+    // rounding so an out-of-window MMIO range near u64::MAX cannot overflow the
+    // page-rounding addition and abort initialization for memory we never manage.
+    if first == MAX_FRAMES {
+        return Some((MAX_FRAMES, MAX_FRAMES));
+    }
+    let clipped_end = end.min(MAX_PHYSICAL_ADDRESS);
+    let rounded_end = clipped_end.checked_add(PAGE_SIZE - 1)? / PAGE_SIZE;
     Some((first, rounded_end.min(MAX_FRAMES)))
 }
 
@@ -376,6 +384,24 @@ pub fn free_page_count() -> u64 {
 }
 
 pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
+    // Exercise reservation rounding and clipping without mutating the global bitmaps.
+    // Framebuffer/MMIO ranges may be unaligned and may extend beyond the PMM's 4-GiB
+    // managed window; neither case may expose a partially covered page or overflow.
+    let reservation_cases = [
+        ((0x1001, 1), Some((1, 2))),
+        ((0x1fff, 2), Some((1, 3))),
+        ((MAX_PHYSICAL_ADDRESS - PAGE_SIZE, PAGE_SIZE * 2), Some((MAX_FRAMES - 1, MAX_FRAMES))),
+        ((MAX_PHYSICAL_ADDRESS, PAGE_SIZE), Some((MAX_FRAMES, MAX_FRAMES))),
+        ((u64::MAX - 1, 1), Some((MAX_FRAMES, MAX_FRAMES))),
+        ((0, 0), Some((0, 0))),
+    ];
+    for ((base, length), expected) in reservation_cases {
+        if reserved_frame_range(base, length) != expected {
+            return Err(MemoryError::ReservedRangeCalculationMismatch);
+        }
+    }
+    let _ = writeln!(log, "PMM test: reserved-range rounding, clipping, and overflow boundaries passed");
+
     let before = free_page_count();
     if before < PMM_SELF_TEST_PAGES as u64 {
         return Err(MemoryError::NoFreePages);
