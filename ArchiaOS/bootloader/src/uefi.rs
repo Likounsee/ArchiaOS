@@ -1794,8 +1794,11 @@ unsafe fn jump_to_kernel(entry: u64, info: *const BootInfo, page_table_root: u64
         core::arch::asm!(
             "cli",
             "cld",
-            // Configure COM1 without firmware services. 'P' marks entry into
-            // the final trampoline; 'T' marks execution after the CR3 branch.
+            // Save ABI inputs before COM1 setup clobbers RAX/RDX.
+            "mov r8, rax",
+            "mov r9, rdx",
+            // No UEFI calls after ExitBootServices. 'P' marks trampoline entry;
+            // 'T' means execution continued after the optional CR3 switch.
             "mov dx, 0x3f9",
             "xor al, al",
             "out dx, al",
@@ -1824,11 +1827,9 @@ unsafe fn jump_to_kernel(entry: u64, info: *const BootInfo, page_table_root: u64
             "out dx, al",
             "mov al, 0x0a",
             "out dx, al",
-            "test rdx, rdx",
+            "test r9, r9",
             "jz 2f",
-            // Preserve the entry and CR3 inputs before RDMSR overwrites EDX:EAX.
-            "mov r8, rax",
-            "mov r9, rdx",
+            // R8/R9 survive RDMSR, which overwrites EDX:EAX.
             "mov ecx, 0xC0000080",
             "rdmsr",
             "or eax, 0x800",
@@ -1837,7 +1838,6 @@ unsafe fn jump_to_kernel(entry: u64, info: *const BootInfo, page_table_root: u64
             "or rax, 0x10000",
             "mov cr0, rax",
             "mov cr3, r9",
-            "mov rax, r8",
             "2:",
             "mov dx, 0x3f8",
             "mov al, 0x54",
@@ -1846,6 +1846,7 @@ unsafe fn jump_to_kernel(entry: u64, info: *const BootInfo, page_table_root: u64
             "out dx, al",
             "mov al, 0x0a",
             "out dx, al",
+            "mov rax, r8",
             "jmp rax",
             in("rax") entry,
             in("rdi") info,
