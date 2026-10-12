@@ -19,6 +19,8 @@ const EFI_LOADER_DATA: u32 = 2;
 const EFI_ALLOCATE_ADDRESS: u32 = 2;
 const EFI_FILE_MODE_READ: u64 = 1;
 const EFI_PAGE_SIZE: u64 = 4096;
+const MIN_KERNEL_PHYSICAL_ADDRESS: u64 = 1024 * 1024;
+const MAX_KERNEL_PHYSICAL_ADDRESS: u64 = 1u64 << 32;
 const FILE_INFO_BUFFER_SIZE: usize = 1024;
 const MAX_KERNEL_IMAGE_SIZE: usize = 64 * 1024 * 1024;
 const MAX_MEMORY_MAP_SIZE: usize = 1024 * 1024;
@@ -592,6 +594,12 @@ pub unsafe fn load_kernel_segments(
             .checked_add(EFI_PAGE_SIZE - 1)
             .map(|value| value & !(EFI_PAGE_SIZE - 1))
             .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF segment page-range overflow.\r\n\0"))?;
+        if segment.physical_address < MIN_KERNEL_PHYSICAL_ADDRESS
+            || segment_end > MAX_KERNEL_PHYSICAL_ADDRESS
+            || rounded_end > MAX_KERNEL_PHYSICAL_ADDRESS
+        {
+            return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: ELF segment is outside the supported 1 MiB..4 GiB physical load window.\r\n\0"));
+        }
         let rounded_length = rounded_end
             .checked_sub(segment.physical_address)
             .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ELF page range.\r\n\0"))?;
