@@ -31,6 +31,6 @@ The current loading contract is intentionally limited to identity-mapped ELF64 s
 
 1. Confirm both OVMF/AAVMF QEMU end-to-end jobs on the current commit.
 2. Expand tests for the firmware configuration-table scanner and malformed firmware-provided table pointers.
-3. Interpret FDT semantics such as address/size cells, memory regions, interrupt controllers, compatible device strings and UART reg properties; ACPI validation currently stops at RSDP.
+3. Expand semantic FDT discovery for memory regions, bus `ranges` translation, interrupt controllers and timers; current `find_compatible_reg` returns a device's raw `reg` range and does not translate bus addresses.
 4. Design the production kernel's page-table/bootstrap contract before supporting high-half loading.
 5. Add broader malformed ELF tests and CI fuzz-style parser cases.
