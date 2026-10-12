@@ -1,0 +1,55 @@
+name: ArchiaOS P0 local UEFI boot
+
+on:
+  push:
+    branches: [ArchiaOS]
+    paths:
+      - "ArchiaOS/**"
+      - ".github/workflows/p0-local-boot.yml"
+  pull_request:
+    branches: [ArchiaOS]
+    paths:
+      - "ArchiaOS/**"
+      - ".github/workflows/p0-local-boot.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: archiaos-p0-local-boot-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  local-uefi-boot:
+    name: Build and boot production kernel under OVMF/QEMU
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ArchiaOS
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust targets
+        run: rustup target add x86_64-unknown-none x86_64-unknown-uefi
+
+      - name: Install local boot dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf dosfstools mtools
+
+      - name: Build and validate local UEFI boot
+        shell: bash
+        run: make boot-local
+
+      - name: Upload UEFI disk image and serial log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: archiaos-p0-local-uefi-${{ github.run_number }}
+          path: |
+            ArchiaOS/build/local-uefi/archiaos-uefi.img
+            ArchiaOS/build/local-uefi/serial.log
+          if-no-files-found: warn
+          retention-days: 14
