@@ -2,7 +2,9 @@ use core::convert::Infallible;
 use core::ffi::c_void;
 use core::ptr;
 
-use archiaos_bootloader::bootinfo::{BootInfo, BOOT_INFO_MAGIC, BOOT_INFO_VERSION};
+use archiaos_bootloader::bootinfo::{
+    BootInfo, BOOT_INFO_MAGIC, BOOT_INFO_VERSION, UEFI_MEMORY_DESCRIPTOR_VERSION,
+};
 use archiaos_bootloader::memory_map::UefiMemoryMap;
 
 pub type Status = usize;
@@ -1324,8 +1326,9 @@ pub unsafe fn transfer_to_kernel(
         }
         if map_size == 0 || map_size > MAX_MEMORY_MAP_SIZE || descriptor_size == 0
             || map_size % descriptor_size != 0
+            || descriptor_version != UEFI_MEMORY_DESCRIPTOR_VERSION
         {
-            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: firmware returned an invalid memory map.\r\n\0"));
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: firmware returned an invalid or unsupported memory map.\r\n\0"));
         }
 
         // This parser is allocation-free and checks every range for overflow and overlap.
