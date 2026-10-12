@@ -2,7 +2,7 @@
 
 This tiny first-party `no_std` image exists only to exercise our UEFI loader. The production kernel remains high-half linked and Limine-dependent; it is not replaced by this test.
 
-It is linked at identity addresses starting at 2 MiB, imports the canonical `BootInfo` type from the internal bootloader library, receives it in RDI, establishes a 64 KiB stack, validates the ABI and memory-map descriptors, writes a serial success marker and halts.
+It is linked at identity addresses starting at 2 MiB, imports the canonical `BootInfo` type from the internal bootloader library, receives it in RDI, establishes a 64 KiB stack, validates the ABI and the complete memory map using the shared allocation-free parser, writes a serial success marker and halts.
 
 CI build command from this directory:
 
