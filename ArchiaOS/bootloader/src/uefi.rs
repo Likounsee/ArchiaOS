@@ -1283,6 +1283,16 @@ unsafe fn build_x86_64_page_tables(
     Ok(arena.physical_address(pml4))
 }
 
+fn configuration_table_range_is_bounded(base: usize, count: usize) -> bool {
+    if base == 0 || count == 0 || count > 4096 {
+        return false;
+    }
+    let Some(bytes) = count.checked_mul(core::mem::size_of::<ConfigurationTable>()) else {
+        return false;
+    };
+    bytes <= isize::MAX as usize && base.checked_add(bytes).is_some()
+}
+
 fn configuration_table(system_table: *mut SystemTable, wanted: &Guid) -> *mut c_void {
     if system_table.is_null() {
         return ptr::null_mut();
@@ -1291,12 +1301,16 @@ fn configuration_table(system_table: *mut SystemTable, wanted: &Guid) -> *mut c_
     let (count, tables) = unsafe {
         ((*system_table).number_of_table_entries, (*system_table).configuration_table)
     };
-    if count == 0 || count > 4096 || tables.is_null() {
+    if !configuration_table_range_is_bounded(tables as usize, count) {
         return ptr::null_mut();
     }
     for index in 0..count {
-        // SAFETY: index is below the table count advertised by firmware.
-        let candidate = unsafe { ptr::read(tables.add(index)) };
+        // Firmware metadata is external input: read unaligned so malformed alignment
+        // cannot trigger undefined behavior before the table's GUID is checked.
+        // SAFETY: the index is bounded and the byte-range arithmetic was checked above.
+        let candidate = unsafe { ptr::read_unaligned(tables.cast::<u8>().add(
+            index * core::mem::size_of::<ConfigurationTable>()
+        ).cast::<ConfigurationTable>()) };
         if candidate.vendor_guid == *wanted && !candidate.vendor_table.is_null() {
             return candidate.vendor_table;
         }
@@ -1961,5 +1975,25 @@ unsafe fn jump_to_kernel(entry: u64, info: *const BootInfo) -> ! {
             in("x1") entry,
             options(noreturn)
         )
+    }
+}
+
+
+#[cfg(test)]
+mod configuration_table_bounds_tests {
+    use super::configuration_table_range_is_bounded;
+
+    #[test]
+    fn accepts_small_bounded_configuration_table_arrays() {
+        assert!(configuration_table_range_is_bounded(0x1000, 1));
+        assert!(configuration_table_range_is_bounded(0x1000, 4096));
+    }
+
+    #[test]
+    fn rejects_missing_oversized_and_wrapping_configuration_table_arrays() {
+        assert!(!configuration_table_range_is_bounded(0, 1));
+        assert!(!configuration_table_range_is_bounded(0x1000, 0));
+        assert!(!configuration_table_range_is_bounded(0x1000, 4097));
+        assert!(!configuration_table_range_is_bounded(usize::MAX - 7, 1));
     }
 }
