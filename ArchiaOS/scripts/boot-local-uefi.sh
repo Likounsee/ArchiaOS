@@ -6,6 +6,8 @@ OUT="${ARCHIAOS_BUILD_DIR:-$ROOT/build/local-uefi}"
 IMAGE="${ARCHIAOS_IMAGE:-$OUT/archiaos-uefi.img}"
 LOG="${ARCHIAOS_LOG:-$OUT/serial.log}"
 SECONDS_LIMIT="${ARCHIAOS_BOOT_TIMEOUT:-25}"
+OVMF_CODE="${OVMF_CODE:-}"
+OVMF_VARS="${OVMF_VARS:-}"
 mkdir -p "$OUT" "$(dirname "$IMAGE")" "$(dirname "$LOG")"
 for tool in cargo rustup mkfs.vfat mmd mcopy qemu-system-x86_64 timeout; do
   command -v "$tool" >/dev/null || { echo "Outil manquant : $tool" >&2; exit 2; }
