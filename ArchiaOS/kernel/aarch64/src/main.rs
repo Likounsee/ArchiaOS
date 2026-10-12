@@ -5,7 +5,7 @@ use core::arch::{asm, global_asm};
 use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
 use archiaos_bootloader::bootinfo::{BootInfo, BOOT_INFO_MAGIC, BOOT_INFO_VERSION};
-use archiaos_bootloader::device_tree::{parse_header as parse_fdt_header, FDT_MAGIC, HEADER_SIZE as FDT_HEADER_SIZE, MAX_TOTAL_SIZE as MAX_FDT_SIZE};
+use archiaos_bootloader::device_tree::{validate_tree as validate_fdt_tree, FDT_MAGIC, HEADER_SIZE as FDT_HEADER_SIZE, MAX_TOTAL_SIZE as MAX_FDT_SIZE};
 use archiaos_bootloader::memory_map::UefiMemoryMap;
 
 const MIN_MEMORY_DESCRIPTOR_SIZE: u64 = 40;
@@ -95,7 +95,7 @@ unsafe fn validate_fdt_at_address(address: u64) -> bool {
         return false;
     }
     let image = unsafe { core::slice::from_raw_parts(base, total) };
-    parse_fdt_header(image).is_ok()
+    validate_fdt_tree(image).is_ok()
 }
 
 fn validate_boot_info(info: *const BootInfo, serial: &mut Serial) {
