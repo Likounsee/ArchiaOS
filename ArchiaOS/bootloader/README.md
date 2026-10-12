@@ -10,7 +10,7 @@ This crate implements a first-party UEFI loader using Rust and `core`, with no t
 - Validates headers and loadable segments, checked arithmetic, file bounds, alignment, virtual overlap and executable entry coverage.
 - Reserves pages at the ELF physical addresses, rejects non-identity mappings and addresses outside the supported sub-4-GiB range, copies each segment and zeroes its BSS tail.
 - On AArch64, synchronizes the data and instruction caches for executable ranges before transferring control.
-- Finds ACPI 2.0/1.0 RSDP pointers and the UEFI Device Tree table in the system configuration table. On AArch64 the loader validates the FDT magic, size, version and top-level block offsets before accepting the handoff.
+- Finds ACPI 2.0/1.0 RSDP pointers and validates signature/legacy checksum plus the extended checksum for revision 2+. It discovers the UEFI Device Tree table, then uses the shared, unit-tested FDT header parser to validate magic, total size, version, alignment, bounds and structure/string block overlap before accepting the AArch64 handoff.
 - Builds the versioned `ARCHIABI` BootInfo structure and obtains the final UEFI memory map immediately before `ExitBootServices`; retries stale map keys without making unrelated service calls after the first exit attempt.
 - Passes BootInfo in `RDI` on x86-64 or `x0` on AArch64 and branches to the ELF entry point.
 - CI includes an OVMF/QEMU x86-64 handoff test and an AAVMF/QEMU AArch64 handoff test. The AArch64 job's result must pass before the full path is considered validated.
@@ -30,7 +30,7 @@ The current loading contract is intentionally limited to identity-mapped ELF64 s
 ## Next
 
 1. Confirm both OVMF/AAVMF QEMU end-to-end jobs on the current commit.
-2. Expand tests for the firmware configuration-table scanner and malformed FDT headers.
-3. Validate the ACPI RSDP signature/checksum and build a bounded FDT parser for memory and platform devices.
+2. Expand tests for the firmware configuration-table scanner and malformed firmware-provided table pointers.
+3. Add full FDT token/reservation-map parsing and ACPI root-table parsing; only the RSDP and FDT headers are validated today.
 4. Design the production kernel's page-table/bootstrap contract before supporting high-half loading.
 5. Add broader malformed ELF tests and CI fuzz-style parser cases.
