@@ -15,8 +15,10 @@ const MAX_FRAMES: u64 = MAX_PHYSICAL_ADDRESS / PAGE_SIZE;
 const BITMAP_WORDS: usize = (MAX_FRAMES / 64) as usize;
 const MAX_MEMMAP_ENTRIES: u64 = 4096;
 const PMM_SELF_TEST_PAGES: usize = 130;
+#[cfg(not(feature = "uefi-boot"))]
 const LIMINE_MEMMAP_USABLE: u64 = 0;
 
+#[cfg(not(feature = "uefi-boot"))]
 #[used]
 #[link_section = ".limine_requests"]
 static mut LIMINE_BASE_REVISION: [u64; 3] = [
@@ -25,6 +27,7 @@ static mut LIMINE_BASE_REVISION: [u64; 3] = [
     6,
 ];
 
+#[cfg(not(feature = "uefi-boot"))]
 #[repr(C)]
 struct LimineMemmapEntry {
     base: u64,
@@ -32,6 +35,7 @@ struct LimineMemmapEntry {
     kind: u64,
 }
 
+#[cfg(not(feature = "uefi-boot"))]
 #[repr(C)]
 struct LimineMemmapResponse {
     revision: u64,
@@ -39,6 +43,7 @@ struct LimineMemmapResponse {
     entries: *mut *mut LimineMemmapEntry,
 }
 
+#[cfg(not(feature = "uefi-boot"))]
 #[repr(C)]
 struct LimineMemmapRequest {
     id: [u64; 4],
@@ -46,6 +51,7 @@ struct LimineMemmapRequest {
     response: *mut LimineMemmapResponse,
 }
 
+#[cfg(not(feature = "uefi-boot"))]
 #[used]
 #[link_section = ".limine_requests"]
 static mut LIMINE_MEMMAP_REQUEST: LimineMemmapRequest = LimineMemmapRequest {
@@ -119,10 +125,10 @@ unsafe fn set_bit(bitmap: *mut u64, frame: u64, value: bool) {
     unsafe { ptr::write(word_ptr, updated) };
 }
 
-fn frame_range(entry: &LimineMemmapEntry) -> Option<(u64, u64)> {
-    let end = entry.base.checked_add(entry.length)?;
-    let mut first = entry.base / PAGE_SIZE;
-    if entry.base % PAGE_SIZE != 0 {
+fn frame_range(base: u64, length: u64) -> Option<(u64, u64)> {
+    let end = base.checked_add(length)?;
+    let mut first = base / PAGE_SIZE;
+    if base % PAGE_SIZE != 0 {
         first = first.checked_add(1)?;
     }
     Some((first.min(MAX_FRAMES), (end / PAGE_SIZE).min(MAX_FRAMES)))
@@ -147,8 +153,8 @@ unsafe fn set_bit_range(bitmap: *mut u64, first: u64, last: u64, value: bool) {
     }
 }
 
-fn apply_range(entry: &LimineMemmapEntry, managed: bool, free: bool) {
-    if let Some((first, last)) = frame_range(entry) {
+fn apply_range(base: u64, length: u64, managed: bool, free: bool) {
+    if let Some((first, last)) = frame_range(base, length) {
         unsafe {
             set_bit_range(managed_bitmap_ptr(), first, last, managed);
             set_bit_range(free_bitmap_ptr(), first, last, free);
@@ -156,6 +162,7 @@ fn apply_range(entry: &LimineMemmapEntry, managed: bool, free: bool) {
     }
 }
 
+#[cfg(not(feature = "uefi-boot"))]
 fn read_entry(response: &LimineMemmapResponse, index: u64) -> Result<LimineMemmapEntry, MemoryError> {
     // SAFETY: caller bounds index by the validated entry_count.
     let entry_ptr = unsafe { ptr::read_volatile(response.entries.add(index as usize)) };
@@ -170,6 +177,7 @@ fn read_entry(response: &LimineMemmapResponse, index: u64) -> Result<LimineMemma
     Ok(entry)
 }
 
+#[cfg(not(feature = "uefi-boot"))]
 pub fn initialize<W: Write>(log: &mut W) -> Result<MemoryStats, MemoryError> {
     // The allocator is an early-boot singleton and must not be reinitialized.
     if unsafe { ptr::read_volatile(ptr::addr_of!(PMM_INITIALIZED)) } {
@@ -227,7 +235,7 @@ pub fn initialize<W: Write>(log: &mut W) -> Result<MemoryStats, MemoryError> {
     for index in 0..response.entry_count {
         let entry = read_entry(response, index)?;
         if entry.kind == LIMINE_MEMMAP_USABLE {
-            apply_range(&entry, true, true);
+            apply_range(entry.base, entry.length, true, true);
         }
     }
 
@@ -237,7 +245,7 @@ pub fn initialize<W: Write>(log: &mut W) -> Result<MemoryStats, MemoryError> {
     for index in 0..response.entry_count {
         let entry = read_entry(response, index)?;
         if entry.kind != LIMINE_MEMMAP_USABLE {
-            apply_range(&entry, false, false);
+            apply_range(entry.base, entry.length, false, false);
         }
     }
 
@@ -337,13 +345,9 @@ pub unsafe fn initialize_from_bootinfo<W: Write>(
         let descriptor = memory_map.entry(index)
             .map_err(|_| MemoryError::InvalidUefiMemoryMap)?;
         if descriptor.is_conventional() {
-            let range = LimineMemmapEntry {
-                base: descriptor.physical_start,
-                length: descriptor.byte_length()
-                    .map_err(|_| MemoryError::InvalidMemoryRange)?,
-                kind: LIMINE_MEMMAP_USABLE,
-            };
-            apply_range(&range, true, true);
+            let length = descriptor.byte_length()
+                .map_err(|_| MemoryError::InvalidMemoryRange)?;
+            apply_range(descriptor.physical_start, length, true, true);
         }
     }
 
@@ -354,13 +358,9 @@ pub unsafe fn initialize_from_bootinfo<W: Write>(
         let descriptor = memory_map.entry(index)
             .map_err(|_| MemoryError::InvalidUefiMemoryMap)?;
         if !descriptor.is_conventional() {
-            let range = LimineMemmapEntry {
-                base: descriptor.physical_start,
-                length: descriptor.byte_length()
-                    .map_err(|_| MemoryError::InvalidMemoryRange)?,
-                kind: u64::MAX,
-            };
-            apply_range(&range, false, false);
+            let length = descriptor.byte_length()
+                .map_err(|_| MemoryError::InvalidMemoryRange)?;
+            apply_range(descriptor.physical_start, length, false, false);
         }
     }
 
