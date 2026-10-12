@@ -27,6 +27,146 @@ pub mod bootinfo {
     }
 }
 
+/// Allocation-free validation and access to UEFI memory-map descriptors.
+pub mod memory_map {
+    pub const EFI_PAGE_SIZE: u64 = 4096;
+    pub const MIN_DESCRIPTOR_SIZE: usize = 40;
+    pub const MAX_DESCRIPTOR_SIZE: usize = 4096;
+    pub const MAX_DESCRIPTOR_COUNT: usize = 65_536;
+    pub const EFI_CONVENTIONAL_MEMORY: u32 = 7;
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum MemoryMapError {
+        EmptyMap,
+        InvalidDescriptorSize,
+        SizeNotMultipleOfStride,
+        TooManyDescriptors,
+        EntryOutOfBounds,
+        TruncatedEntry,
+        UnalignedPhysicalAddress,
+        EmptyRange,
+        RangeOverflow,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub struct MemoryDescriptor {
+        pub memory_type: u32,
+        pub physical_start: u64,
+        pub virtual_start: u64,
+        pub number_of_pages: u64,
+        pub attributes: u64,
+    }
+
+    impl MemoryDescriptor {
+        pub fn byte_length(&self) -> Result<u64, MemoryMapError> {
+            self.number_of_pages
+                .checked_mul(EFI_PAGE_SIZE)
+                .ok_or(MemoryMapError::RangeOverflow)
+        }
+
+        pub fn physical_end(&self) -> Result<u64, MemoryMapError> {
+            self.physical_start
+                .checked_add(self.byte_length()?)
+                .ok_or(MemoryMapError::RangeOverflow)
+        }
+
+        pub const fn is_conventional(&self) -> bool {
+            self.memory_type == EFI_CONVENTIONAL_MEMORY
+        }
+    }
+
+    pub struct UefiMemoryMap<'a> {
+        bytes: &'a [u8],
+        descriptor_size: usize,
+        count: usize,
+    }
+
+    fn le_u32(bytes: &[u8], offset: usize) -> Result<u32, MemoryMapError> {
+        let end = offset.checked_add(4).ok_or(MemoryMapError::TruncatedEntry)?;
+        let field = bytes.get(offset..end).ok_or(MemoryMapError::TruncatedEntry)?;
+        Ok(u32::from_le_bytes([field[0], field[1], field[2], field[3]]))
+    }
+
+    fn le_u64(bytes: &[u8], offset: usize) -> Result<u64, MemoryMapError> {
+        let end = offset.checked_add(8).ok_or(MemoryMapError::TruncatedEntry)?;
+        let field = bytes.get(offset..end).ok_or(MemoryMapError::TruncatedEntry)?;
+        Ok(u64::from_le_bytes([
+            field[0], field[1], field[2], field[3],
+            field[4], field[5], field[6], field[7],
+        ]))
+    }
+
+    impl<'a> UefiMemoryMap<'a> {
+        /// Validate the descriptor array and every physical range without allocating.
+        pub fn parse(bytes: &'a [u8], descriptor_size: usize) -> Result<Self, MemoryMapError> {
+            if descriptor_size < MIN_DESCRIPTOR_SIZE || descriptor_size > MAX_DESCRIPTOR_SIZE {
+                return Err(MemoryMapError::InvalidDescriptorSize);
+            }
+            if bytes.is_empty() {
+                return Err(MemoryMapError::EmptyMap);
+            }
+            if bytes.len() % descriptor_size != 0 {
+                return Err(MemoryMapError::SizeNotMultipleOfStride);
+            }
+            let count = bytes.len() / descriptor_size;
+            if count == 0 {
+                return Err(MemoryMapError::EmptyMap);
+            }
+            if count > MAX_DESCRIPTOR_COUNT {
+                return Err(MemoryMapError::TooManyDescriptors);
+            }
+
+            let map = Self { bytes, descriptor_size, count };
+            for index in 0..count {
+                map.entry(index)?;
+            }
+            Ok(map)
+        }
+
+        pub const fn len(&self) -> usize {
+            self.count
+        }
+
+        pub const fn is_empty(&self) -> bool {
+            self.count == 0
+        }
+
+        pub const fn descriptor_size(&self) -> usize {
+            self.descriptor_size
+        }
+
+        pub fn entry(&self, index: usize) -> Result<MemoryDescriptor, MemoryMapError> {
+            if index >= self.count {
+                return Err(MemoryMapError::EntryOutOfBounds);
+            }
+            let start = index
+                .checked_mul(self.descriptor_size)
+                .ok_or(MemoryMapError::TruncatedEntry)?;
+            let end = start
+                .checked_add(self.descriptor_size)
+                .ok_or(MemoryMapError::TruncatedEntry)?;
+            let bytes = self.bytes.get(start..end).ok_or(MemoryMapError::TruncatedEntry)?;
+
+            let entry = MemoryDescriptor {
+                memory_type: le_u32(bytes, 0)?,
+                // EFI_MEMORY_DESCRIPTOR's 4-byte padding at offset 4 is ignored.
+                physical_start: le_u64(bytes, 8)?,
+                virtual_start: le_u64(bytes, 16)?,
+                number_of_pages: le_u64(bytes, 24)?,
+                attributes: le_u64(bytes, 32)?,
+            };
+            if entry.physical_start % EFI_PAGE_SIZE != 0 {
+                return Err(MemoryMapError::UnalignedPhysicalAddress);
+            }
+            if entry.number_of_pages == 0 {
+                return Err(MemoryMapError::EmptyRange);
+            }
+            entry.physical_end()?;
+            Ok(entry)
+        }
+    }
+}
+
 /// Bounded RSDP validation for ACPI platform metadata.
 pub mod acpi {
     pub const RSDP_SIGNATURE: &[u8; 8] = b"RSD PTR ";
@@ -870,5 +1010,117 @@ mod acpi_tests {
         let mut image = valid_v2();
         image.truncate(24);
         assert_eq!(parse_rsdp(&image), Err(RsdpError::Truncated));
+    }
+}
+
+#[cfg(test)]
+mod memory_map_tests {
+    use std::vec;
+    use std::vec::Vec;
+
+    use super::memory_map::{MemoryMapError, UefiMemoryMap, EFI_CONVENTIONAL_MEMORY};
+
+    fn put_le32(image: &mut [u8], offset: usize, value: u32) {
+        image[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+    }
+
+    fn put_le64(image: &mut [u8], offset: usize, value: u64) {
+        image[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
+    }
+
+    fn descriptor(memory_type: u32, physical_start: u64, pages: u64) -> Vec<u8> {
+        let mut bytes = vec![0u8; 48];
+        put_le32(&mut bytes, 0, memory_type);
+        put_le64(&mut bytes, 8, physical_start);
+        put_le64(&mut bytes, 16, 0);
+        put_le64(&mut bytes, 24, pages);
+        put_le64(&mut bytes, 32, 0);
+        bytes
+    }
+
+    #[test]
+    fn parses_descriptor_with_extended_stride() {
+        let mut bytes = descriptor(EFI_CONVENTIONAL_MEMORY, 0x1000, 8);
+        bytes.extend_from_slice(&descriptor(4, 0x9000, 3));
+        let map = UefiMemoryMap::parse(&bytes, 48).expect("valid EFI memory map");
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.descriptor_size(), 48);
+
+        let first = map.entry(0).expect("first descriptor");
+        assert_eq!(first.memory_type, EFI_CONVENTIONAL_MEMORY);
+        assert_eq!(first.byte_length(), Ok(8 * 4096));
+        assert_eq!(first.physical_end(), Ok(0x9000));
+        assert!(first.is_conventional());
+
+        let second = map.entry(1).expect("second descriptor");
+        assert_eq!(second.memory_type, 4);
+        assert_eq!(second.physical_end(), Ok(0xc000));
+        assert!(!second.is_conventional());
+    }
+
+    #[test]
+    fn rejects_descriptor_stride_smaller_than_uefi_layout() {
+        assert_eq!(
+            UefiMemoryMap::parse(&[0u8; 32], 32).err(),
+            Some(MemoryMapError::InvalidDescriptorSize)
+        );
+    }
+
+    #[test]
+    fn rejects_descriptor_stride_larger_than_limit() {
+        assert_eq!(
+            UefiMemoryMap::parse(&[0u8; 8192], 8192).err(),
+            Some(MemoryMapError::InvalidDescriptorSize)
+        );
+    }
+
+    #[test]
+    fn rejects_non_multiple_map_size() {
+        assert_eq!(
+            UefiMemoryMap::parse(&[0u8; 41], 40).err(),
+            Some(MemoryMapError::SizeNotMultipleOfStride)
+        );
+    }
+
+    #[test]
+    fn rejects_empty_map() {
+        assert_eq!(
+            UefiMemoryMap::parse(&[], 40).err(),
+            Some(MemoryMapError::EmptyMap)
+        );
+    }
+
+    #[test]
+    fn rejects_unaligned_physical_start() {
+        let bytes = descriptor(EFI_CONVENTIONAL_MEMORY, 0x1001, 1);
+        assert_eq!(
+            UefiMemoryMap::parse(&bytes, 48).err(),
+            Some(MemoryMapError::UnalignedPhysicalAddress)
+        );
+    }
+
+    #[test]
+    fn rejects_zero_page_descriptor() {
+        let bytes = descriptor(EFI_CONVENTIONAL_MEMORY, 0x1000, 0);
+        assert_eq!(
+            UefiMemoryMap::parse(&bytes, 48).err(),
+            Some(MemoryMapError::EmptyRange)
+        );
+    }
+
+    #[test]
+    fn rejects_physical_range_overflow() {
+        let bytes = descriptor(EFI_CONVENTIONAL_MEMORY, u64::MAX - 4095, 1);
+        assert_eq!(
+            UefiMemoryMap::parse(&bytes, 48).err(),
+            Some(MemoryMapError::RangeOverflow)
+        );
+    }
+
+    #[test]
+    fn rejects_out_of_bounds_descriptor_index() {
+        let bytes = descriptor(EFI_CONVENTIONAL_MEMORY, 0x1000, 1);
+        let map = UefiMemoryMap::parse(&bytes, 48).expect("valid EFI memory map");
+        assert_eq!(map.entry(1), Err(MemoryMapError::EntryOutOfBounds));
     }
 }
