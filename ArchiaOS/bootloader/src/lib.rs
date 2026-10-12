@@ -211,7 +211,7 @@ pub mod device_tree {
         // to fit; scanning for the terminating zero pair is a later milestone.
         bounded_end(memory_reservation_offset, 16, total_size)?;
 
-        if structure_offset < strings_end && strings_offset < structure_end {
+        if strings_size != 0 && structure_offset < strings_end && strings_offset < structure_end {
             return Err(FdtError::OverlappingBlocks);
         }
 
@@ -750,6 +750,14 @@ mod device_tree_tests {
         let mut image = valid_fdt();
         put_be32(&mut image, 8, 120);
         assert_eq!(parse_header(&image), Err(FdtError::BlockOutOfBounds));
+    }
+
+    #[test]
+    fn accepts_empty_strings_block_without_false_overlap() {
+        let mut image = valid_fdt();
+        put_be32(&mut image, 12, 60);
+        put_be32(&mut image, 32, 0);
+        assert!(parse_header(&image).is_ok());
     }
 }
 
