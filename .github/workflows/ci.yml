@@ -234,6 +234,9 @@ jobs:
           echo "Invalid-ELF negative boot test passed"
 
           cp "$firmware_vars" "$RUNNER_TEMP/OVMF_VARS.fd"
+          # `set -e` was restored after the negative case; disable it again so
+          # timeout status 124 can be captured and validated instead of aborting.
+          set +e
           timeout 20s qemu-system-x86_64 -machine q35 -m 512M -drive "if=pflash,format=raw,readonly=on,file=$firmware_code" -drive "if=pflash,format=raw,file=$RUNNER_TEMP/OVMF_VARS.fd" -drive "file=$RUNNER_TEMP/archiaos-uefi.img,format=raw,if=ide" -boot order=c -display none -serial stdio -monitor none -no-reboot -no-shutdown > "$RUNNER_TEMP/archiaos-uefi.log" 2>&1
           qemu_status=$?
           set -e
