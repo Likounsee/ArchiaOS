@@ -20,12 +20,12 @@ cargo build --release
 scripts/make-iso.sh
 ```
 
-## Compilation du noyau avec entrée UEFI maison
+## Vérification locale du noyau avec entrée UEFI maison
 
 Depuis ce dossier :
 
 ```sh
-cargo build --release --features uefi-boot --target x86_64-unknown-none
+cargo build --release --target x86_64-unknown-none
 ```
 
 Ce build produit le noyau high-half qui reçoit BootInfo au lieu des réponses Limine. L'image EFI de test complète est actuellement construite par la CI ; le script ISO habituel conserve Limine par défaut jusqu'à une bascule intentionnelle.
