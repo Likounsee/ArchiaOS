@@ -147,6 +147,12 @@ jobs:
           echo "Production UEFI kernel has no legacy Limine request symbols"
       - name: Build first-party UEFI loader
         run: cargo build --manifest-path bootloader/Cargo.toml --release --target x86_64-unknown-uefi --target-dir target
+      - name: Audit production PE/COFF loader and high-half ELF kernel
+        run: |
+          python3 scripts/verify-uefi-artifacts.py \
+            target/x86_64-unknown-uefi/release/archiaos-bootloader.efi \
+            target/production-kernel-uefi/x86_64-unknown-none/release/archiaos-kernel
+
       - name: Prepare identity and high-half UEFI FAT disk images
         shell: bash
         run: |
