@@ -222,7 +222,7 @@ pub struct FileProtocol {
 #[derive(Clone, Copy)]
 pub struct BootError {
     pub status: Status,
-    pub message: &'static [u16],
+    pub message: &'static [u8],
 }
 
 struct PoolAllocation {
@@ -286,7 +286,7 @@ impl Drop for FileGuard {
     }
 }
 
-fn error(status: Status, message: &'static [u16]) -> BootError {
+fn error(status: Status, message: &'static [u8]) -> BootError {
     BootError { status, message }
 }
 
@@ -330,8 +330,11 @@ pub unsafe fn inspect_kernel(
     let status = unsafe {
         handle_protocol(image_handle, &LOADED_IMAGE_GUID, &mut loaded_image_raw)
     };
-    if status != EFI_SUCCESS || loaded_image_raw.is_null() {
+    if status != EFI_SUCCESS {
         return Err(error(status, b"ArchiaOS: cannot identify bootloader device.\r\n\0"));
+    }
+    if loaded_image_raw.is_null() {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: firmware returned a null loaded-image interface.\r\n\0"));
     }
     let loaded_image = loaded_image_raw.cast::<LoadedImageProtocol>();
     // SAFETY: HandleProtocol returned a LoadedImageProtocol interface.
@@ -345,8 +348,11 @@ pub unsafe fn inspect_kernel(
     let status = unsafe {
         handle_protocol(device_handle, &SIMPLE_FILE_SYSTEM_GUID, &mut file_system_raw)
     };
-    if status != EFI_SUCCESS || file_system_raw.is_null() {
+    if status != EFI_SUCCESS {
         return Err(error(status, b"ArchiaOS: boot device has no Simple File System.\r\n\0"));
+    }
+    if file_system_raw.is_null() {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: firmware returned a null filesystem interface.\r\n\0"));
     }
     let file_system = file_system_raw.cast::<SimpleFileSystemProtocol>();
     // SAFETY: protocol pointer came from HandleProtocol.
@@ -355,8 +361,11 @@ pub unsafe fn inspect_kernel(
     let mut root_raw = ptr::null_mut();
     // SAFETY: OpenVolume writes the root directory handle on success.
     let status = unsafe { open_volume(file_system, &mut root_raw) };
-    if status != EFI_SUCCESS || root_raw.is_null() {
+    if status != EFI_SUCCESS {
         return Err(error(status, b"ArchiaOS: cannot open the EFI filesystem root.\r\n\0"));
+    }
+    if root_raw.is_null() {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: filesystem returned a null root handle.\r\n\0"));
     }
     let root = FileGuard(root_raw);
 
@@ -366,8 +375,11 @@ pub unsafe fn inspect_kernel(
     let mut kernel_raw = ptr::null_mut();
     // SAFETY: the output handle is valid and the file is opened read-only.
     let status = unsafe { open(root.0, &mut kernel_raw, KERNEL_PATH.as_ptr(), EFI_FILE_MODE_READ, 0) };
-    if status != EFI_SUCCESS || kernel_raw.is_null() {
+    if status != EFI_SUCCESS {
         return Err(error(status, b"ArchiaOS: missing \\EFI\\BOOT\\ARCHIAOS.ELF on boot volume.\r\n\0"));
+    }
+    if kernel_raw.is_null() {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: filesystem returned a null kernel file handle.\r\n\0"));
     }
     let kernel = FileGuard(kernel_raw);
 
