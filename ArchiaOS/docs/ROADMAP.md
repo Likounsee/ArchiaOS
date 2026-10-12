@@ -1,35 +1,37 @@
 # Roadmap et critères
 
-- **P0 — Fondations : en cours.** Build bare-metal, ISO Limine, diagnostics, vérification ELF et smoke test QEMU existants. La CI vérifie aussi la carte mémoire et l'auto-test PMM sur 130 pages. Restent un contrôle plus large des réservations, le formatage automatisé et des tests supplémentaires.
+- **P0 — Fondations : en cours.** Build bare-metal, ISO Limine, diagnostics, vérification ELF et smoke test QEMU. La CI valide aussi la carte mémoire et l'auto-test PMM de 130 pages. Restent un audit plus large des réservations et des tests supplémentaires.
 - **P1 — Noyau et matériel : premières fondations.** Entrée Limine, sortie série, validation de la carte mémoire et allocateur bitmap physique testés en QEMU. Restent IDT, exceptions, réservations mémoire complètes, gestion des fautes et synchronisation.
 - **P2 — Ordonnanceur : non commencé.** Pas de contexte de tâche, synchronisation multiprocesseur ni ordonnancement.
 - **P3 — Espace utilisateur : non commencé.** Pas de syscall, chargeur, ABI ni processus isolés.
-- **P4 — Stockage : non commencé.** Pas de pilote bloc ni de système de fichiers. Préparer une couche **VFS (Virtual File System)** indépendante du format de stockage, afin que le noyau et les programmes utilisent des interfaces stables plutôt que l’API d’un système de fichiers précis.
-- **P4.1 — Préparation à OpenFS : à concevoir.** Définir le contrat d’intégration entre ArchiaOS et le dépôt séparé **Likounsee/OpenFS** : types et erreurs, opérations fichiers/répertoires, gestion des volumes, règles de propriété mémoire, synchronisation, limites de blocs et stratégie de version. Maintenir un adaptateur distinct afin de ne pas coupler le cœur du noyau à l’implémentation interne d’OpenFS.
-- **P4.2 — Intégration OpenFS : future, après stabilisation d’OpenFS.** Vérifier les exigences et garanties du dépôt OpenFS, puis l’intégrer derrière la VFS. Tester montage, lectures/écritures, répertoires, erreurs, accès concurrents pris en charge et entrées malformées/corruption. Maintenir l'option de build sans OpenFS tant que l'intégration reste expérimentale.
+- **P4 — Stockage : non commencé.** Pas de pilote bloc ni de système de fichiers. Préparer une couche **VFS (Virtual File System)** indépendante du format de stockage.
+- **P4.1 — Préparation à OpenFS : à concevoir.** Définir le contrat d’intégration avec **Likounsee/OpenFS** : types et erreurs, fichiers/répertoires, volumes, propriété mémoire, synchronisation, limites de blocs et versionnement. Garder un adaptateur distinct du cœur du noyau.
+- **P4.2 — Intégration OpenFS : future, après stabilisation d’OpenFS.** Confirmer son API, ses garanties et ses dépendances ; tester montage, lectures/écritures, répertoires, erreurs, corruption et accès concurrents pris en charge.
 - **P5 — Graphique : non commencé.** Pas de framebuffer ou de compositeur.
 - **P6 — Réseau et performances : non commencé.** Pas de pile réseau ni de benchmarks.
 - **P7 — Distribution : non commencé.** Pas de version distribuable ni d’audit de sécurité final.
 
 ## Piste parallèle — bootloader maison et ARM64
 
-Le firmware UEFI standard reste fourni par la machine. ArchiaOS développe son propre chargeur et son noyau. Les nouveaux jalons sont distingués des phases P0–P7 : ils ne doivent pas artificiellement gonfler leur pourcentage d'achèvement.
+Le firmware UEFI standard reste fourni par la machine. ArchiaOS développe son propre chargeur et son propre noyau. Ces jalons sont suivis séparément de P0–P7.
 
 1. **B0 — Entrée UEFI : implémentée.** Crate Rust sans dépendance externe pour x86-64 et AArch64.
-2. **B1 — Lecture du noyau : implémentée.** Le chargeur ouvre `\\EFI\\ArchiaOS\\kernel.elf`, borne sa taille et lit le fichier depuis le volume associé à l'image EFI ; la lecture gère les retours partiels.
-3. **B2 — Validation ELF64 : implémentée.** Contrôles des en-têtes, du nombre et des limites de table des programmes, des segments chargeables, des tailles fichier/mémoire, des alignements, des recouvrements, des débordements et de l'adresse d'entrée exécutable. Tests unitaires présents.
-4. **B3 — Chargement identité : implémenté sous contraintes.** Réserve les pages aux adresses physiques ELF demandées, refuse les segments où l'adresse virtuelle diffère de la physique ou les plages hors de la limite prise en charge, copie les octets et met la partie BSS à zéro. La chaîne actuelle limite les adresses à moins de 4 Gio et la mémoire totale des segments à 128 Mio.
-5. **B4 — Contrat BootInfo : implémenté.** ABI versionnée `ARCHIABI`, contenant l'entrée noyau, la carte mémoire UEFI finale et les pointeurs de plateforme disponibles. Le RSDP ACPI est vérifié par signature, longueur et sommes de contrôle ; le FDT est contrôlé par un parseur partagé de ses blocs, jetons, noms de propriétés et terminaison de la table de réservations avant de transmettre les pointeurs. Le pointeur est passé via `RDI` en x86-64 et `x0` en AArch64.
-6. **B5 — Sortie UEFI : implémentée.** Collecte la carte mémoire juste avant `ExitBootServices`, réessaie si la clé est périmée et évite les appels de service supplémentaires après un échec d'une première tentative de sortie.
-7. **B6 — Validation x86-64 : test QEMU/OVMF présent.** Un noyau de test identité vérifie BootInfo après la sortie des services. Cela ne démarre pas encore le noyau de production high-half.
-8. **A0 — Entrée noyau ARM64 : implémentée.** Entrée AArch64, pile dédiée et console PL011 pour QEMU `virt`.
-9. **A1 — Transfert UEFI ARM64 : validé sous AAVMF/QEMU.** Le chargeur alloue/copie les segments identité, synchronise l'I-cache AArch64, construit BootInfo et branche vers l'entrée noyau. Sur le firmware testé, le noyau découvre la console via ACPI SPCR, valide BootInfo, le RSDP et la carte mémoire, initialise le PMM et réussit le test d'exception.
-10. **A2 — Gestion mémoire ARM64 : PMM bitmap expérimental implémenté.** Initialise un bitmap à partir des plages conventionnelles UEFI sous 4 Gio, réserve les pages basses et teste 130 allocations/libérations à travers plusieurs mots bitmap. Restent les réservations exhaustives, un mappage MMU propre, la synchronisation SMP et les tests de limites de mémoire.
-11. **A3 — Vecteurs d'exceptions ARM64 : première base implémentée.** Table alignée et installée au niveau d'exception courant, diagnostic ESR/ELR/FAR et auto-test `BRK` synchrone ajoutés. Restent les handlers différenciés, retours d'exception contrôlés et la gestion des interruptions asynchrones.
-12. **A4 — Architecture portable : à faire.** Extraire les abstractions communes et tester séparément les implémentations x86-64/AArch64.
-13. **B7 — Démarrage du noyau principal : à faire.** Le noyau de production est high-half lié, dépend encore de Limine et utilise ses réponses mémoire ; il faut établir les tables de pages/contrat de mémoire avant de retirer Limine du chemin de démarrage.
+2. **B1 — Lecture du noyau : implémentée.** Ouvre `\\EFI\\ArchiaOS\\kernel.elf`, borne sa taille et gère les lectures partielles.
+3. **B2 — Validation ELF64 : implémentée.** Contrôles de l'en-tête, de la table des programmes, des segments, tailles, alignements, débordements, recouvrements et entrée exécutable. Les segments RWX sont refusés ; tests unitaires présents.
+4. **B3 — Chargement identité : implémenté sous contraintes.** Réserve les pages aux adresses physiques ELF, copie les octets et met le BSS à zéro. Le chemin identité reste celui du prototype AArch64.
+5. **B4 — Chargement high-half x86-64 : validé en CI.** Construit des tables 4-niveaux, mappe la fenêtre high-half, rend les alias physiques du noyau NX et applique les permissions ELF. Le test vérifie que le code est RO+X, les données RW+NX et l'alias identité du code RO+NX.
+6. **B5 — Protection x86-64 : validée en CI.** Le chargeur vérifie la capacité CPU NX, active EFER.NXE et CR0.WP avant le changement CR3 ; le noyau de test lit ensuite ces bits et examine les entrées de page effectives.
+7. **B6 — Contrat BootInfo : implémenté.** ABI versionnée `ARCHIABI` contenant l'entrée noyau, la carte mémoire UEFI finale et les pointeurs de plateforme disponibles.
+8. **B7 — Sortie UEFI : implémentée.** Collecte la carte mémoire immédiatement avant `ExitBootServices` et réessaie avec une clé fraîche en cas de `EFI_INVALID_PARAMETER`.
+9. **B8 — Noyau x86-64 de production via le chargeur maison : validé en CI.** Le build `--features uefi-boot` démarre sous OVMF/QEMU, valide BootInfo et les descripteurs UEFI puis réussit le test PMM de 130 allocations/libérations. La chaîne Limine par défaut reste conservée.
+10. **A0 — Entrée noyau ARM64 : implémentée.** Entrée AArch64, pile dédiée et console PL011 pour QEMU `virt`.
+11. **A1 — Transfert UEFI ARM64 : validé sous AAVMF/QEMU.** Le chargeur copie les segments identité, synchronise l'I-cache, construit BootInfo puis branche au noyau. Sur le firmware testé, le noyau découvre la console via ACPI SPCR et valide BootInfo/la carte mémoire.
+12. **A2 — Gestion mémoire ARM64 : PMM bitmap expérimental implémenté.** Initialise à partir des plages conventionnelles sous 4 Gio et réussit les tests d'allocations/libérations. Restent une MMU propre, les réservations exhaustives, la synchronisation SMP et l'extension au-delà de 4 Gio.
+13. **A3 — Vecteurs d'exceptions ARM64 : première base implémentée.** Table alignée installée et test d'exception synchrone présents. Restent les handlers différenciés, retours d'exception contrôlés et interruptions asynchrones.
+14. **A4 — Parité des architectures : en cours de conception.** Extraire les abstractions partagées tout en maintenant séparées les primitives spécifiques.
+15. **B9 — Choix du démarrage par défaut : à faire.** Garder Limine tant que les tests de non-régression, les contrôles de sécurité et des essais sur matériel réel ne justifient pas la bascule générale vers le chargeur maison.
 
-Le chemin UEFI vers le noyau de test ARM64 est validé sur AAVMF/QEMU, y compris la voie ACPI SPCR actuellement utilisée. Cela ne démontre pas une compatibilité générale avec tout matériel ARM64 : MMU, timers, contrôleurs d'interruptions, translation des bus et pilotes restent à faire.
+**Limites actuelles :** les adresses physiques chargées, le chargeur et les buffers de transfert doivent être accessibles dans l'identité sous 4 Gio ; la mémoire totale des segments est plafonnée à 128 Mio et le fichier noyau à 64 Mio. L'ARM64 testée utilise des segments identité ; la pagination high-half testée concerne x86-64. Les résultats démontrent les configurations QEMU CI, pas l'ensemble du matériel physique.
 
 ## Conditions d’intégration d’OpenFS
 
