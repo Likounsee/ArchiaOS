@@ -648,7 +648,7 @@ pub mod device_tree {
                     if offset > block.len() {
                         return Err(FdtError::InvalidStructure);
                     }
-                    address_cells[depth] = if depth == 0 { 2 } else { 1 };
+                    address_cells[depth] = 2;
                     size_cells[depth] = 1;
                     compatible_match[depth] = false;
                     reg_values[depth] = None;
