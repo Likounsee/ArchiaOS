@@ -6,7 +6,7 @@
 
 | Priorité | Domaine | Avancement estimé | État / prochaine preuve attendue |
 |---|---|---:|---|
-| **P0** | Démarrage UEFI maison x86-64 par défaut | **91 %** | Le test ELF invalide atteint maintenant bien le parseur et passe sous OVMF. La CI a révélé un défaut du script : `set -e` faisait sortir le job au timeout attendu du démarrage normal avant la capture du code retour. Capture corrigée sur le HEAD suivant ; attendre la CI complète. Les scénarios BootInfo invalide et mémoire insuffisante restent ouverts. |
+| **P0** | Démarrage UEFI maison x86-64 par défaut | **93 %** | CI complète verte sur `0094090` : 5/5 jobs réussis, dont le démarrage OVMF x86-64, les tests ELF invalide et high-half, le build production x86-64 et le démarrage AAVMF ARM64. Les tests négatifs BootInfo/mémoire et la validation sur matériel physique restent ouverts. |
 | **P1** | Fiabilité du chargeur, BootInfo et mémoire | **74 %** | Carte mémoire, ELF, BootInfo et autotests PMM validés ; ajouter des scénarios d'échec du chemin complet et approfondir l'audit des plages réservées. |
 | **P2** | Ordonnanceur et synchronisation | **0 %** | Non implémenté ; définir les primitives de tâches et le changement de contexte avant la préemption. |
 | **P3** | Espace utilisateur et ABI système | **0 %** | Non commencé ; dépend notamment des exceptions, syscalls et mécanismes mémoire isolés. |
@@ -24,7 +24,7 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 
 ## Ordre de travail prioritaire
 
-### P0 — Démarrage UEFI maison x86-64 — 91 %
+### P0 — Démarrage UEFI maison x86-64 — 93 %
 
 **Objectif :** faire du chemin UEFI ArchiaOS le démarrage par défaut fiable.
 
@@ -34,7 +34,7 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 - [x] Confirmer compilation et démarrage sous OVMF/QEMU et AAVMF/QEMU sur le commit `da556433`.
 - [x] Vérifier en CI les signatures de sortie CPU, inventaire PCI, BootInfo et autotests PMM.
 - [x] Valider un démarrage négatif OVMF/QEMU avec ELF invalide : diagnostic de validation ELF exigé, aucune sortie `ExitBootServices` ni exécution du noyau attendue (CI OVMF : `ELF64 validation failed`, test négatif passé).
-- [ ] Ajouter des tests de démarrage négatifs pour BootInfo invalide et mémoire insuffisante.
+- [ ] Ajouter des tests de démarrage négatifs pour BootInfo invalide et mémoire insuffisante (non couverts par le scénario ELF invalide actuel).
 - [x] Documenter les configurations CI : x86-64 sous OVMF/QEMU (Q35, 512 MiB, firmware sans Secure Boot), ARM64 sous AAVMF/QEMU (`virt`, Cortex-A57, 512 MiB) et prototype ARM64 en démarrage direct QEMU.
 - [ ] Valider sur matériel physique ; les tests virtuels ne garantissent pas la compatibilité universelle.
 
@@ -217,7 +217,7 @@ La vision est une seule application avec des modules cohérents, pas une simple 
 - **B6 — Contrat BootInfo : implémenté.** ABI versionnée `ARCHIABI`, entrée noyau, carte mémoire UEFI finale et pointeurs de plateforme disponibles.
 - **B7 — Sortie UEFI : implémentée.** Collecte de la carte mémoire juste avant `ExitBootServices`, nouvelle tentative avec clé fraîche en cas de `EFI_INVALID_PARAMETER`.
 - **B8 — Noyau x86-64 de production via le chargeur maison : validé en CI antérieure.** OVMF/QEMU, validation BootInfo et test PMM de 130 allocations/libérations.
-- **B9 — Démarrage maison par défaut : bascule du code effectuée ; validation du HEAD courant en attente.** Lié directement à P0.
+- **B9 — Démarrage maison par défaut : bascule du code effectuée ; CI complète verte sur `0094090`, validation sur matériel physique encore en attente.** Lié directement à P0.
 
 ### ARM64
 
