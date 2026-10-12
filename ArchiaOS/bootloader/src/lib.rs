@@ -27,6 +27,117 @@ pub mod bootinfo {
     }
 }
 
+/// Minimal, allocation-free parser for the flattened Device Tree (FDT) header.
+pub mod device_tree {
+    pub const FDT_MAGIC: u32 = 0xd00d_feed;
+    pub const HEADER_SIZE: usize = 40;
+    pub const MAX_TOTAL_SIZE: usize = 16 * 1024 * 1024;
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum FdtError {
+        TruncatedHeader,
+        BadMagic,
+        InvalidTotalSize,
+        UnsupportedVersion,
+        InvalidOffset,
+        InvalidAlignment,
+        BlockOutOfBounds,
+        OverlappingBlocks,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub struct FdtHeader {
+        pub total_size: u32,
+        pub structure_offset: u32,
+        pub strings_offset: u32,
+        pub memory_reservation_offset: u32,
+        pub version: u32,
+        pub last_compatible_version: u32,
+        pub strings_size: u32,
+        pub structure_size: u32,
+    }
+
+    fn be32(bytes: &[u8], offset: usize) -> Result<u32, FdtError> {
+        let end = offset.checked_add(4).ok_or(FdtError::BlockOutOfBounds)?;
+        let value = bytes.get(offset..end).ok_or(FdtError::TruncatedHeader)?;
+        Ok(u32::from_be_bytes([value[0], value[1], value[2], value[3]]))
+    }
+
+    fn bounded_end(start: u32, size: u32, total: u32) -> Result<u32, FdtError> {
+        let end = start.checked_add(size).ok_or(FdtError::BlockOutOfBounds)?;
+        if end > total {
+            return Err(FdtError::BlockOutOfBounds);
+        }
+        Ok(end)
+    }
+
+    /// Validate the complete FDT image header and the bounds of all header-described blocks.
+    /// This is not a full tree parser and does not validate the reservation-map terminator.
+    pub fn parse_header(image: &[u8]) -> Result<FdtHeader, FdtError> {
+        if image.len() < HEADER_SIZE {
+            return Err(FdtError::TruncatedHeader);
+        }
+        if be32(image, 0)? != FDT_MAGIC {
+            return Err(FdtError::BadMagic);
+        }
+
+        let total_size = be32(image, 4)?;
+        let structure_offset = be32(image, 8)?;
+        let strings_offset = be32(image, 12)?;
+        let memory_reservation_offset = be32(image, 16)?;
+        let version = be32(image, 20)?;
+        let last_compatible_version = be32(image, 24)?;
+        let strings_size = be32(image, 32)?;
+        let structure_size = be32(image, 36)?;
+
+        if total_size < HEADER_SIZE as u32
+            || total_size as usize > MAX_TOTAL_SIZE
+            || total_size as usize > image.len()
+        {
+            return Err(FdtError::InvalidTotalSize);
+        }
+        // size_dt_struct is present from FDT version 17 onward. Our parser only
+        // relies on that defined header layout, and supports v17 compatibility.
+        if version < 17 || last_compatible_version > version || last_compatible_version > 17 {
+            return Err(FdtError::UnsupportedVersion);
+        }
+
+        if structure_offset < HEADER_SIZE as u32
+            || strings_offset < HEADER_SIZE as u32
+            || memory_reservation_offset < HEADER_SIZE as u32
+        {
+            return Err(FdtError::InvalidOffset);
+        }
+        if structure_offset % 4 != 0 || memory_reservation_offset % 8 != 0 {
+            return Err(FdtError::InvalidAlignment);
+        }
+        if structure_size == 0 {
+            return Err(FdtError::BlockOutOfBounds);
+        }
+
+        let structure_end = bounded_end(structure_offset, structure_size, total_size)?;
+        let strings_end = bounded_end(strings_offset, strings_size, total_size)?;
+        // A reservation-map entry is 16 bytes. Require at least its first entry
+        // to fit; scanning for the terminating zero pair is a later milestone.
+        bounded_end(memory_reservation_offset, 16, total_size)?;
+
+        if structure_offset < strings_end && strings_offset < structure_end {
+            return Err(FdtError::OverlappingBlocks);
+        }
+
+        Ok(FdtHeader {
+            total_size,
+            structure_offset,
+            strings_offset,
+            memory_reservation_offset,
+            version,
+            last_compatible_version,
+            strings_size,
+            structure_size,
+        })
+    }
+}
+
 // Defensive, allocation-free ELF64 validation for the first-party loader.
 // Parsing is separate from firmware I/O so malformed-image cases can be tested
 // on the host before any physical memory is allocated.
@@ -468,3 +579,87 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod device_tree_tests {
+    use std::vec;
+    use std::vec::Vec;
+
+    use super::device_tree::{parse_header, FdtError, FDT_MAGIC};
+
+    fn put_be32(bytes: &mut [u8], offset: usize, value: u32) {
+        bytes[offset..offset + 4].copy_from_slice(&value.to_be_bytes());
+    }
+
+    fn valid_fdt() -> Vec<u8> {
+        let mut image = vec![0u8; 128];
+        put_be32(&mut image, 0, FDT_MAGIC);
+        put_be32(&mut image, 4, 128);
+        put_be32(&mut image, 8, 56);
+        put_be32(&mut image, 12, 96);
+        put_be32(&mut image, 16, 40);
+        put_be32(&mut image, 20, 17);
+        put_be32(&mut image, 24, 16);
+        put_be32(&mut image, 28, 0);
+        put_be32(&mut image, 32, 16);
+        put_be32(&mut image, 36, 40);
+        image
+    }
+
+    #[test]
+    fn accepts_valid_fdt_header() {
+        let parsed = parse_header(&valid_fdt()).expect("valid FDT header");
+        assert_eq!(parsed.total_size, 128);
+        assert_eq!(parsed.version, 17);
+        assert_eq!(parsed.structure_offset, 56);
+        assert_eq!(parsed.strings_offset, 96);
+    }
+
+    #[test]
+    fn rejects_truncated_header() {
+        assert_eq!(parse_header(&[0u8; 16]), Err(FdtError::TruncatedHeader));
+    }
+
+    #[test]
+    fn rejects_bad_magic() {
+        let mut image = valid_fdt();
+        put_be32(&mut image, 0, 0);
+        assert_eq!(parse_header(&image), Err(FdtError::BadMagic));
+    }
+
+    #[test]
+    fn rejects_total_size_larger_than_buffer() {
+        let mut image = valid_fdt();
+        put_be32(&mut image, 4, 129);
+        assert_eq!(parse_header(&image), Err(FdtError::InvalidTotalSize));
+    }
+
+    #[test]
+    fn rejects_unsupported_version() {
+        let mut image = valid_fdt();
+        put_be32(&mut image, 20, 16);
+        assert_eq!(parse_header(&image), Err(FdtError::UnsupportedVersion));
+    }
+
+    #[test]
+    fn rejects_unaligned_structure_offset() {
+        let mut image = valid_fdt();
+        put_be32(&mut image, 8, 57);
+        assert_eq!(parse_header(&image), Err(FdtError::InvalidAlignment));
+    }
+
+    #[test]
+    fn rejects_overlapping_structure_and_strings() {
+        let mut image = valid_fdt();
+        put_be32(&mut image, 12, 64);
+        assert_eq!(parse_header(&image), Err(FdtError::OverlappingBlocks));
+    }
+
+    #[test]
+    fn rejects_structure_outside_total_size() {
+        let mut image = valid_fdt();
+        put_be32(&mut image, 8, 120);
+        assert_eq!(parse_header(&image), Err(FdtError::BlockOutOfBounds));
+    }
+}
+
