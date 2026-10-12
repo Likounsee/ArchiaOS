@@ -226,6 +226,9 @@ jobs:
           grep -Fq "ArchiaOS high-half test kernel: entry reached" "$RUNNER_TEMP/archiaos-highhalf-uefi.log"
           grep -Fq "ArchiaOS high-half test kernel: executing at" "$RUNNER_TEMP/archiaos-highhalf-uefi.log"
           grep -Fq "ArchiaOS high-half test kernel: CR0.WP and EFER.NXE confirmed" "$RUNNER_TEMP/archiaos-highhalf-uefi.log"
+          grep -Fq "ArchiaOS high-half test kernel: read-only write fault trapped" "$RUNNER_TEMP/archiaos-highhalf-uefi.log"
+          grep -Fq "ArchiaOS high-half test kernel: NX instruction-fetch fault trapped" "$RUNNER_TEMP/archiaos-highhalf-uefi.log"
+          grep -Fq "ArchiaOS high-half test kernel: hardware W^X/NX enforcement passed" "$RUNNER_TEMP/archiaos-highhalf-uefi.log"
           grep -Fq "ArchiaOS high-half test kernel: high-half W^X/NX permissions passed" "$RUNNER_TEMP/archiaos-highhalf-uefi.log"
           grep -Fq "ArchiaOS high-half test kernel: high-half page-table handoff passed" "$RUNNER_TEMP/archiaos-highhalf-uefi.log"
 
