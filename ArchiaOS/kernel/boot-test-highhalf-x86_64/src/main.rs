@@ -232,8 +232,8 @@ pub extern "C" fn rust_kernel_main(info: *const BootInfo) -> ! {
             halt();
         }
     };
-    if identity_pte & PAGE_NO_EXECUTE == 0 {
-        let _ = writeln!(serial, "ArchiaOS high-half test kernel: executable identity alias lacks NX");
+    if identity_pte & PAGE_NO_EXECUTE == 0 || identity_pte & PAGE_WRITABLE != 0 {
+        let _ = writeln!(serial, "ArchiaOS high-half test kernel: executable identity alias is not read-only/NX");
         halt();
     }
 
