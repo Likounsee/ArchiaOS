@@ -752,13 +752,17 @@ pub unsafe fn load_kernel_segments(
 
 
 #[cfg(target_arch = "x86_64")]
-fn image_uses_highhalf(elf: &archiaos_bootloader::elf::ElfFile) -> bool {
-    elf.entry() >= X86_64_HIGH_HALF_BASE && elf.entry() < X86_64_HIGH_HALF_END
+pub fn entry_uses_highhalf(entry: u64) -> bool {
+    entry >= X86_64_HIGH_HALF_BASE && entry < X86_64_HIGH_HALF_END
 }
 
 #[cfg(target_arch = "aarch64")]
-fn image_uses_highhalf(_elf: &archiaos_bootloader::elf::ElfFile) -> bool {
+pub fn entry_uses_highhalf(_entry: u64) -> bool {
     false
+}
+
+fn image_uses_highhalf(elf: &archiaos_bootloader::elf::ElfFile) -> bool {
+    entry_uses_highhalf(elf.entry())
 }
 
 #[cfg(target_arch = "x86_64")]
