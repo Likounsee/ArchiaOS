@@ -28,6 +28,7 @@ global_asm!(
     "jmp .Lhalt",
 );
 
+#[cfg(feature = "uefi-boot")]
 global_asm!(
     ".section .text.boot, \"ax\"",
     ".global _start",
