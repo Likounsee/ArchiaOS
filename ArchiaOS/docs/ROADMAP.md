@@ -7,7 +7,7 @@
 | Priorité | Domaine | Avancement estimé | État / prochaine preuve attendue |
 |---|---|---:|---|
 | **P0** | Démarrage UEFI maison x86-64 par défaut | **98 %** | **Seul reste le test sur le PC physique** : démarrer depuis la clé USB avec l’artefact `archiaos-p0-usb-x86_64`, vérifier les diagnostics réels puis redémarrer à froid. Le workflow de packaging a réussi sur le commit `977fa0c5088f015f48f7f5a5261ffcc3c8cec7d8`; cela valide la compilation et l’artefact, pas encore le démarrage matériel. P0 reste ouvert jusqu’à ce test. |
-| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **74 %** | Autotests PMM étendus : invariants bitmap, refus des frames réservées, réutilisation après libération et vérification du compte libre. Prochain : audit complet des plages et scénarios d'échec du chargeur. |
+| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **76 %** | GOP UEFI détecté sans allocation, framebuffer transmis dans BootInfo et plage contrôlée dans la carte mémoire finale. Reste : audit des autres plages plateforme et scénarios matériels. |
 | **P2** | Ordonnanceur et synchronisation | **0 %** | Non implémenté ; définir les primitives de tâches et le changement de contexte avant la préemption. |
 | **P3** | Espace utilisateur et ABI système | **0 %** | Non commencé ; dépend notamment des exceptions, syscalls et mécanismes mémoire isolés. |
 | **P4** | Stockage, VFS et préparation OpenFS | **0 %** | Pas de pilote bloc/VFS fonctionnel ; spécifier d'abord les interfaces. |
@@ -43,7 +43,7 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 
 **Critère de sortie :** build reproductible et tests de démarrage verts sur le HEAD courant, sans déclarer les essais QEMU comme une validation de tout matériel physique.
 
-### P1 — Fiabilité du chargeur et de la mémoire — 74 %
+### P1 — Fiabilité du chargeur et de la mémoire — 76 %
 
 **État : EN COURS.** P1 peut avancer pendant que la validation physique P0 attend la disponibilité du PC ; P0 reste à 98 % et ne sera fermé qu’après le test USB réel.
 
@@ -57,13 +57,15 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 - [x] Fournir un BootInfo versionné et récupérer la carte mémoire UEFI finale.
 - [x] Réessayer ExitBootServices avec une clé de carte mémoire fraîche si nécessaire.
 - [x] Ajouter un contrôle de la carte mémoire UEFI finale pour détecter les buffers BootInfo/carte mémoire, segments ELF, image du chargeur et arène de tables de pages incorrectement classés en RAM conventionnelle.
-- [ ] Compléter l'audit du framebuffer et des autres plages plateforme ; BootInfo indique actuellement un framebuffer absent (base/taille à zéro).
+- [x] Découvrir le framebuffer actif via UEFI GOP, transmettre base/taille dans BootInfo et refuser le transfert si sa plage chevauche de la RAM conventionnelle ou traverse un trou de carte mémoire.
+- [ ] Compléter l'audit des autres plages plateforme et leur accessibilité dans les mappings actifs ; la découverte GOP ne signifie pas encore que le framebuffer est mappé pour l'écriture graphique.
 - [x] Vérifier en CI les rejets de libérations invalides/doubles, la cohérence bitmap (toute page libre est gérée, mémoire basse réservée), la réutilisation après libération et la restauration du compte de pages.
 - [x] Extraire la validation scalaire du contrat BootInfo en fonction testable sans déréférencer la carte mémoire, avec tests négatifs magic/version, taille de structure, pointeur absent/désaligné, taille de carte et métadonnées.
 - [x] Valider aussi l'adresse d'entrée noyau non nulle et la cohérence/non-débordement de la plage framebuffer, avec tests unitaires (validation CI du HEAD courant en attente).
 - [x] Ajouter une simulation d'épuisement mémoire isolée et déterministe sur des bitmaps locaux, incluant filtrage des frames réservées et réutilisation, sans consommer la mémoire firmware ni bloquer QEMU (validation CI en attente).
 - [x] Vérifier avant ExitBootServices que les buffers BootInfo/carte mémoire, les segments noyau, l'image du chargeur et l'arène de tables de pages ne chevauchent aucune plage UEFI conventionnelle.
-- [ ] Vérifier le framebuffer quand un vrai framebuffer sera exposé dans BootInfo et terminer l'audit des plages spécifiques à chaque plateforme.
+- [x] Vérifier que le framebuffer réellement exposé dans BootInfo est entièrement couvert par des descripteurs UEFI réservés.
+- [ ] Terminer l'audit des autres plages réservées spécifiques à chaque plateforme.
 - [ ] Confirmer ces nouveaux contrôles par la CI du HEAD courant.
 - [x] Réinitialiser les bitmaps PMM après la prévalidation et avant chaque tentative de population, afin qu'une tentative échouée ne laisse pas d'état périmé pour une reprise.
 - [x] Refuser l'allocation lorsque le bitmap ne contient aucune frame à la fois libre et gérée ; la simulation locale teste l'épuisement déterministe.
