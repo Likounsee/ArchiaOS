@@ -2,11 +2,11 @@
 
 ## Objectif
 
-ArchiaOS conserve le firmware UEFI standard de la machine, mais développe son propre bootloader et son propre noyau. Les composants communs sont séparés progressivement des éléments propres à chaque architecture. Limine reste disponible comme voie de démarrage par défaut pendant que le nouveau chemin est éprouvé.
+ArchiaOS conserve le firmware UEFI standard de la machine, mais développe son propre bootloader et son propre noyau. Les composants communs sont séparés progressivement des éléments propres à chaque architecture. Le bootloader UEFI ArchiaOS est le chemin de démarrage par défaut ; la CI doit confirmer la bascule après retrait des anciens scripts Limine.
 
 ## État réel du code
 
-- **Noyau de production x86-64 :** deux chemins existent. Le démarrage ISO habituel utilise encore Limine. La compilation optionnelle `--features uefi-boot` du même noyau reçoit le contrat BootInfo maison et a démarré de bout en bout sous OVMF/QEMU.
+- **Noyau de production x86-64 :** l’entrée UEFI ArchiaOS est désormais le chemin de compilation par défaut. Le noyau reçoit BootInfo maison et initialise le PMM depuis les descripteurs UEFI. La CI doit être verte sur le nouveau HEAD pour revalider ce chemin après suppression de Limine.
 - **Bootloader maison :** lit `\\EFI\\ArchiaOS\\kernel.elf`, borne la taille du fichier, valide ELF64, réserve les pages physiques exactes, copie les segments et met le BSS à zéro. Il construit le BootInfo versionné `ARCHIABI`, récupère la carte mémoire finale et appelle `ExitBootServices` en réessayant si la clé de carte devient périmée.
 - **Pagination x86-64 :** le chargeur construit des tables 4-niveaux pour les segments high-half de la fenêtre ArchiaOS. Les tables identitaires couvrent uniquement la RAM reconnue sous 4 Gio. Les alias physiques du noyau sont NX, le code high-half est en lecture seule/exécutable, les données sont NX et seules les sections ELF marquées écriture sont inscriptibles. Les segments ELF RWX sont refusés. Le chargeur vérifie le support CPU de NX et active EFER.NXE/CR0.WP avant de basculer. Le trampoline UEFI reste brièvement exécutable, en lecture seule, dans l'espace identité pour achever la transition CR3.
 - **Handoff du noyau de production x86-64 :** la CI a compilé et démarré le vrai crate `archiaos-kernel` avec `uefi-boot` sous OVMF/QEMU. Le noyau a validé BootInfo et la carte mémoire UEFI puis passé son auto-test PMM de 130 allocations/libérations. Un noyau high-half de test vérifie aussi les bits NX/W^X et la protection superviseur.
