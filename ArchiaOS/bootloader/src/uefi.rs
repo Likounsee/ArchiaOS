@@ -1074,20 +1074,20 @@ unsafe fn build_x86_64_page_tables(
     if framebuffer_size != 0 {
         const MAX_LOW_CANONICAL_IDENTITY_ADDRESS: u64 = 1u64 << 39;
         let framebuffer_end = framebuffer_base.checked_add(framebuffer_size)
-            .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer range overflow while mapping GOP memory.\\r\\n\\0"))?;
+            .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer range overflow while mapping GOP memory.\r\n\0"))?;
         if framebuffer_base == 0 || framebuffer_end > MAX_LOW_CANONICAL_IDENTITY_ADDRESS {
-            return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: GOP framebuffer is outside the low-canonical 512 GiB identity map.\\r\\n\\0"));
+            return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: GOP framebuffer is outside the low-canonical 512 GiB identity map.\r\n\0"));
         }
         let mut address = framebuffer_base & !(EFI_PAGE_SIZE - 1);
         let rounded_end = framebuffer_end.checked_add(EFI_PAGE_SIZE - 1)
             .map(|value| value & !(EFI_PAGE_SIZE - 1))
-            .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer page range overflow.\\r\\n\\0"))?;
+            .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer page range overflow.\r\n\0"))?;
         while address < rounded_end {
             let table_address = if address < MAX_KERNEL_PHYSICAL_ADDRESS {
                 // Reuse the low-memory page tables that also map ordinary RAM.
                 let span = (address / (2 * 1024 * 1024)) as usize;
                 if span >= identity_tables.len() {
-                    return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: framebuffer lies outside the supported identity map.\\r\\n\\0"));
+                    return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: framebuffer lies outside the supported identity map.\r\n\0"));
                 }
                 let mut table_address = identity_tables[span];
                 if table_address == 0 {
@@ -1133,7 +1133,7 @@ unsafe fn build_x86_64_page_tables(
                 );
             }
             address = address.checked_add(EFI_PAGE_SIZE)
-                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer mapping iteration overflow.\\r\\n\\0"))?;
+                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer mapping iteration overflow.\r\n\0"))?;
         }
     }
 
