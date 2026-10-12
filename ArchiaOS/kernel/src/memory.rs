@@ -36,6 +36,7 @@ pub enum MemoryError {
     NoFreePages,
     AllocationFailed,
     AllocationExhaustionNotDetected,
+    BitmapInvariantViolation,
     AllocationAddressInvalid,
     AllocationNotUnique,
     InvalidFreeAccepted,
@@ -296,6 +297,26 @@ fn count_free_bitmap_pages() -> u64 {
     count
 }
 
+/// Verify that every free frame is managed and that low memory stays reserved.
+fn validate_bitmap_invariants() -> bool {
+    let managed = managed_bitmap_ptr() as *const u64;
+    let free = free_bitmap_ptr() as *const u64;
+    for index in 0..BITMAP_WORDS {
+        let managed_word = unsafe { ptr::read(managed.add(index)) };
+        let free_word = unsafe { ptr::read(free.add(index)) };
+        if free_word & !managed_word != 0 {
+            return false;
+        }
+    }
+    let low_frames = ONE_MIB / PAGE_SIZE;
+    for frame in 0..low_frames {
+        if unsafe { bit_is_set(managed, frame) } || unsafe { bit_is_set(free, frame) } {
+            return false;
+        }
+    }
+    true
+}
+
 pub fn free_page_count() -> u64 {
     if !unsafe { ptr::read_volatile(ptr::addr_of!(PMM_INITIALIZED)) } {
         return 0;
@@ -308,6 +329,10 @@ pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
     if before < PMM_SELF_TEST_PAGES as u64 {
         return Err(MemoryError::NoFreePages);
     }
+    if !validate_bitmap_invariants() {
+        return Err(MemoryError::BitmapInvariantViolation);
+    }
+    let _ = writeln!(log, "PMM test: free bitmap is a subset of managed memory; low memory reserved");
 
     let _ = writeln!(log, "PMM test: rejecting invalid free addresses");
     // Reserved, unaligned, zero, and exclusive-limit addresses must never free a frame.
@@ -373,6 +398,12 @@ pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
         if page < ONE_MIB || page % PAGE_SIZE != 0 || page >= MAX_PHYSICAL_ADDRESS {
             return Err(MemoryError::AllocationAddressInvalid);
         }
+        let frame = page / PAGE_SIZE;
+        if !unsafe { bit_is_set(managed_bitmap_ptr(), frame) }
+            || unsafe { bit_is_set(free_bitmap_ptr(), frame) }
+        {
+            return Err(MemoryError::BitmapInvariantViolation);
+        }
         for previous in 0..index {
             if unsafe { ptr::read(pages.add(previous)) } == page {
                 return Err(MemoryError::AllocationNotUnique);
@@ -401,7 +432,10 @@ pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
     if free_page_count() != before {
         return Err(MemoryError::FreeCountMismatch);
     }
-    let _ = writeln!(log, "PMM test: free count restored");
+    if !validate_bitmap_invariants() {
+        return Err(MemoryError::BitmapInvariantViolation);
+    }
+    let _ = writeln!(log, "PMM test: free count restored and bitmap invariants preserved");
     let first_page = unsafe { ptr::read(pages) };
     if free_page(first_page) {
         return Err(MemoryError::DoubleFreeAccepted);
