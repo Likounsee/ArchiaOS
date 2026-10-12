@@ -1817,6 +1817,15 @@ pub unsafe fn transfer_to_kernel(
         // MMIO as conventional free memory.
         let framebuffer_base = unsafe { (*info_pointer).framebuffer_base };
         let framebuffer_size = unsafe { (*info_pointer).framebuffer_size };
+        if (framebuffer_base == 0) != (framebuffer_size == 0) {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: incomplete framebuffer range in BootInfo.\\r\\n\\0"));
+        }
+        if framebuffer_base != 0
+            && !parsed_map.range_is_fully_covered(framebuffer_base, framebuffer_size)
+                .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid framebuffer range in final memory map.\\r\\n\\0"))?
+        {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer range is not fully covered by the final memory map.\\r\\n\\0"));
+        }
         // Some UEFI implementations expose GOP framebuffer MMIO inside a
         // descriptor labelled EfiConventionalMemory. Do not reject the entire boot
         // on that firmware defect: the x86-64 page-table builder excludes every
