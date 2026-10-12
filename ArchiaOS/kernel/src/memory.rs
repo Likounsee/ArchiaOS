@@ -156,25 +156,27 @@ pub unsafe fn initialize_from_bootinfo<W: Write>(
 
     let mut usable_ranges = 0u64;
     let mut usable_bytes = 0u64;
+    // Preflight every descriptor before touching the global allocator state.
+    // This keeps malformed reserved descriptors from leaving a half-initialized PMM.
     for index in 0..memory_map.len() {
         let descriptor = memory_map.entry(index)
             .map_err(|_| MemoryError::InvalidUefiMemoryMap)?;
+        let length = descriptor.byte_length()
+            .map_err(|_| MemoryError::InvalidMemoryRange)?;
         if descriptor.is_conventional() {
             usable_ranges = usable_ranges.checked_add(1)
                 .ok_or(MemoryError::UsableMemoryTotalOverflow)?;
-            usable_bytes = usable_bytes.checked_add(
-                descriptor.byte_length().map_err(|_| MemoryError::InvalidMemoryRange)?
-            ).ok_or(MemoryError::UsableMemoryTotalOverflow)?;
+            usable_bytes = usable_bytes.checked_add(length)
+                .ok_or(MemoryError::UsableMemoryTotalOverflow)?;
         }
     }
     if usable_ranges == 0 {
         return Err(MemoryError::NoFreePages);
     }
 
-    // Fail closed: this early allocator can only be initialized once.
     // Only UEFI EfiConventionalMemory ranges become allocatable; loader, runtime,
-    // ACPI, MMIO and all other descriptor types remain reserved.
-    unsafe { ptr::write_volatile(ptr::addr_of_mut!(PMM_INITIALIZED), true) };
+    // ACPI, MMIO and all other descriptor types remain reserved. Do not publish
+    // the allocator as initialized until every bitmap is populated and verified.
     let _ = writeln!(log, "PMM: validated ArchiaOS UEFI BootInfo v{}", info.version);
     let _ = writeln!(log, "PMM: UEFI memory descriptors validated: {}", memory_map.len());
 
@@ -205,10 +207,11 @@ pub unsafe fn initialize_from_bootinfo<W: Write>(
         set_bit_range(managed_bitmap_ptr(), 0, ONE_MIB / PAGE_SIZE, false);
         set_bit_range(free_bitmap_ptr(), 0, ONE_MIB / PAGE_SIZE, false);
     }
-    let free_pages = free_page_count();
+    let free_pages = count_free_bitmap_pages();
     if free_pages == 0 {
         return Err(MemoryError::NoFreePages);
     }
+    unsafe { ptr::write_volatile(ptr::addr_of_mut!(PMM_INITIALIZED), true) };
     let _ = writeln!(log, "PMM: conventional UEFI ranges: {}, bytes: {}", usable_ranges, usable_bytes);
     let _ = writeln!(log, "PMM: initial free page count {}", free_pages);
     Ok(MemoryStats {
@@ -271,16 +274,20 @@ pub fn free_page(physical_address: u64) -> bool {
     true
 }
 
-pub fn free_page_count() -> u64 {
-    if !unsafe { ptr::read_volatile(ptr::addr_of!(PMM_INITIALIZED)) } {
-        return 0;
-    }
+fn count_free_bitmap_pages() -> u64 {
     let free = free_bitmap_ptr() as *const u64;
     let mut count = 0u64;
     for index in 0..BITMAP_WORDS {
         count += unsafe { ptr::read(free.add(index)) }.count_ones() as u64;
     }
     count
+}
+
+pub fn free_page_count() -> u64 {
+    if !unsafe { ptr::read_volatile(ptr::addr_of!(PMM_INITIALIZED)) } {
+        return 0;
+    }
+    count_free_bitmap_pages()
 }
 
 pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
