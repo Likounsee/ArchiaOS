@@ -1639,6 +1639,16 @@ mod memory_map_tests {
     }
 
     #[test]
+    fn rejects_overlapping_unsorted_memory_ranges() {
+        let mut bytes = descriptor(EFI_CONVENTIONAL_MEMORY, 0x5000, 4);
+        bytes.extend_from_slice(&descriptor(EFI_CONVENTIONAL_MEMORY, 0x1000, 8));
+        assert_eq!(
+            UefiMemoryMap::parse(&bytes, 48).err(),
+            Some(MemoryMapError::OverlappingRanges)
+        );
+    }
+
+    #[test]
     fn rejects_descriptor_stride_smaller_than_uefi_layout() {
         assert_eq!(
             UefiMemoryMap::parse(&[0u8; 32], 32).err(),
