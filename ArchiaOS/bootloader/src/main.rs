@@ -38,10 +38,14 @@ const ELF_MACHINE: u16 = if cfg!(target_arch = "x86_64") { 62 } else { 183 };
 #[repr(C)]
 struct TableHeader { signature: u64, revision: u32, header_size: u32, crc32: u32, reserved: u32 }
 #[repr(C)]
+#[derive(Clone, Copy)]
 struct Guid { data1: u32, data2: u16, data3: u16, data4: [u8; 8] }
 const LOADED_IMAGE_GUID: Guid = Guid { data1:0x5b1b31a1, data2:0x9562, data3:0x11d2, data4:[0x8e,0x3f,0x00,0xa0,0xc9,0x69,0x72,0x3b] };
 const SIMPLE_FILE_SYSTEM_GUID: Guid = Guid { data1:0x964e5b22, data2:0x6459, data3:0x11d2, data4:[0x8e,0x39,0x00,0xa0,0xc9,0x69,0x72,0x3b] };
 const FILE_INFO_GUID: Guid = Guid { data1:0x09576e92, data2:0x6d3f, data3:0x11d2, data4:[0x8e,0x39,0x00,0xa0,0xc9,0x69,0x72,0x3b] };
+const ACPI_20_TABLE_GUID: Guid = Guid { data1:0x8868e871, data2:0xe4f1, data3:0x11d3, data4:[0xbc,0x22,0x00,0x80,0xc7,0x3c,0x88,0x81] };
+const ACPI_10_TABLE_GUID: Guid = Guid { data1:0xeb9d2d30, data2:0x2d88, data3:0x11d3, data4:[0x9a,0x16,0x00,0x90,0x27,0x3f,0xc1,0x4d] };
+const DEVICE_TREE_TABLE_GUID: Guid = Guid { data1:0xb1b621d5, data2:0xf19c, data3:0x41a5, data4:[0x83,0x0b,0xd9,0x15,0x2c,0x69,0xaa,0xe0] };
 
 #[repr(C)]
 struct SimpleTextOutputProtocol {
@@ -91,6 +95,12 @@ struct SystemTable {
     runtime_services: *mut c_void, boot_services: *mut BootServices,
     number_of_table_entries: usize, configuration_table: *mut c_void,
 }
+#[repr(C)]
+struct ConfigurationTable {
+    vendor_guid: Guid,
+    vendor_table: *mut c_void,
+}
+
 #[repr(C)]
 struct LoadedImageProtocol {
     revision: u32, _padding: u32, parent_handle: Handle, system_table: *mut SystemTable,
@@ -199,6 +209,26 @@ unsafe fn emergency_exit_diagnostic() {
         }
         unsafe { write_volatile(DR as *mut u32, byte as u32); }
     }
+}
+
+unsafe fn configuration_table_pointer(st:*mut SystemTable,guid:Guid)->u64 {
+    if st.is_null() { return 0; }
+    let count=unsafe { read_volatile(ptr::addr_of!((*st).number_of_table_entries)) };
+    let table=unsafe { read_volatile(ptr::addr_of!((*st).configuration_table)) }.cast::<ConfigurationTable>();
+    if table.is_null()||count>4096 { return 0; }
+    for index in 0..count {
+        let entry=unsafe { &*table.add(index) };
+        let candidate=entry.vendor_guid;
+        if candidate.data1==guid.data1
+            && candidate.data2==guid.data2
+            && candidate.data3==guid.data3
+            && candidate.data4==guid.data4
+            && !entry.vendor_table.is_null()
+        {
+            return entry.vendor_table as usize as u64;
+        }
+    }
+    0
 }
 
 unsafe fn protocol<T>(bs:*mut BootServices,h:Handle,g:*const Guid)->Result<*mut T,Status> {
@@ -380,6 +410,13 @@ unsafe fn get_boot_info_and_exit(handle:Handle,st:*mut SystemTable,entry:u64)->R
     if bs.is_null(){return Err(EFI_UNSUPPORTED);}
     let get_map=unsafe{(*bs).get_memory_map}.ok_or(EFI_UNSUPPORTED)?;
     let exit=unsafe{(*bs).exit_boot_services}.ok_or(EFI_UNSUPPORTED)?;
+    // Configuration-table pointers are physical addresses, not runtime service
+    // pointers; capture them before relinquishing the UEFI boot environment.
+    let mut acpi_rsdp=unsafe { configuration_table_pointer(st,ACPI_20_TABLE_GUID) };
+    if acpi_rsdp==0 {
+        acpi_rsdp=unsafe { configuration_table_pointer(st,ACPI_10_TABLE_GUID) };
+    }
+    let device_tree=unsafe { configuration_table_pointer(st,DEVICE_TREE_TABLE_GUID) };
     let info_mem=unsafe{allocate_pool(bs,core::mem::size_of::<BootInfo>())}?;
     let map_mem=match unsafe{allocate_pool(bs,MAX_MEMORY_MAP_SIZE)}{
         Ok(p)=>p,
@@ -423,8 +460,8 @@ unsafe fn get_boot_info_and_exit(handle:Handle,st:*mut SystemTable,entry:u64)->R
             memory_map_descriptor_size:desc_size as u64,
             memory_map_descriptor_version:desc_version,
             flags:0,
-            acpi_rsdp:0,
-            device_tree:0,
+            acpi_rsdp,
+            device_tree,
             framebuffer_base:0,
             framebuffer_size:0,
         });}
