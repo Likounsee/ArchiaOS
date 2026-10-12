@@ -124,25 +124,13 @@ pub unsafe fn initialize_from_bootinfo<W: Write>(
     // The UEFI loader owns this contract. Once the pointer is non-null and
     // aligned, validate the complete versioned header before using any fields.
     let info = unsafe { &*boot_info_ptr };
-    if info.magic != BOOT_INFO_MAGIC
-        || info.version != BOOT_INFO_VERSION
-        || (info.struct_size as usize) < core::mem::size_of::<BootInfo>()
-        || info.memory_map.is_null()
-        || info.memory_map_size == 0
-        || info.memory_map_size > 1024 * 1024
-        || info.memory_map_descriptor_version == 0
-        || info.memory_map_descriptor_size == 0
-    {
-        return Err(MemoryError::InvalidBootInfo);
-    }
+    archiaos_bootloader::bootinfo::validate_header(info)
+        .map_err(|_| MemoryError::InvalidBootInfo)?;
 
     let map_size = usize::try_from(info.memory_map_size)
         .map_err(|_| MemoryError::InvalidBootInfo)?;
     let descriptor_size = usize::try_from(info.memory_map_descriptor_size)
         .map_err(|_| MemoryError::InvalidBootInfo)?;
-    if (info.memory_map as usize) % core::mem::align_of::<u64>() != 0 {
-        return Err(MemoryError::InvalidBootInfo);
-    }
 
     // SAFETY: BootInfo is supplied by our bootloader; bounds and alignment are
     // checked above, and the loader keeps the map allocation reserved through
