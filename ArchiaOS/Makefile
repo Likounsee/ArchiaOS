@@ -1,25 +1,23 @@
 CARGO ?= cargo
-QEMU ?= qemu-system-x86_64
-KERNEL := target/x86_64-unknown-none/release/archiaos-kernel
-ISO := build/archiaos.iso
 
-.PHONY: build iso run boot-local uefi-files clean
+.PHONY: build boot-local run uefi-files clean
+
+# Build the default x86-64 kernel.
 build:
-	$(CARGO) build --release
+	$(CARGO) build --release --features uefi-boot --target x86_64-unknown-none
 
-iso: build
-	./scripts/make-iso.sh
-
-# Build and boot the first-party UEFI path locally under OVMF/QEMU.
+# Boot the first-party UEFI path locally under OVMF/QEMU.
 boot-local:
 	bash ./scripts/boot-local-uefi.sh
 
+# Alias for the local virtual boot test.
 run: boot-local
 
-# Produce EFI/BOOT/BOOTX64.EFI and the required ArchiaOS kernel as files.
+# Produce standalone EFI files for a FAT32 USB drive.
 uefi-files:
 	bash ./scripts/build-uefi-files.sh
 
+# Remove generated Rust and packaging outputs.
 clean:
 	$(CARGO) clean
-	rm -rf build/iso-root build/limine-extract build/limine-binary build/limine-binary.tar.gz $(ISO) build/local-uefi
+	rm -rf build
