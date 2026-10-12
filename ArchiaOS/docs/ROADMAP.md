@@ -43,9 +43,9 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 
 **Critère de sortie :** build reproductible et tests de démarrage verts sur le HEAD courant, sans déclarer les essais QEMU comme une validation de tout matériel physique.
 
-### P1 — Fiabilité du chargeur et de la mémoire — 80 %
+### P1 — Fiabilité du chargeur et de la mémoire — 83 %
 
-**État : EN COURS.** Le premier démarrage physique est confirmé ; P1 continue sur les invariants mémoire et l'accessibilité des plages après changement de tables de pages.
+**État : EN COURS.** CI verte sur le HEAD `1ab767a` : tests unitaires du chargeur, démarrage UEFI OVMF en identité et high-half, test négatif BootInfo, smoke test AAVMF/ARM64 et paquet USB. P1 continue sur l'audit des plages réservées spécifiques aux plateformes et les scénarios matériels.
 
 **Objectif :** sécuriser le transfert UEFI → noyau et la gestion de la mémoire physique.
 
@@ -62,11 +62,12 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 - [x] Auditer explicitement l'accessibilité dans le mapping identité actif des plages critiques BootInfo, carte mémoire, segments ELF et arène de tables de pages ; le framebuffer GOP reçoit un mapping d'écriture uncached dédié. Les autres plages réservées spécifiques aux plateformes restent à examiner.
 - [x] Vérifier en CI les rejets de libérations invalides/doubles, la cohérence bitmap (toute page libre est gérée, mémoire basse réservée), la réutilisation après libération et la restauration du compte de pages.
 - [x] Extraire la validation scalaire du contrat BootInfo en fonction testable sans déréférencer la carte mémoire, avec tests négatifs magic/version, taille de structure, pointeur absent/désaligné, taille de carte et métadonnées.
-- [x] Valider aussi l'adresse d'entrée noyau non nulle et la cohérence/non-débordement de la plage framebuffer, avec tests unitaires (validation CI du HEAD courant en attente).
-- [x] Ajouter une simulation d'épuisement mémoire isolée et déterministe sur des bitmaps locaux, incluant filtrage des frames réservées et réutilisation, sans consommer la mémoire firmware ni bloquer QEMU (validation CI en attente).
+- [x] Valider aussi l'adresse d'entrée noyau non nulle et la cohérence/non-débordement de la plage framebuffer, avec tests unitaires confirmés par la CI du HEAD `1ab767a`.
+- [x] Ajouter une simulation d'épuisement mémoire isolée et déterministe sur des bitmaps locaux, incluant filtrage des frames réservées et réutilisation, sans consommer la mémoire firmware ni bloquer QEMU (tests et démarrages CI verts sur `1ab767a`).
 - [x] Vérifier avant ExitBootServices que les buffers BootInfo/carte mémoire, les segments noyau, l'image du chargeur et l'arène de tables de pages ne chevauchent aucune plage UEFI conventionnelle.
 - [x] Valider la cohérence et l'absence de débordement de la plage framebuffer dans BootInfo. Le framebuffer GOP est une plage MMIO : elle peut légitimement être absente des descripteurs UEFI ; elle est mappée séparément en uncached et exclue de la RAM allocatable. Les tests de couverture générique rejettent les trous sans imposer à tort que le MMIO soit décrit comme mémoire système.
 - [ ] Terminer l'audit des autres plages réservées spécifiques à chaque plateforme.
+- [x] Étendre les tests de couverture mémoire aux sous-plages non alignées, aux frontières entre descripteurs de types différents et aux trous entre descripteurs ; CI verte sur `1ab767a`.
 - [x] Confirmer les contrôles de transfert, mappings et BootInfo par la CI du HEAD `00bcb8c` : compilation x86-64/ARM64, démarrage UEFI OVMF, BootInfo négatif et paquet USB tous verts.
 - [x] Réinitialiser les bitmaps PMM après la prévalidation et avant chaque tentative de population, afin qu'une tentative échouée ne laisse pas d'état périmé pour une reprise.
 - [x] Refuser l'allocation lorsque le bitmap ne contient aucune frame à la fois libre et gérée ; la simulation locale teste l'épuisement déterministe.
