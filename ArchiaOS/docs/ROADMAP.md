@@ -7,7 +7,7 @@
 | Priorité | Domaine | Avancement estimé | État / prochaine preuve attendue |
 |---|---|---:|---|
 | **P0** | Démarrage UEFI maison x86-64 par défaut | **98 %** | **Seul reste le test sur le PC physique** : démarrer depuis la clé USB avec l’artefact `archiaos-p0-usb-x86_64`, vérifier les diagnostics réels puis redémarrer à froid. Le workflow de packaging a réussi sur le commit `977fa0c5088f015f48f7f5a5261ffcc3c8cec7d8`; cela valide la compilation et l’artefact, pas encore le démarrage matériel. P0 reste ouvert jusqu’à ce test. |
-| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **74 %** | Carte mémoire, ELF, BootInfo et autotests PMM validés ; ajouter des scénarios d'échec du chemin complet et approfondir l'audit des plages réservées. |
+| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **74 %** | Autotests PMM étendus : invariants bitmap, refus des frames réservées, réutilisation après libération et vérification du compte libre. Prochain : audit complet des plages et scénarios d'échec du chargeur. |
 | **P2** | Ordonnanceur et synchronisation | **0 %** | Non implémenté ; définir les primitives de tâches et le changement de contexte avant la préemption. |
 | **P3** | Espace utilisateur et ABI système | **0 %** | Non commencé ; dépend notamment des exceptions, syscalls et mécanismes mémoire isolés. |
 | **P4** | Stockage, VFS et préparation OpenFS | **0 %** | Pas de pilote bloc/VFS fonctionnel ; spécifier d'abord les interfaces. |
@@ -57,9 +57,9 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 - [x] Fournir un BootInfo versionné et récupérer la carte mémoire UEFI finale.
 - [x] Réessayer ExitBootServices avec une clé de carte mémoire fraîche si nécessaire.
 - [ ] Auditer toutes les plages réservées : chargeur, noyau, buffers, framebuffer, tables de pages et zones firmware.
-- [x] Vérifier en CI les rejets de libérations invalides/doubles et la restauration du compte de pages après autotest.
+- [x] Vérifier en CI les rejets de libérations invalides/doubles, la cohérence bitmap (toute page libre est gérée, mémoire basse réservée), la réutilisation après libération et la restauration du compte de pages.
 - [x] Extraire la validation scalaire du contrat BootInfo en fonction testable sans déréférencer la carte mémoire, avec tests négatifs magic/version, taille de structure, pointeur absent/désaligné, taille de carte et métadonnées.
-- [ ] Ajouter des tests d'échec d'allocation et auditer les plages réservées (chargeur, noyau, buffers, framebuffer, tables de pages et zones firmware).
+- [ ] Ajouter une simulation d'épuisement mémoire isolée et déterministe (sans perturber le démarrage QEMU), puis auditer les plages réservées (chargeur, noyau, buffers, framebuffer, tables de pages et zones firmware).
 - [x] Réinitialiser les bitmaps PMM après la prévalidation et avant chaque tentative de population, afin qu'une tentative échouée ne laisse pas d'état périmé pour une reprise.
 - [ ] Clarifier le comportement en cas d'épuisement mémoire et empêcher toute libération d'une plage réservée.
 
