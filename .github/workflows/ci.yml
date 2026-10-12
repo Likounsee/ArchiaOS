@@ -100,6 +100,7 @@ jobs:
           fi
           grep -Fq "ArchiaOS AArch64: kernel entry reached" "$RUNNER_TEMP/archiaos-aarch64.log"
           grep -Fq "ArchiaOS AArch64: PL011 diagnostics initialized" "$RUNNER_TEMP/archiaos-aarch64.log"
+          grep -Fq "ArchiaOS AArch64: direct QEMU Device Tree detected" "$RUNNER_TEMP/archiaos-aarch64.log"
 
   bootloader-uefi-qemu-smoke:
     name: Boot custom UEFI loader and validate kernel image
@@ -297,4 +298,5 @@ jobs:
           grep -Fq "ArchiaOS Bootloader: exiting UEFI boot services" "$RUNNER_TEMP/archiaos-aarch64-uefi.log"
           grep -Fq "ArchiaOS AArch64: kernel entry reached" "$RUNNER_TEMP/archiaos-aarch64-uefi.log"
           grep -Fq "ArchiaOS AArch64: BootInfo validated" "$RUNNER_TEMP/archiaos-aarch64-uefi.log"
+          grep -Fq "ArchiaOS AArch64: Device Tree header validated" "$RUNNER_TEMP/archiaos-aarch64-uefi.log"
           grep -Fq "ArchiaOS AArch64: UEFI memory-map descriptors readable" "$RUNNER_TEMP/archiaos-aarch64-uefi.log"
