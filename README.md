@@ -1,21 +1,23 @@
 # ArchiaOS
 
-**ArchiaOS est un système d'exploitation expérimental en cours de construction.** Le noyau x86-64 de production démarre encore avec Limine. Le projet développe son propre bootloader UEFI et prépare l'exécution ARM64 dans le même dépôt, sur la branche `ArchiaOS`.
+**ArchiaOS est un système d'exploitation expérimental en cours de construction.** Le noyau de production x86-64 démarre encore avec Limine. Le bootloader UEFI maison a réussi des transferts vers un noyau de test x86-64 sous OVMF/QEMU et vers le prototype ARM64 sous AAVMF/QEMU.
 
-## État du développement
+## État confirmé par la CI
 
-- **Bootloader maison :** lecture du noyau depuis la partition EFI, validation ELF64, allocation et chargement de segments identité sous 4 Gio, initialisation du BSS, contrat BootInfo versionné, carte mémoire finale et sortie des services UEFI. Le chargeur et les noyaux de test partagent le même type BootInfo ; les pointeurs RSDP ACPI et Device Tree sont contrôlés avant transmission.
-- **Handoff x86-64 :** une image de test indépendante démarre sous OVMF/QEMU et vérifie BootInfo. Le noyau de production, lié en high-half et dépendant de Limine, n'est pas encore basculé vers ce chargeur.
-- **ARM64/AArch64 :** le bootloader charge les segments identité, synchronise le cache d'instructions, valide l'en-tête, les blocs, les jetons et les noms de propriétés du Device Tree et transmet BootInfo au noyau AArch64. Le noyau utilise le même ABI, découvre la base PL011 à partir des propriétés `compatible`/`reg` du Device Tree, valide les plages de la carte mémoire, initialise un allocateur bitmap physique limité à 4 Gio et exécute un auto-test de 130 pages. Le test AAVMF/QEMU complet est ajouté à la CI ; sa réussite reste à confirmer.
-- **Firmware :** le firmware UEFI standard de la carte mère ou de la machine virtuelle reste utilisé ; aucun bootloader tiers n'est prévu dans la chaîne finale.
+- Compilation et smoke test du noyau de production x86-64 via Limine.
+- Tests unitaires des parseurs BootInfo, ELF64, ACPI, Device Tree et carte mémoire.
+- Compilation du bootloader maison pour UEFI x86-64 et AArch64.
+- Transfert UEFI x86-64 validé sous OVMF/QEMU avec un noyau de test identité.
+- Transfert UEFI ARM64 validé sous AAVMF/QEMU, avec découverte de la console via ACPI SPCR, validation de BootInfo/carte mémoire, auto-test PMM et exception synchrone piégée.
+- Démarrage direct du prototype noyau AArch64 sous QEMU `virt`.
 
-La compilation de l'application UEFI AArch64 ou du noyau ne suffit pas à démontrer la compatibilité de l'ensemble de l'OS. Il faut encore valider le démarrage complet en CI, puis ajouter les exceptions, la MMU, les timers, les interruptions et les pilotes ARM64. Le stockage, la VFS et l'intégration OpenFS sont des étapes ultérieures.
+Cela ne signifie pas encore que le noyau de production high-half peut démarrer sans Limine, ni que toutes les plateformes ARM64 sont compatibles. Le chargeur actuel exige des segments ELF identité, alignés sur page et sous 4 Gio. Le firmware UEFI standard reste fourni par la machine.
 
 ## Documentation
 
-- [Documentation technique et commandes de build](ArchiaOS/README.md)
-- [Roadmap et critères d'acceptation](ArchiaOS/docs/ROADMAP.md)
-- [Architecture du bootloader et ARM64](ArchiaOS/docs/BOOT_AND_ARCHITECTURES.md)
+- [Documentation technique et compilation](ArchiaOS/README.md)
+- [Roadmap](ArchiaOS/docs/ROADMAP.md)
+- [Architecture bootloader et ARM64](ArchiaOS/docs/BOOT_AND_ARCHITECTURES.md)
 - [Prototype UEFI](ArchiaOS/bootloader/README.md)
 - [Prototype noyau AArch64](ArchiaOS/kernel/aarch64/README.md)
 
