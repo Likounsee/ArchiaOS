@@ -232,7 +232,7 @@ unsafe fn configuration_table_pointer(st:*mut SystemTable,guid:Guid)->u64 {
 }
 
 unsafe fn validate_fdt_header(address:u64)->bool {
-    use archiaos_bootloader::device_tree::{parse_header, HEADER_SIZE, MAX_TOTAL_SIZE};
+    use archiaos_bootloader::device_tree::{validate_tree, HEADER_SIZE, MAX_TOTAL_SIZE};
     if address==0||address>usize::MAX as u64 { return false; }
     let base=address as usize as *const u8;
     // The EFI Device Tree configuration entry points to a readable FDT blob.
@@ -243,7 +243,7 @@ unsafe fn validate_fdt_header(address:u64)->bool {
     };
     if total<HEADER_SIZE||total>MAX_TOTAL_SIZE { return false; }
     let image=unsafe { core::slice::from_raw_parts(base,total) };
-    parse_header(image).is_ok()
+    validate_tree(image).is_ok()
 }
 
 unsafe fn validate_rsdp_pointer(address:u64)->bool {
