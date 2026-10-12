@@ -11,13 +11,13 @@ ArchiaOS est un OS expérimental en Rust `no_std`. Le chemin de démarrage stand
 - **ARM64 :** le loader et le prototype noyau AArch64 passent l'assemblage et le transfert UEFI sous AAVMF/QEMU. Le noyau prototype valide BootInfo/la carte mémoire, découvre PL011 via ACPI SPCR sur cette configuration, initialise le PMM et réussit l'auto-test d'exception synchrone. Cela ne signifie pas que toutes les plateformes ARM64 sont compatibles.
 - **Limites :** chargeur, buffers de transfert et adresses physiques du noyau restent dans la fenêtre identité sous 4 Gio. Le fichier noyau est plafonné à 64 Mio et la mémoire totale des segments à 128 Mio. Le high-half testé concerne x86-64 ; AArch64 utilise encore le chemin identité et n'a pas de MMU propre au noyau.
 
-## Compilation du chemin standard x86-64
+## Compilation du noyau x86-64
 
 Depuis ce dossier :
 
 ```sh
 cargo build --release
-scripts/make-iso.sh
+
 ```
 
 ## Vérification locale du noyau avec entrée UEFI maison
