@@ -17,7 +17,77 @@ const PAGE_NO_EXECUTE: u64 = 1 << 63;
 
 #[used]
 #[link_section = ".data"]
+#[no_mangle]
 static mut PAGE_PERMISSION_TEST_DATA: u64 = 0x4152_4348_4941_4f53;
+
+#[used]
+#[link_section = ".data"]
+#[no_mangle]
+static mut ARCHIAOS_WRITE_FAULT_SEEN: u64 = 0;
+
+#[used]
+#[link_section = ".data"]
+#[no_mangle]
+static mut ARCHIAOS_NX_FAULT_SEEN: u64 = 0;
+
+#[used]
+#[link_section = ".data"]
+#[no_mangle]
+static mut ARCHIAOS_PAGE_FAULT_TEST_FAILURE: u64 = 0;
+
+#[repr(C, packed)]
+#[derive(Clone, Copy)]
+struct IdtEntry {
+    offset_low: u16,
+    selector: u16,
+    ist: u8,
+    attributes: u8,
+    offset_mid: u16,
+    offset_high: u32,
+    reserved: u32,
+}
+
+impl IdtEntry {
+    const EMPTY: Self = Self {
+        offset_low: 0,
+        selector: 0,
+        ist: 0,
+        attributes: 0,
+        offset_mid: 0,
+        offset_high: 0,
+        reserved: 0,
+    };
+
+    const fn interrupt_gate(handler: u64, selector: u16) -> Self {
+        Self {
+            offset_low: handler as u16,
+            selector,
+            ist: 0,
+            attributes: 0x8e,
+            offset_mid: (handler >> 16) as u16,
+            offset_high: (handler >> 32) as u32,
+            reserved: 0,
+        }
+    }
+}
+
+#[repr(align(16))]
+struct AlignedIdt([IdtEntry; 256]);
+
+static mut ARCHIAOS_TEST_IDT: AlignedIdt = AlignedIdt([IdtEntry::EMPTY; 256]);
+
+#[repr(C, packed)]
+struct Idtr {
+    limit: u16,
+    base: u64,
+}
+
+extern "C" {
+    fn archiaos_page_fault_entry();
+    fn archiaos_test_write_readonly(address: *mut u8);
+    fn archiaos_test_execute_nx(address: *const u8);
+    fn archiaos_test_protected_text_marker();
+}
 
 global_asm!(
     ".section .text.boot, \"ax\"",
@@ -40,6 +110,96 @@ global_asm!(
     ".skip 65536",
     ".global __stack_top",
     "__stack_top:",
+);
+
+global_asm!(
+    ".section .text, \"ax\"",
+    ".global archiaos_page_fault_entry",
+    ".type archiaos_page_fault_entry, @function",
+    "archiaos_page_fault_entry:",
+    "cli",
+    // On a same-CPL #PF, the CPU pushes error code, RIP, CS and RFLAGS.
+    // Preserve every scratch register used by this assembly-only handler.
+    "push rax",
+    "push rcx",
+    "push rdx",
+    "push rsi",
+    "push rdi",
+    "push r8",
+    "push r9",
+    "push r10",
+    "push r11",
+    "mov rax, [rsp + 72]",
+    "mov rdx, [rsp + 80]",
+    "lea rcx, [rip + archiaos_test_write_fault_instruction]",
+    "cmp rdx, rcx",
+    "je .Larchiaos_write_page_fault",
+    "lea rcx, [rip + PAGE_PERMISSION_TEST_DATA]",
+    "cmp rdx, rcx",
+    "je .Larchiaos_nx_page_fault",
+    "jmp .Larchiaos_unexpected_page_fault",
+    ".Larchiaos_write_page_fault:",
+    "mov rcx, rax",
+    "and rcx, 0x1f",
+    "cmp rcx, 0x3",
+    "jne .Larchiaos_write_fault_bad_code",
+    "mov qword ptr [rip + ARCHIAOS_WRITE_FAULT_SEEN], 1",
+    "jmp .Larchiaos_write_fault_resume",
+    ".Larchiaos_write_fault_bad_code:",
+    "mov qword ptr [rip + ARCHIAOS_PAGE_FAULT_TEST_FAILURE], 1",
+    ".Larchiaos_write_fault_resume:",
+    "lea rcx, [rip + archiaos_test_write_recovery]",
+    "mov [rsp + 80], rcx",
+    "jmp .Larchiaos_restore_and_iret",
+    ".Larchiaos_nx_page_fault:",
+    "mov rcx, rax",
+    "and rcx, 0x1f",
+    "cmp rcx, 0x11",
+    "jne .Larchiaos_nx_fault_bad_code",
+    "mov qword ptr [rip + ARCHIAOS_NX_FAULT_SEEN], 1",
+    "jmp .Larchiaos_nx_fault_resume",
+    ".Larchiaos_nx_fault_bad_code:",
+    "mov qword ptr [rip + ARCHIAOS_PAGE_FAULT_TEST_FAILURE], 1",
+    ".Larchiaos_nx_fault_resume:",
+    "lea rcx, [rip + archiaos_test_exec_recovery]",
+    "mov [rsp + 80], rcx",
+    ".Larchiaos_restore_and_iret:",
+    "pop r11",
+    "pop r10",
+    "pop r9",
+    "pop r8",
+    "pop rdi",
+    "pop rsi",
+    "pop rdx",
+    "pop rcx",
+    "pop rax",
+    "add rsp, 8",
+    "iretq",
+    ".Larchiaos_unexpected_page_fault:",
+    "cli",
+    "1:",
+    "hlt",
+    "jmp 1b",
+    ".global archiaos_test_write_readonly",
+    ".type archiaos_test_write_readonly, @function",
+    "archiaos_test_write_readonly:",
+    ".global archiaos_test_write_fault_instruction",
+    "archiaos_test_write_fault_instruction:",
+    "mov byte ptr [rdi], 0x90",
+    ".global archiaos_test_write_recovery",
+    "archiaos_test_write_recovery:",
+    "ret",
+    ".global archiaos_test_execute_nx",
+    ".type archiaos_test_execute_nx, @function",
+    "archiaos_test_execute_nx:",
+    "jmp rdi",
+    ".global archiaos_test_exec_recovery",
+    "archiaos_test_exec_recovery:",
+    "ret",
+    ".global archiaos_test_protected_text_marker",
+    "archiaos_test_protected_text_marker:",
+    "nop",
+    "ret",
 );
 
 struct Serial;
@@ -102,6 +262,40 @@ unsafe fn port_in(port: u16) -> u8 {
         );
     }
     value
+}
+
+fn install_page_fault_test_handler() -> bool {
+    let code_selector: u16;
+    unsafe {
+        asm!(
+            "mov {selector:x}, cs",
+            selector = out(reg) code_selector,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    let handler = archiaos_page_fault_entry as usize as u64;
+    // SAFETY: writes one valid interrupt gate to the private, writable IDT.
+    unsafe {
+        core::ptr::write_volatile(
+            core::ptr::addr_of_mut!(ARCHIAOS_TEST_IDT.0)
+                .cast::<IdtEntry>()
+                .add(14),
+            IdtEntry::interrupt_gate(handler, code_selector),
+        );
+    }
+    let idtr = Idtr {
+        limit: (core::mem::size_of::<[IdtEntry; 256]>() - 1) as u16,
+        base: core::ptr::addr_of!(ARCHIAOS_TEST_IDT.0) as u64,
+    };
+    // SAFETY: IDT storage remains mapped by the active high-half data mapping.
+    unsafe {
+        asm!(
+            "lidt [{pointer}]",
+            pointer = in(reg) core::ptr::addr_of!(idtr),
+            options(nostack, preserves_flags)
+        );
+    }
+    true
 }
 
 /// Walk a four-level paging structure. The bootloader currently builds only
@@ -269,6 +463,45 @@ pub extern "C" fn rust_kernel_main(info: *const BootInfo) -> ! {
         halt();
     }
 
+    if !install_page_fault_test_handler() {
+        let _ = writeln!(serial, "ArchiaOS high-half test kernel: failed to install page-fault test IDT");
+        halt();
+    }
+
+    // Trigger real CPU faults, not just page-table inspection. The handler only
+    // recovers the two expected faults; any other #PF halts the VM for CI.
+    unsafe {
+        archiaos_test_write_readonly(archiaos_test_protected_text_marker as usize as *mut u8);
+    }
+    let write_fault_seen = unsafe {
+        core::ptr::read_volatile(core::ptr::addr_of!(ARCHIAOS_WRITE_FAULT_SEEN))
+    };
+    unsafe {
+        core::ptr::write_volatile(
+            core::ptr::addr_of_mut!(PAGE_PERMISSION_TEST_DATA).cast::<u8>(),
+            0xc3,
+        );
+        archiaos_test_execute_nx(core::ptr::addr_of!(PAGE_PERMISSION_TEST_DATA).cast::<u8>());
+    }
+    let nx_fault_seen = unsafe {
+        core::ptr::read_volatile(core::ptr::addr_of!(ARCHIAOS_NX_FAULT_SEEN))
+    };
+    let page_fault_failure = unsafe {
+        core::ptr::read_volatile(core::ptr::addr_of!(ARCHIAOS_PAGE_FAULT_TEST_FAILURE))
+    };
+    if write_fault_seen != 1 || nx_fault_seen != 1 || page_fault_failure != 0 {
+        let _ = writeln!(
+            serial,
+            "ArchiaOS high-half test kernel: W^X/NX hardware fault test failed (write={}, nx={}, error={})",
+            write_fault_seen,
+            nx_fault_seen,
+            page_fault_failure
+        );
+        halt();
+    }
+    let _ = writeln!(serial, "ArchiaOS high-half test kernel: read-only write fault trapped");
+    let _ = writeln!(serial, "ArchiaOS high-half test kernel: NX instruction-fetch fault trapped");
+    let _ = writeln!(serial, "ArchiaOS high-half test kernel: hardware W^X/NX enforcement passed");
     let _ = writeln!(serial, "ArchiaOS high-half test kernel: executing at {:#018x}", current_rip);
     let _ = writeln!(serial, "ArchiaOS high-half test kernel: BootInfo and identity map validated");
     let _ = writeln!(serial, "ArchiaOS high-half test kernel: high-half W^X/NX permissions passed");
