@@ -12,13 +12,13 @@ iso: build
 
 # Build and boot the first-party UEFI path locally under OVMF/QEMU.
 boot-local:
-	./scripts/boot-local-uefi.sh
+	bash ./scripts/boot-local-uefi.sh
 
 run: boot-local
 
 # Produce EFI/BOOT/BOOTX64.EFI and the required ArchiaOS kernel as files.
 uefi-files:
-	./scripts/build-uefi-files.sh
+	bash ./scripts/build-uefi-files.sh
 
 clean:
 	$(CARGO) clean
