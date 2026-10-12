@@ -1137,7 +1137,7 @@ pub unsafe fn transfer_to_kernel(
     let info_address = info_allocation.pointer.cast::<BootInfo>();
     let map_address = map_allocation.pointer;
     #[cfg(target_arch = "x86_64")]
-    let mut page_table_arena = if image_uses_highhalf(elf) {
+    let mut page_table_arena = if image_uses_highhalf(_elf) {
         Some(unsafe { PageTableArena::allocate(boot_services)? })
     } else {
         None
