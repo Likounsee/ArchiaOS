@@ -19,6 +19,7 @@ const EFI_INVALID_PARAMETER: Status = 2;
 const EFI_UNSUPPORTED: Status = 3;
 const EFI_BAD_BUFFER_SIZE: Status = 4;
 const EFI_BUFFER_TOO_SMALL: Status = 5;
+const EFI_NOT_FOUND: Status = 14;
 const EFI_LOADER_DATA: u32 = 2;
 const EFI_FILE_MODE_READ: u64 = 1;
 const MAX_KERNEL_IMAGE_SIZE: u64 = 64 * 1024 * 1024;
@@ -384,9 +385,13 @@ unsafe fn read_kernel_image(
     let status = unsafe {
         get_info(file, &FILE_INFO_GUID, &mut info_size, core::ptr::null_mut())
     };
-    if status != EFI_BUFFER_TOO_SMALL || info_size < 16 {
+    if status != EFI_BUFFER_TOO_SMALL || info_size < 16 || info_size > 4096 {
         unsafe { close_file(file); close_file(root); }
-        return Err(if status == EFI_SUCCESS { EFI_BAD_BUFFER_SIZE } else { status });
+        return Err(if status == EFI_SUCCESS || status == EFI_BUFFER_TOO_SMALL {
+            EFI_BAD_BUFFER_SIZE
+        } else {
+            status
+        });
     }
 
     let info = match unsafe { allocate_pool(boot_services, info_size) } {
@@ -461,8 +466,14 @@ pub extern "efiapi" fn efi_main(image_handle: Handle, system_table: *mut SystemT
     }
     let (image, image_size) = match unsafe { read_kernel_image(image_handle, system_table) } {
         Ok(image) => image,
-        Err(_) => {
-            let _ = unsafe { serial.print(FAIL_FILE.as_ptr()) };
+        Err(status) => {
+            let message = match status {
+                EFI_BAD_BUFFER_SIZE => FAIL_SIZE.as_ptr(),
+                EFI_NOT_FOUND => FAIL_FILE.as_ptr(),
+                EFI_UNSUPPORTED => FAIL_SERVICES.as_ptr(),
+                _ => FAIL_FS.as_ptr(),
+            };
+            let _ = unsafe { serial.print(message) };
             return EFI_LOAD_ERROR;
         }
     };
