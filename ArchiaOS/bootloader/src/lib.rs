@@ -1326,11 +1326,11 @@ mod device_tree_tests {
     fn fdt_with_pl011() -> Vec<u8> {
         let mut image = vec![0u8; 56]; // Header + terminating reservation entry.
         let structure_offset = image.len();
-        let strings = b"#address-cells\\0#size-cells\\0compatible\\0reg\\0";
+        let strings = b"#address-cells\0#size-cells\0compatible\0reg\0";
         let offset_address = 0u32;
-        let offset_size = b"#address-cells\\0".len() as u32;
-        let offset_compatible = (b"#address-cells\\0#size-cells\\0").len() as u32;
-        let offset_reg = (b"#address-cells\\0#size-cells\\0compatible\\0").len() as u32;
+        let offset_size = b"#address-cells\0".len() as u32;
+        let offset_compatible = (b"#address-cells\0#size-cells\0").len() as u32;
+        let offset_reg = (b"#address-cells\0#size-cells\0compatible\0").len() as u32;
 
         append_token(&mut image, 1); // Root begin
         append_cstring(&mut image, b"");
@@ -1344,7 +1344,7 @@ mod device_tree_tests {
 
         append_token(&mut image, 1); // UART node
         append_cstring(&mut image, b"pl011@9000000");
-        let mut compatible_value = b"arm,pl011\\0arm,primecell\\0".to_vec();
+        let mut compatible_value = b"arm,pl011\0arm,primecell\0".to_vec();
         append_property(&mut image, offset_compatible, &compatible_value);
         let mut reg = Vec::new();
         for cell in [0u32, 0x0900_0000, 0, 0x1000] {
