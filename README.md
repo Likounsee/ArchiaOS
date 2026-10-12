@@ -26,7 +26,7 @@ Prérequis : Linux ou WSL2, Rust via `rustup` et les cibles UEFI/noyau nécessai
 
 ~~~sh
 cd ArchiaOS
-`make uefi-files`
+make uefi-files
 ~~~
 
 Le paquet est généré dans `ArchiaOS/build/uefi-files/` :
@@ -51,14 +51,14 @@ Sur Debian/Ubuntu, les outils nécessaires peuvent être installés ainsi :
 ~~~sh
 sudo apt-get update
 sudo apt-get install -y build-essential qemu-system-x86 ovmf dosfstools mtools
-`rustup` target add x86_64-unknown-none x86_64-unknown-uefi
+rustup target add x86_64-unknown-none x86_64-unknown-uefi
 ~~~
 
 Puis :
 
 ~~~sh
 cd ArchiaOS
-`make boot-local`
+make boot-local
 ~~~
 
 Ce test construit une image FAT32 temporaire, démarre le chemin UEFI sous QEMU/OVMF et vérifie les marqueurs série attendus. Le délai d’expiration QEMU est normal lorsque le noyau a atteint son point d’arrêt de test. Les journaux et l’image sont conservés dans `ArchiaOS/build/local-uefi/`.
@@ -99,21 +99,21 @@ Pour produire les fichiers EFI autonomes, préfère `make uefi-files`. Pour le s
 
 ## Roadmap
 
-Le travail suit les priorités de [la roadmap P0–P10](`ArchiaOS/docs/`ROADMAP.md). Le jalon P0 de premier démarrage physique et d’écriture framebuffer est considéré atteint. **P1 reste en cours** : l’audit des plages mémoire réservées et la validation CI des derniers contrôles doivent être achevés avant de le clôturer.
+Le travail suit les priorités de [la roadmap P0–P10](ArchiaOS/docs/ROADMAP.md). Le jalon P0 de premier démarrage physique et d’écriture framebuffer est considéré atteint. **P1 reste en cours** : l’audit des plages mémoire réservées et la validation CI des derniers contrôles doivent être achevés avant de le clôturer.
 
 Priorités suivantes : fiabiliser les fondations mémoire, puis implémenter les exceptions et l’ordonnanceur, l’espace utilisateur, le stockage/VFS, l’affichage, le réseau et les outils système. Les pourcentages de la roadmap sont des estimations et non des mesures automatiques.
 
 ## Documentation
 
 - [Documentation technique et compilation](ArchiaOS/README.md)
-- [Roadmap](`ArchiaOS/docs/`ROADMAP.md)
-- [Architecture](`ArchiaOS/docs/`ARCHITECTURE.md)
-- [Démarrage UEFI](`ArchiaOS/docs/`BOOT.md)
-- [Stratégie de tests](`ArchiaOS/docs/`TESTING.md)
-- [Mémoire et PMM](`ArchiaOS/docs/`MEMORY.md)
-- [Sécurité](`ArchiaOS/docs/`SECURITY.md)
-- [Chargeur UEFI](`ArchiaOS/bootloader/`README.md)
-- [Prototype AArch64](`ArchiaOS/kernel/aarch64/`README.md)
+- [Roadmap](ArchiaOS/docs/ROADMAP.md)
+- [Architecture](ArchiaOS/docs/ARCHITECTURE.md)
+- [Démarrage UEFI](ArchiaOS/docs/BOOT.md)
+- [Stratégie de tests](ArchiaOS/docs/TESTING.md)
+- [Mémoire et PMM](ArchiaOS/docs/MEMORY.md)
+- [Sécurité](ArchiaOS/docs/SECURITY.md)
+- [Chargeur UEFI](ArchiaOS/bootloader/README.md)
+- [Prototype AArch64](ArchiaOS/kernel/aarch64/README.md)
 
 ## Contribution et état du projet
 
