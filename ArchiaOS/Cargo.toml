@@ -10,6 +10,13 @@ path = "kernel/src/main.rs"
 test = false
 bench = false
 
+[features]
+default = []
+uefi-boot = []
+
+[dependencies]
+archiaos-bootloader = { path = "bootloader" }
+
 [profile.dev]
 panic = "abort"
 codegen-units = 1
