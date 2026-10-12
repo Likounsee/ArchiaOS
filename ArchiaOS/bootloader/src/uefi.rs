@@ -1315,12 +1315,12 @@ fn audit_platform_table_ranges(
             u32::from_le_bytes([field[0], field[1], field[2], field[3]]) as u64
         };
         if !(20..=archiaos_bootloader::acpi::MAX_RSDP_SIZE as u64).contains(&length) {
-            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid RSDP size during final memory-map audit.\\r\\n\\0"));
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid RSDP size during final memory-map audit.\r\n\0"));
         }
         if !memory_map.range_is_fully_reserved(acpi_rsdp, length)
-            .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: malformed RSDP range in final memory map.\\r\\n\\0"))?
+            .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: malformed RSDP range in final memory map.\r\n\0"))?
         {
-            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI RSDP storage is not fully reserved in the final memory map.\\r\\n\\0"));
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI RSDP storage is not fully reserved in the final memory map.\r\n\0"));
         }
     }
 
@@ -1333,12 +1333,12 @@ fn audit_platform_table_ranges(
         if !(archiaos_bootloader::device_tree::HEADER_SIZE as u64
             ..=archiaos_bootloader::device_tree::MAX_TOTAL_SIZE as u64).contains(&length)
         {
-            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid Device Tree size during final memory-map audit.\\r\\n\\0"));
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid Device Tree size during final memory-map audit.\r\n\0"));
         }
         if !memory_map.range_is_fully_reserved(device_tree, length)
-            .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: malformed Device Tree range in final memory map.\\r\\n\\0"))?
+            .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: malformed Device Tree range in final memory map.\r\n\0"))?
         {
-            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: Device Tree storage is not fully reserved in the final memory map.\\r\\n\\0"));
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: Device Tree storage is not fully reserved in the final memory map.\r\n\0"));
         }
     }
     Ok(())
