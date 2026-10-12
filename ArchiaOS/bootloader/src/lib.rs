@@ -2322,6 +2322,28 @@ mod memory_map_tests {
     }
 
     #[test]
+    fn generic_coverage_rejects_a_gap_after_an_initially_covered_prefix() {
+        let mut bytes = descriptor(2, 0x1000, 2);
+        bytes.extend_from_slice(&descriptor(4, 0x4000, 1));
+        let map = UefiMemoryMap::parse(&bytes, 48).expect("valid map with a gap");
+        assert_eq!(map.range_is_fully_covered(0x1800, 0x100), Ok(true));
+        assert_eq!(map.range_is_fully_covered(0x1800, 0x3000), Ok(false));
+        assert_eq!(map.range_is_fully_covered(0x4000, 0x1000), Ok(true));
+        assert_eq!(map.range_is_fully_covered(0x4fff, 2), Ok(false));
+    }
+
+    #[test]
+    fn generic_coverage_rejects_gaps_in_unsorted_maps() {
+        let mut bytes = descriptor(2, 0x5000, 1);
+        bytes.extend_from_slice(&descriptor(4, 0x1000, 1));
+        bytes.extend_from_slice(&descriptor(2, 0x3000, 1));
+        let map = UefiMemoryMap::parse(&bytes, 48).expect("valid unsorted map");
+        assert_eq!(map.range_is_fully_covered(0x1000, 0x1000), Ok(true));
+        assert_eq!(map.range_is_fully_covered(0x1000, 0x5000), Ok(false));
+        assert_eq!(map.range_is_fully_covered(0x5000, 0x1000), Ok(true));
+    }
+
+    #[test]
     fn generic_coverage_handles_unsorted_descriptors() {
         let mut bytes = descriptor(2, 0x3000, 1);
         bytes.extend_from_slice(&descriptor(EFI_CONVENTIONAL_MEMORY, 0x1000, 1));
