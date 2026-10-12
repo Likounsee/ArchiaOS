@@ -1294,6 +1294,43 @@ unsafe fn discover_framebuffer(boot_services: *mut BootServices) -> (u64, u64) {
     (base, size)
 }
 
+#[cfg(target_arch = "x86_64")]
+fn range_is_identity_mapped_ram(
+    memory_map: &UefiMemoryMap<'_>,
+    start: u64,
+    length: u64,
+) -> Result<bool, BootError> {
+    let end = start.checked_add(length)
+        .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: platform-table range overflow.\r\n\0"))?;
+    if start == 0 || end > MAX_KERNEL_PHYSICAL_ADDRESS {
+        return Ok(false);
+    }
+    let mut cursor = start;
+    while cursor < end {
+        let mut next = cursor;
+        for index in 0..memory_map.len() {
+            let descriptor = memory_map.entry(index)
+                .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid descriptor while checking platform-table mappings.\r\n\0"))?;
+            let descriptor_end = descriptor.physical_end()
+                .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: descriptor overflow while checking platform-table mappings.\r\n\0"))?;
+            if descriptor.physical_start <= cursor && cursor < descriptor_end {
+                // Match the x86-64 page-table builder: MMIO and generic reserved
+                // descriptors are deliberately not identity-mapped as normal RAM.
+                if !uefi_memory_type_is_ram(descriptor.memory_type) {
+                    return Ok(false);
+                }
+                next = descriptor_end.min(end);
+                break;
+            }
+        }
+        if next == cursor {
+            return Ok(false);
+        }
+        cursor = next;
+    }
+    Ok(true)
+}
+
 /// Ensure firmware platform-table storage remains reserved in the final handoff map.
 /// These pointers are consumed after ExitBootServices, so they must never be reclassified
 /// as conventional RAM that the physical allocator could hand to another subsystem.
@@ -1301,7 +1338,10 @@ fn audit_platform_table_ranges(
     memory_map: &UefiMemoryMap<'_>,
     acpi_rsdp: u64,
     device_tree: u64,
+    high_half_image: bool,
 ) -> Result<(), BootError> {
+    #[cfg(target_arch = "aarch64")]
+    let _ = high_half_image;
     if acpi_rsdp != 0 {
         let rsdp = acpi_rsdp as *const u8;
         // SAFETY: platform_tables only returns an RSDP after validating its signature,
@@ -1322,6 +1362,12 @@ fn audit_platform_table_ranges(
         {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI RSDP storage is not fully reserved in the final memory map.\r\n\0"));
         }
+        #[cfg(target_arch = "x86_64")]
+        if high_half_image
+            && !range_is_identity_mapped_ram(memory_map, acpi_rsdp, length)?
+        {
+            return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: ACPI RSDP is outside identity-mapped RAM for the high-half kernel.\r\n\0"));
+        }
     }
 
     if device_tree != 0 {
@@ -1339,6 +1385,12 @@ fn audit_platform_table_ranges(
             .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: malformed Device Tree range in final memory map.\r\n\0"))?
         {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: Device Tree storage is not fully reserved in the final memory map.\r\n\0"));
+        }
+        #[cfg(target_arch = "x86_64")]
+        if high_half_image
+            && !range_is_identity_mapped_ram(memory_map, device_tree, length)?
+        {
+            return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: Device Tree is outside identity-mapped RAM for the high-half kernel.\r\n\0"));
         }
     }
     Ok(())
@@ -1608,7 +1660,7 @@ pub unsafe fn transfer_to_kernel(
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer is incorrectly classified as conventional RAM.\r\n\0"));
         }
 
-        audit_platform_table_ranges(&parsed_map, acpi_rsdp, device_tree)?;
+        audit_platform_table_ranges(&parsed_map, acpi_rsdp, device_tree, image_uses_highhalf(_elf))?;
 
         // Stop tracking the two pool buffers before the first EBS call, so no
         // destructor can call FreePool after boot services have been terminated.
