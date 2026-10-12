@@ -96,16 +96,22 @@ pub extern "efiapi" fn efi_main(
         }
     };
 
-    // This initial loader supports identity-mapped physical ELF images. The production
-    // x86-64 high-half kernel remains on Limine until page-table setup is implemented.
-    // SAFETY: segments have been validated; the loader checks address/page overlap before allocation.
-    status = unsafe {
-        print_ascii(output, b"ArchiaOS Bootloader: loading identity-mapped ELF segments\r\n\0")
+    // Identity images keep firmware paging; high-half x86-64 images get fresh
+    // RAM identity mappings and kernel virtual mappings at handoff.
+    #[cfg(target_arch = "x86_64")]
+    let load_message: &[u8] = if uefi::entry_uses_highhalf(parsed.entry()) {
+        b"ArchiaOS Bootloader: loading high-half ELF segments\r\n\0"
+    } else {
+        b"ArchiaOS Bootloader: loading identity-mapped ELF segments\r\n\0"
     };
+    #[cfg(target_arch = "aarch64")]
+    let load_message: &[u8] = b"ArchiaOS Bootloader: loading identity-mapped ELF segments\r\n\0";
+    // SAFETY: segment addresses and overlaps are validated before physical pages are reserved.
+    status = unsafe { print_ascii(output, load_message) };
     if status != EFI_SUCCESS {
         return status;
     }
-    // SAFETY: firmware services and the kernel image buffer remain valid at this point.
+    // SAFETY: firmware services and the image allocation remain live through page-table setup.
     let kernel_entry = match unsafe {
         uefi::load_kernel_segments(
             (*system_table).boot_services,
@@ -116,8 +122,6 @@ pub extern "efiapi" fn efi_main(
         Ok(entry) => entry,
         Err(error) => return unsafe { report_boot_error(output, error) },
     };
-    // No longer needed; freeing it before the final memory-map snapshot avoids a stale EBS key.
-    drop(kernel_image);
 
     // This message is printed before taking the final memory map. No console or allocation
     // service is called between the successful GetMemoryMap and ExitBootServices attempts.
@@ -129,7 +133,15 @@ pub extern "efiapi" fn efi_main(
         return status;
     }
 
-    match unsafe { uefi::transfer_to_kernel(image_handle, system_table, kernel_entry) } {
+    match unsafe {
+        uefi::transfer_to_kernel(
+            image_handle,
+            system_table,
+            kernel_entry,
+            kernel_image.as_slice(),
+            &parsed,
+        )
+    } {
         Ok(never) => match never {},
         Err(error) => unsafe { report_boot_error(output, error) },
     }
