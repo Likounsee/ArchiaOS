@@ -83,6 +83,18 @@ fn frame_range(base: u64, length: u64) -> Option<(u64, u64)> {
     Some((first.min(MAX_FRAMES), (end / PAGE_SIZE).min(MAX_FRAMES)))
 }
 
+/// Return every allocator frame touched by a reserved byte range, including
+/// partially covered first/last pages. This is used for framebuffer MMIO.
+fn reserved_frame_range(base: u64, length: u64) -> Option<(u64, u64)> {
+    if length == 0 {
+        return Some((0, 0));
+    }
+    let end = base.checked_add(length)?;
+    let first = (base / PAGE_SIZE).min(MAX_FRAMES);
+    let rounded_end = end.checked_add(PAGE_SIZE - 1)? / PAGE_SIZE;
+    Some((first, rounded_end.min(MAX_FRAMES)))
+}
+
 unsafe fn set_bit_range(bitmap: *mut u64, first: u64, last: u64, value: bool) {
     let mut frame = first;
     while frame < last {
@@ -162,10 +174,14 @@ pub unsafe fn initialize_from_bootinfo<W: Write>(
             let (first, last) = frame_range(descriptor.physical_start, length)
                 .ok_or(MemoryError::InvalidMemoryRange)?;
             let first = first.max(ONE_MIB / PAGE_SIZE);
-            if first < last {
+            let (fb_first, fb_last) = reserved_frame_range(info.framebuffer_base, info.framebuffer_size)
+                .ok_or(MemoryError::InvalidMemoryRange)?;
+            let framebuffer_overlap = last.min(fb_last).saturating_sub(first.max(fb_first));
+            let usable_pages = (last - first).saturating_sub(framebuffer_overlap);
+            if usable_pages != 0 {
                 usable_ranges = usable_ranges.checked_add(1)
                     .ok_or(MemoryError::UsableMemoryTotalOverflow)?;
-                let managed_bytes = (last - first).checked_mul(PAGE_SIZE)
+                let managed_bytes = usable_pages.checked_mul(PAGE_SIZE)
                     .ok_or(MemoryError::UsableMemoryTotalOverflow)?;
                 usable_bytes = usable_bytes.checked_add(managed_bytes)
                     .ok_or(MemoryError::UsableMemoryTotalOverflow)?;
@@ -215,7 +231,13 @@ pub unsafe fn initialize_from_bootinfo<W: Write>(
         }
     }
 
+    // Reserve framebuffer pages even if firmware incorrectly labelled them
+    // conventional. Round outward so no partial page can be handed to the PMM.
+    let (fb_first, fb_last) = reserved_frame_range(info.framebuffer_base, info.framebuffer_size)
+        .ok_or(MemoryError::InvalidMemoryRange)?;
     unsafe {
+        set_bit_range(managed_bitmap_ptr(), fb_first, fb_last, false);
+        set_bit_range(free_bitmap_ptr(), fb_first, fb_last, false);
         set_bit_range(managed_bitmap_ptr(), 0, ONE_MIB / PAGE_SIZE, false);
         set_bit_range(free_bitmap_ptr(), 0, ONE_MIB / PAGE_SIZE, false);
     }
