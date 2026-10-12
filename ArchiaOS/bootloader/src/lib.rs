@@ -41,6 +41,7 @@ pub mod bootinfo {
         InvalidMemoryMapAddressRange,
         InvalidKernelEntry,
         InvalidFramebufferRange,
+        UnsupportedFlags,
     }
 
     /// Validate scalar ABI fields before the caller dereferences the memory map.
@@ -57,6 +58,11 @@ pub mod bootinfo {
         }
         if (info.struct_size as usize) < core::mem::size_of::<BootInfo>() {
             return Err(BootInfoError::StructureTooSmall);
+        }
+        // Version 1 defines no flag bits; reject unknown claims rather than
+        // silently handing a contract the kernel does not understand.
+        if info.flags != 0 {
+            return Err(BootInfoError::UnsupportedFlags);
         }
         if info.memory_map.is_null() {
             return Err(BootInfoError::MissingMemoryMap);
@@ -1507,6 +1513,17 @@ mod tests {
             validate_header(&info),
             Err(BootInfoError::InvalidMemoryMapAddressRange)
         );
+    }
+
+    #[test]
+    fn boot_info_header_rejects_undefined_v1_flags() {
+        let mut info = valid_boot_info();
+        info.flags = 1;
+        assert_eq!(validate_header(&info), Err(BootInfoError::UnsupportedFlags));
+
+        let mut info = valid_boot_info();
+        info.flags = u32::MAX;
+        assert_eq!(validate_header(&info), Err(BootInfoError::UnsupportedFlags));
     }
 
     #[test]
