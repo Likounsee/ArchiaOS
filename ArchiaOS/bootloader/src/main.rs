@@ -272,11 +272,82 @@ struct Serial {
 
 impl Serial {
     unsafe fn print(&mut self, message: *const u16) -> Result<(), Status> {
+        // Mirror diagnostics to COM1 on x86-64 so headless QEMU/CI can observe
+        // loader progress even when the firmware's graphical console is hidden.
+        #[cfg(target_arch = "x86_64")]
+        unsafe {
+            mirror_to_com1(message);
+        }
+
         if self.output.is_null() {
             return Err(EFI_INVALID_PARAMETER);
         }
         let write = unsafe { (*self.output).output_string }.ok_or(EFI_UNSUPPORTED)?;
-        unsafe { write(self.output, message) }
+        let status = unsafe { write(self.output, message) };
+        if status == EFI_SUCCESS {
+            Ok(())
+        } else {
+            Err(status)
+        }
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+unsafe fn port_out(port: u16, value: u8) {
+    use core::arch::asm;
+    unsafe {
+        asm!(
+            "out dx, al",
+            in("dx") port,
+            in("al") value,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+unsafe fn port_in(port: u16) -> u8 {
+    use core::arch::asm;
+    let value: u8;
+    unsafe {
+        asm!(
+            "in al, dx",
+            in("dx") port,
+            out("al") value,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    value
+}
+
+#[cfg(target_arch = "x86_64")]
+unsafe fn mirror_to_com1(message: *const u16) {
+    const COM1: u16 = 0x3f8;
+    // Configure the QEMU-compatible 16550 UART. This path is diagnostic only;
+    // UEFI Text Output remains the normal, architecture-neutral console API.
+    unsafe {
+        port_out(COM1 + 1, 0x00);
+        port_out(COM1 + 3, 0x80);
+        port_out(COM1, 0x03);
+        port_out(COM1 + 1, 0x00);
+        port_out(COM1 + 3, 0x03);
+        port_out(COM1 + 2, 0xc7);
+        port_out(COM1 + 4, 0x0b);
+    }
+
+    for index in 0..256usize {
+        let unit = unsafe { read_volatile(message.add(index)) };
+        if unit == 0 {
+            break;
+        }
+        let byte = if unit <= 0x7f { unit as u8 } else { b'?' };
+        for _ in 0..100_000 {
+            if unsafe { port_in(COM1 + 5) } & 0x20 != 0 {
+                break;
+            }
+            core::hint::spin_loop();
+        }
+        unsafe { port_out(COM1, byte) };
     }
 }
 
