@@ -3,6 +3,7 @@
 
 mod memory;
 mod cpu;
+mod pci;
 
 use core::arch::{asm, global_asm};
 use core::fmt::{self, Write};
@@ -132,6 +133,10 @@ pub extern "C" fn rust_kernel_main(
         cpu_info.max_basic_leaf,
         cpu_info.max_extended_leaf
     );
+
+    // Read-only legacy PCI configuration discovery (bus 0 only). This does not
+    // write to PCI device configuration registers; ECAM/ACPI extends coverage later.
+    pci::scan_bus0(&mut serial);
 
     // The custom loader maps the handoff allocation and provides this pointer in
     // RDI. The initializer verifies alignment, version, structure size, bounds,

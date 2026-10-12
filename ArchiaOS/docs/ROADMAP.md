@@ -6,7 +6,7 @@
 
 | Priorité | Domaine | Avancement estimé | État / prochaine preuve attendue |
 |---|---|---:|---|
-| **P0** | Démarrage UEFI maison x86-64 par défaut | **73 %** | Bascule de code faite ; obtenir une CI verte sur le HEAD courant et confirmer le démarrage OVMF/QEMU. |
+| **P0** | Démarrage UEFI maison x86-64 par défaut | **80 %** | CI verte sur le commit `cca0f07` : build x86-64, chargeurs x86-64/ARM64, boot OVMF/QEMU x86-64 et AAVMF/QEMU ARM64. Renforcer les tests d'échec et documenter les limites restantes. |
 | **P1** | Fiabilité du chargeur, BootInfo et mémoire | **72 %** | Fondations présentes ; couvrir les échecs, réservations mémoire et cas limites. |
 | **P2** | Ordonnanceur et synchronisation | **0 %** | Non implémenté ; définir les primitives de tâches et le changement de contexte avant la préemption. |
 | **P3** | Espace utilisateur et ABI système | **0 %** | Non commencé ; dépend notamment des exceptions, syscalls et mécanismes mémoire isolés. |
@@ -14,7 +14,7 @@
 | **P5** | Affichage et pile graphique | **0 %** | Pas de pile graphique de production. |
 | **P6** | Réseau et mesures de performances | **0 %** | Pas de pile réseau complète ni de bancs de performance stabilisés. |
 | **P7** | Distribution, installation et sécurité | **0 %** | Pas de version distribuable validée. |
-| **P8** | Fondations noyau pour le contrôle matériel | **5 %** | Architecture décrite ; démarrer par l'identification CPU en lecture seule puis l'inventaire PCI. |
+| **P8** | Fondations noyau pour le contrôle matériel | **12 %** | CPUID x86-64 intégré et inventaire PCI legacy en lecture seule sur le bus 0 ; ECAM/ACPI et tests dédiés restent à faire. |
 | **P9** | Service privilégié de télémétrie/contrôle | **0 %** | Pas de service fonctionnel ; dépend d'interfaces noyau et de pilotes sûrs. |
 | **P10** | Archia Control Center (interface tout-en-un) | **5 %** | Vision et modules documentés ; pas encore d'application fonctionnelle. |
 | **B0–B9** | Chargeur UEFI maison | Voir jalons ci-dessous | Plusieurs fondations validées en CI ; la validation de la bascule par défaut reste à confirmer sur le HEAD courant. |
@@ -24,14 +24,14 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 
 ## Ordre de travail prioritaire
 
-### P0 — Démarrage UEFI maison x86-64 — 73 %
+### P0 — Démarrage UEFI maison x86-64 — 80 %
 
 **Objectif :** faire du chemin UEFI ArchiaOS le démarrage par défaut fiable.
 
 - [x] Remplacer l'ancien chemin Limine dans la configuration par défaut.
 - [x] Utiliser le contrat UEFI du chargeur ArchiaOS.
-- [ ] Confirmer une CI verte sur le HEAD courant.
-- [ ] Confirmer compilation, démarrage et sortie attendue sous OVMF/QEMU.
+- [x] Confirmer une CI verte sur le commit `cca0f07a96709cb099831cac711a3165037c7b7e` : compilation du noyau x86-64, chargeurs UEFI x86-64/ARM64 et démarrages QEMU/OVMF + AAVMF.
+- [ ] Confirmer à nouveau compilation, démarrage et sortie attendue sous OVMF/QEMU après les prochains changements.
 - [ ] Tester les erreurs de démarrage et vérifier que les logs série permettent de les diagnostiquer.
 - [ ] Documenter précisément les configurations testées et les limites restantes.
 
@@ -128,13 +128,13 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 
 **Critère de sortie :** image installable et récupérable, procédures de mise à jour documentées et tests de sécurité ciblés réussis.
 
-## P8 — Fondations noyau pour le logiciel de contrôle matériel — 5 %
+## P8 — Fondations noyau pour le logiciel de contrôle matériel — 12 %
 
 **But produit :** fournir au futur logiciel une source de télémétrie cohérente et, à terme, un accès contrôlé aux ventilateurs, à l'éclairage RGB et aux fonctions prises en charge des cartes mères et périphériques.
 
 ### P8.1 — Identification et inventaire en lecture seule
-- [ ] Ajouter un module x86-64 CPUID sans allocation dynamique : fabricant, famille/modèle/stepping, marque CPU si disponible et fonctionnalités pertinentes.
-- [ ] Vérifier les feuilles CPUID maximales avant chaque interrogation et gérer proprement les champs indisponibles.
+- [x] Ajouter un module x86-64 CPUID sans allocation dynamique : fabricant, famille/modèle/stepping, marque CPU si disponible et fonctionnalités pertinentes (commit `bb157c7`).
+- [x] Vérifier les feuilles CPUID maximales avant chaque interrogation et gérer proprement les champs indisponibles.
 - [ ] Ajouter des tests unitaires pour le décodage des champs CPU.
 - [ ] Découvrir les périphériques PCI en lecture seule, d'abord avec le mécanisme de configuration disponible sur la plateforme cible.
 - [ ] Prévoir une abstraction pour PCIe ECAM/ACPI ; ne pas supposer que l'accès PCI legacy convient à toutes les machines.
