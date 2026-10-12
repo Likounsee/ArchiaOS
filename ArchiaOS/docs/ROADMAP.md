@@ -1,6 +1,6 @@
 # Roadmap et critères
 
-- **P0 — Fondations : en cours.** Build bare-metal, ISO Limine, diagnostics, vérification ELF et smoke test QEMU. La CI valide aussi la carte mémoire et l'auto-test PMM de 130 pages. Restent un audit plus large des réservations et des tests supplémentaires.
+- **P0 — Noyau principal sans Limine : migration en cours.** Le noyau par défaut utilise l’entrée UEFI maison ; le chemin mémoire Limine, `limine.conf` et le script ISO Limine ont été retirés. La CI propre doit confirmer compilation et démarrage OVMF/QEMU sur le nouveau HEAD.
 - **P1 — Bootloader maison : fondations en place.** Validation ELF64, chargement high-half x86-64, BootInfo, `ExitBootServices` et tests de permissions sont implémentés ; restent les cas d’échec, le rollback et un audit plus large des réservations.
 - **P2 — Ordonnanceur : non commencé.** Pas de contexte de tâche, synchronisation multiprocesseur ni ordonnancement.
 - **P3 — Espace utilisateur : non commencé.** Pas de syscall, chargeur, ABI ni processus isolés.
