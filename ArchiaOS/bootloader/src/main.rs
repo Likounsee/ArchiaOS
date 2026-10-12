@@ -41,10 +41,20 @@ unsafe fn print_ascii(output: *mut uefi::SimpleTextOutputProtocol, message: &[u8
 unsafe fn report_boot_error(
     output: *mut uefi::SimpleTextOutputProtocol,
     error: BootError,
-) -> Status {
+) -> ! {
+    // Print the failure and deliberately do not return to UEFI. Returning an error
+    // status lets firmware resume boot-order processing, which often drops straight
+    // back into setup and hides the diagnostic from the user.
     // SAFETY: output is the firmware console interface while boot services are active.
     let _ = unsafe { print_ascii(output, error.message) };
-    error.status
+    halt_on_error()
+}
+
+fn halt_on_error() -> ! {
+    // Keep the last boot log visible until the user resets or powers off the machine.
+    loop {
+        core::hint::spin_loop();
+    }
 }
 
 #[no_mangle]
@@ -62,7 +72,7 @@ pub extern "efiapi" fn efi_main(
         print_ascii(output, b"ArchiaOS Bootloader: first-party UEFI loader\r\n\0")
     };
     if status != EFI_SUCCESS {
-        return status;
+        halt_on_error();
     }
 
     // Read from the same filesystem device from which this EFI application was loaded.
@@ -92,7 +102,7 @@ pub extern "efiapi" fn efi_main(
             let _ = unsafe {
                 print_ascii(output, b"ArchiaOS Bootloader: ELF64 validation failed\r\n\0")
             };
-            return EFI_LOAD_ERROR;
+            halt_on_error();
         }
     };
 
