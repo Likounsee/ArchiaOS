@@ -182,7 +182,46 @@ jobs:
           dd if=/dev/zero of="$RUNNER_TEMP/archiaos-invalid-kernel.elf" bs=4096 count=1 status=none
           printf 'NOT AN ELF IMAGE\n' | dd of="$RUNNER_TEMP/archiaos-invalid-kernel.elf" conv=notrunc status=none
           make_efi_image "$RUNNER_TEMP/archiaos-invalid-uefi.img" "$RUNNER_TEMP/archiaos-invalid-kernel.elf"
-          echo "UEFI images prepared: identity, high-half, production, and invalid-ELF rejection"
+
+          # Create a structurally valid identity ELF that asks firmware to load
+          # its PT_LOAD ranges at 0xF0000000, outside this QEMU machine's 512 MiB
+          # RAM. The loader must fail AllocateAddress cleanly before ExitBootServices.
+          python3 - "$identity_kernel" "$RUNNER_TEMP/archiaos-unavailable-range.elf" <<'PY'
+          import struct
+          import sys
+
+          source, destination = sys.argv[1:]
+          data = bytearray(open(source, "rb").read())
+          if data[:4] != b"\\x7fELF" or data[4] != 2 or data[5] != 1:
+              raise SystemExit("identity fixture is not little-endian ELF64")
+          entry = struct.unpack_from("<Q", data, 24)[0]
+          phoff = struct.unpack_from("<Q", data, 32)[0]
+          phentsize = struct.unpack_from("<H", data, 54)[0]
+          phnum = struct.unpack_from("<H", data, 56)[0]
+          if phentsize < 56 or phnum == 0 or phoff + phentsize * phnum > len(data):
+              raise SystemExit("identity fixture has invalid program headers")
+          loads = []
+          for i in range(phnum):
+              off = phoff + i * phentsize
+              if struct.unpack_from("<I", data, off)[0] == 1:
+                  p_vaddr, p_paddr, p_memsz = struct.unpack_from("<QQ", data, off + 16)
+                  p_memsz = struct.unpack_from("<Q", data, off + 40)[0]
+                  loads.append((off, p_vaddr, p_paddr, p_memsz))
+          if not loads:
+              raise SystemExit("identity fixture has no PT_LOAD segments")
+          delta = 0xF0000000 - min(item[2] for item in loads)
+          if delta <= 0 or any(paddr + delta + memsz > 0x100000000 for _, _, paddr, memsz in loads):
+              raise SystemExit("cannot relocate fixture into unavailable 32-bit physical range")
+          for off, vaddr, paddr, _ in loads:
+              struct.pack_into("<Q", data, off + 16, vaddr + delta)
+              struct.pack_into("<Q", data, off + 24, paddr + delta)
+          struct.pack_into("<Q", data, 24, entry + delta)
+          with open(destination, "wb") as out:
+              out.write(data)
+          print("Prepared valid ELF with unavailable PT_LOAD range at 0xF0000000")
+          PY
+          make_efi_image "$RUNNER_TEMP/archiaos-unavailable-range-uefi.img" "$RUNNER_TEMP/archiaos-unavailable-range.elf"
+          echo "UEFI images prepared: identity, high-half, production, invalid-ELF, and unavailable-physical-range rejection"
       - name: Boot custom loader with OVMF
         shell: bash
         run: |
@@ -232,6 +271,31 @@ jobs:
             exit 1
           fi
           echo "Invalid-ELF negative boot test passed"
+
+          # A valid ELF that requests non-existent physical RAM must fail during
+          # segment allocation and must never reach ExitBootServices or the kernel.
+          cp "$firmware_vars" "$RUNNER_TEMP/OVMF_VARS_UNAVAILABLE_RANGE.fd"
+          set +e
+          timeout 12s qemu-system-x86_64 -machine q35 -m 512M -drive "if=pflash,format=raw,readonly=on,file=$firmware_code" -drive "if=pflash,format=raw,file=$RUNNER_TEMP/OVMF_VARS_UNAVAILABLE_RANGE.fd" -drive "file=$RUNNER_TEMP/archiaos-unavailable-range-uefi.img,format=raw,if=ide" -boot order=c -display none -serial stdio -monitor none -no-reboot -no-shutdown > "$RUNNER_TEMP/archiaos-unavailable-range-uefi.log" 2>&1
+          unavailable_range_qemu_status=$?
+          set -e
+          cat "$RUNNER_TEMP/archiaos-unavailable-range-uefi.log"
+          if [[ "$unavailable_range_qemu_status" -ne 0 && "$unavailable_range_qemu_status" -ne 124 ]]; then
+            echo "QEMU unavailable-physical-range case exited unexpectedly with status $unavailable_range_qemu_status"
+            exit 1
+          fi
+          grep -Fq "ArchiaOS Bootloader: validating ELF64 kernel" "$RUNNER_TEMP/archiaos-unavailable-range-uefi.log"
+          grep -Fq "ArchiaOS Bootloader: loading identity-mapped ELF segments" "$RUNNER_TEMP/archiaos-unavailable-range-uefi.log"
+          grep -Fq "ArchiaOS: firmware could not reserve an ELF physical range." "$RUNNER_TEMP/archiaos-unavailable-range-uefi.log"
+          if grep -Fq "ArchiaOS Bootloader: exiting UEFI boot services" "$RUNNER_TEMP/archiaos-unavailable-range-uefi.log"; then
+            echo "Unavailable physical range unexpectedly reached ExitBootServices" >&2
+            exit 1
+          fi
+          if grep -Fq "ArchiaOS UEFI test kernel: handoff received" "$RUNNER_TEMP/archiaos-unavailable-range-uefi.log"; then
+            echo "Kernel unexpectedly executed after physical-range allocation failure" >&2
+            exit 1
+          fi
+          echo "Unavailable-physical-range negative boot test passed"
 
           cp "$firmware_vars" "$RUNNER_TEMP/OVMF_VARS.fd"
           # `set -e` was restored after the negative case; disable it again so
