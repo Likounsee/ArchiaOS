@@ -169,7 +169,10 @@ pub mod memory_map {
     impl<'a> UefiMemoryMap<'a> {
         /// Validate the descriptor array and every physical range without allocating.
         pub fn parse(bytes: &'a [u8], descriptor_size: usize) -> Result<Self, MemoryMapError> {
-            if descriptor_size < MIN_DESCRIPTOR_SIZE || descriptor_size > MAX_DESCRIPTOR_SIZE {
+            if descriptor_size < MIN_DESCRIPTOR_SIZE
+                || descriptor_size > MAX_DESCRIPTOR_SIZE
+                || descriptor_size % core::mem::align_of::<u64>() != 0
+            {
                 return Err(MemoryMapError::InvalidDescriptorSize);
             }
             if bytes.is_empty() {
@@ -2035,6 +2038,16 @@ mod memory_map_tests {
     fn rejects_descriptor_stride_smaller_than_uefi_layout() {
         assert_eq!(
             UefiMemoryMap::parse(&[0u8; 32], 32).err(),
+            Some(MemoryMapError::InvalidDescriptorSize)
+        );
+    }
+
+    #[test]
+    fn rejects_descriptor_stride_not_aligned_to_u64() {
+        let mut bytes = descriptor(2, 0x1000, 1);
+        bytes.push(0);
+        assert_eq!(
+            UefiMemoryMap::parse(&bytes, 49).err(),
             Some(MemoryMapError::InvalidDescriptorSize)
         );
     }
