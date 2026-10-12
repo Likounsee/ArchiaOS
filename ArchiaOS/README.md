@@ -1,6 +1,6 @@
 # ArchiaOS — documentation technique
 
-ArchiaOS est un OS expérimental en Rust `no_std`. Le chemin de démarrage par défaut est le bootloader UEFI maison : le noyau reçoit BootInfo `ARCHIABI` et initialise le PMM depuis la carte mémoire UEFI.
+ArchiaOS est un OS expérimental en Rust `no_std`. Le chemin de démarrage par défaut est le bootloader UEFI maison : le noyau reçoit BootInfo `ARCHIABI` et initialise le PMM depuis la carte mémoire UEFI. La migration vient de retirer l'ancien chemin Limine ; la CI doit être verte sur le nouveau HEAD avant que cette bascule soit considérée comme revalidée.
 
 ## État
 
