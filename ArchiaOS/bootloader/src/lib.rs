@@ -36,6 +36,7 @@ pub mod bootinfo {
         InvalidMemoryMapSize,
         InvalidDescriptorMetadata,
         UnalignedMemoryMap,
+        InvalidMemoryMapAddressRange,
         InvalidKernelEntry,
         InvalidFramebufferRange,
     }
@@ -61,11 +62,25 @@ pub mod bootinfo {
         if info.memory_map_size == 0 || info.memory_map_size > MAX_MEMORY_MAP_SIZE {
             return Err(BootInfoError::InvalidMemoryMapSize);
         }
-        if info.memory_map_descriptor_version == 0 || info.memory_map_descriptor_size == 0 {
+        if info.memory_map_descriptor_version == 0
+            || info.memory_map_descriptor_size < super::memory_map::MIN_DESCRIPTOR_SIZE as u64
+            || info.memory_map_descriptor_size > super::memory_map::MAX_DESCRIPTOR_SIZE as u64
+        {
             return Err(BootInfoError::InvalidDescriptorMetadata);
         }
-        if (info.memory_map as usize) % core::mem::align_of::<u64>() != 0 {
+        if info.memory_map_size % info.memory_map_descriptor_size != 0 {
+            return Err(BootInfoError::InvalidMemoryMapSize);
+        }
+        let map_start = info.memory_map as usize;
+        if map_start % core::mem::align_of::<u64>() != 0 {
             return Err(BootInfoError::UnalignedMemoryMap);
+        }
+        // Rust slices require the complete byte range to fit in the address space
+        // and within isize::MAX, not merely a non-null aligned starting pointer.
+        let map_length = usize::try_from(info.memory_map_size)
+            .map_err(|_| BootInfoError::InvalidMemoryMapSize)?;
+        if map_length > isize::MAX as usize || map_start.checked_add(map_length).is_none() {
+            return Err(BootInfoError::InvalidMemoryMapAddressRange);
         }
         // A disabled framebuffer is represented by two zero fields. If enabled,
         // its physical range must be non-empty and must not wrap the address space.
@@ -1251,6 +1266,27 @@ mod tests {
         info.framebuffer_base = 0x8000_0000;
         info.framebuffer_size = 0x1000;
         assert_eq!(validate_header(&info), Ok(()));
+    }
+
+    #[test]
+    fn boot_info_header_rejects_invalid_descriptor_stride() {
+        let mut info = valid_boot_info();
+        info.memory_map_descriptor_size = 8;
+        assert_eq!(validate_header(&info), Err(BootInfoError::InvalidDescriptorMetadata));
+
+        let mut info = valid_boot_info();
+        info.memory_map_size = 41;
+        assert_eq!(validate_header(&info), Err(BootInfoError::InvalidMemoryMapSize));
+    }
+
+    #[test]
+    fn boot_info_header_rejects_memory_map_address_wraparound() {
+        let mut info = valid_boot_info();
+        info.memory_map = (usize::MAX - 7) as *const u8;
+        assert_eq!(
+            validate_header(&info),
+            Err(BootInfoError::InvalidMemoryMapAddressRange)
+        );
     }
 
     #[test]
