@@ -1480,7 +1480,7 @@ fn audit_platform_table_ranges(
     if acpi_rsdp != 0 {
         // Prove the fixed prefix is retained and readable in the kernel's active
         // mapping before dereferencing firmware-controlled length/revision fields.
-        const RSDP_FIXED_PREFIX: u64 = 20;
+        const RSDP_FIXED_PREFIX: u64 = 24;
         if !memory_map.range_is_fully_reserved(acpi_rsdp, RSDP_FIXED_PREFIX)
             .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: malformed RSDP prefix in final memory map.\r\n\0"))?
         {
@@ -1498,13 +1498,13 @@ fn audit_platform_table_ranges(
         // x86-64) the identity map, as checked above.
         let revision = unsafe { ptr::read(rsdp.add(15)) };
         let length = if revision < 2 {
-            RSDP_FIXED_PREFIX
+            20
         } else {
             // SAFETY: revision >= 2 means the validated fixed prefix includes length.
             let field = unsafe { core::slice::from_raw_parts(rsdp.add(20), 4) };
             u32::from_le_bytes([field[0], field[1], field[2], field[3]]) as u64
         };
-        if !(RSDP_FIXED_PREFIX..=archiaos_bootloader::acpi::MAX_RSDP_SIZE as u64).contains(&length) {
+        if !(20..=archiaos_bootloader::acpi::MAX_RSDP_SIZE as u64).contains(&length) {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid RSDP size during final memory-map audit.\r\n\0"));
         }
         if !memory_map.range_is_fully_reserved(acpi_rsdp, length)
