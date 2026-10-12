@@ -40,6 +40,7 @@ pub mod acpi {
         InvalidSignature,
         InvalidChecksum,
         InvalidLength,
+        InvalidRevision,
     }
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -84,8 +85,11 @@ pub mod acpi {
         }
 
         let revision = image[15];
+        if revision == 1 {
+            return Err(RsdpError::InvalidRevision);
+        }
         let rsdt_address = le_u32(image, 16)?;
-        if revision < 2 {
+        if revision == 0 {
             return Ok(RsdpInfo {
                 revision,
                 length: RSDP_V1_SIZE,
@@ -829,6 +833,14 @@ mod acpi_tests {
         let mut image = valid_v1();
         image[0] = b'X';
         assert_eq!(parse_rsdp(&image), Err(RsdpError::InvalidSignature));
+    }
+
+    #[test]
+    fn rejects_reserved_revision_one() {
+        let mut image = valid_v1();
+        image[15] = 1;
+        set_checksum(&mut image, 8, 20);
+        assert_eq!(parse_rsdp(&image), Err(RsdpError::InvalidRevision));
     }
 
     #[test]
