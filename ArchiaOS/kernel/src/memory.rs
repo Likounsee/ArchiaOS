@@ -1,6 +1,13 @@
 use core::fmt::Write;
 use core::ptr;
 
+#[cfg(feature = "uefi-boot")]
+use archiaos_bootloader::bootinfo::{BootInfo, BOOT_INFO_MAGIC, BOOT_INFO_VERSION};
+#[cfg(feature = "uefi-boot")]
+use archiaos_bootloader::memory_map::UefiMemoryMap;
+#[cfg(feature = "uefi-boot")]
+use core::slice;
+
 const PAGE_SIZE: u64 = 4096;
 const ONE_MIB: u64 = 1024 * 1024;
 const MAX_PHYSICAL_ADDRESS: u64 = 1u64 << 32;
@@ -63,6 +70,9 @@ static mut PMM_TEST_PAGES: [u64; PMM_SELF_TEST_PAGES] = [0; PMM_SELF_TEST_PAGES]
 #[derive(Clone, Copy, Debug)]
 pub enum MemoryError {
     UnsupportedLimineBaseRevision,
+    InvalidBootInfoPointer,
+    InvalidBootInfo,
+    InvalidUefiMemoryMap,
     AlreadyInitialized,
     MissingMemoryMap,
     InvalidMemoryMapMetadata,
@@ -246,6 +256,130 @@ pub fn initialize<W: Write>(log: &mut W) -> Result<MemoryStats, MemoryError> {
     }
     let _ = writeln!(log, "PMM: initial free page count {}", free_pages);
     Ok(MemoryStats { map_entries: response.entry_count, usable_ranges, usable_bytes, free_pages })
+}
+
+
+/// Initialize the same physical-page allocator from the ArchiaOS UEFI handoff.
+/// This path is compiled only for the custom-bootloader kernel build; the normal
+/// kernel build continues using Limine until the production switch is validated.
+#[cfg(feature = "uefi-boot")]
+pub unsafe fn initialize_from_bootinfo<W: Write>(
+    log: &mut W,
+    boot_info_ptr: *const BootInfo,
+) -> Result<MemoryStats, MemoryError> {
+    if unsafe { ptr::read_volatile(ptr::addr_of!(PMM_INITIALIZED)) } {
+        return Err(MemoryError::AlreadyInitialized);
+    }
+    if boot_info_ptr.is_null()
+        || (boot_info_ptr as usize) % core::mem::align_of::<BootInfo>() != 0
+    {
+        return Err(MemoryError::InvalidBootInfoPointer);
+    }
+
+    // The UEFI loader owns this contract. Once the pointer is non-null and
+    // aligned, validate the complete versioned header before using any fields.
+    let info = unsafe { &*boot_info_ptr };
+    if info.magic != BOOT_INFO_MAGIC
+        || info.version != BOOT_INFO_VERSION
+        || (info.struct_size as usize) < core::mem::size_of::<BootInfo>()
+        || info.memory_map.is_null()
+        || info.memory_map_size == 0
+        || info.memory_map_size > 1024 * 1024
+        || info.memory_map_descriptor_version == 0
+        || info.memory_map_descriptor_size == 0
+    {
+        return Err(MemoryError::InvalidBootInfo);
+    }
+
+    let map_size = usize::try_from(info.memory_map_size)
+        .map_err(|_| MemoryError::InvalidBootInfo)?;
+    let descriptor_size = usize::try_from(info.memory_map_descriptor_size)
+        .map_err(|_| MemoryError::InvalidBootInfo)?;
+    if (info.memory_map as usize) % core::mem::align_of::<u64>() != 0 {
+        return Err(MemoryError::InvalidBootInfo);
+    }
+
+    // SAFETY: BootInfo is supplied by our bootloader; bounds and alignment are
+    // checked above, and the loader keeps the map allocation reserved through
+    // the handoff. UefiMemoryMap then validates stride and every physical range.
+    let bytes = unsafe { slice::from_raw_parts(info.memory_map, map_size) };
+    let memory_map = UefiMemoryMap::parse(bytes, descriptor_size)
+        .map_err(|_| MemoryError::InvalidUefiMemoryMap)?;
+    if memory_map.is_empty() || memory_map.len() > 65_536 {
+        return Err(MemoryError::InvalidUefiMemoryMap);
+    }
+
+    let mut usable_ranges = 0u64;
+    let mut usable_bytes = 0u64;
+    for index in 0..memory_map.len() {
+        let descriptor = memory_map.entry(index)
+            .map_err(|_| MemoryError::InvalidUefiMemoryMap)?;
+        if descriptor.is_conventional() {
+            usable_ranges = usable_ranges.checked_add(1)
+                .ok_or(MemoryError::UsableMemoryTotalOverflow)?;
+            usable_bytes = usable_bytes.checked_add(
+                descriptor.byte_length().map_err(|_| MemoryError::InvalidMemoryRange)?
+            ).ok_or(MemoryError::UsableMemoryTotalOverflow)?;
+        }
+    }
+    if usable_ranges == 0 {
+        return Err(MemoryError::NoFreePages);
+    }
+
+    // Match the existing Limine path's fail-closed, single-shot initialization.
+    // Only UEFI EfiConventionalMemory ranges become allocatable; loader, runtime,
+    // ACPI, MMIO and all other descriptor types remain reserved.
+    unsafe { ptr::write_volatile(ptr::addr_of_mut!(PMM_INITIALIZED), true) };
+    let _ = writeln!(log, "PMM: validated ArchiaOS UEFI BootInfo v{}", info.version);
+    let _ = writeln!(log, "PMM: UEFI memory descriptors validated: {}", memory_map.len());
+
+    for index in 0..memory_map.len() {
+        let descriptor = memory_map.entry(index)
+            .map_err(|_| MemoryError::InvalidUefiMemoryMap)?;
+        if descriptor.is_conventional() {
+            let range = LimineMemmapEntry {
+                base: descriptor.physical_start,
+                length: descriptor.byte_length()
+                    .map_err(|_| MemoryError::InvalidMemoryRange)?,
+                kind: LIMINE_MEMMAP_USABLE,
+            };
+            apply_range(&range, true, true);
+        }
+    }
+
+    // Reserved descriptors always override usable bits if a non-conforming map
+    // ever changes during handoff. The parser rejects overlap, but this also
+    // makes the intended precedence explicit and keeps the two boot paths aligned.
+    for index in 0..memory_map.len() {
+        let descriptor = memory_map.entry(index)
+            .map_err(|_| MemoryError::InvalidUefiMemoryMap)?;
+        if !descriptor.is_conventional() {
+            let range = LimineMemmapEntry {
+                base: descriptor.physical_start,
+                length: descriptor.byte_length()
+                    .map_err(|_| MemoryError::InvalidMemoryRange)?,
+                kind: u64::MAX,
+            };
+            apply_range(&range, false, false);
+        }
+    }
+
+    unsafe {
+        set_bit_range(managed_bitmap_ptr(), 0, ONE_MIB / PAGE_SIZE, false);
+        set_bit_range(free_bitmap_ptr(), 0, ONE_MIB / PAGE_SIZE, false);
+    }
+    let free_pages = free_page_count();
+    if free_pages == 0 {
+        return Err(MemoryError::NoFreePages);
+    }
+    let _ = writeln!(log, "PMM: conventional UEFI ranges: {}, bytes: {}", usable_ranges, usable_bytes);
+    let _ = writeln!(log, "PMM: initial free page count {}", free_pages);
+    Ok(MemoryStats {
+        map_entries: memory_map.len() as u64,
+        usable_ranges,
+        usable_bytes,
+        free_pages,
+    })
 }
 
 pub fn alloc_page() -> Option<u64> {
