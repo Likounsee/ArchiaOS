@@ -1478,18 +1478,33 @@ fn audit_platform_table_ranges(
     #[cfg(target_arch = "aarch64")]
     let _ = high_half_image;
     if acpi_rsdp != 0 {
+        // Prove the fixed prefix is retained and readable in the kernel's active
+        // mapping before dereferencing firmware-controlled length/revision fields.
+        const RSDP_FIXED_PREFIX: u64 = 20;
+        if !memory_map.range_is_fully_reserved(acpi_rsdp, RSDP_FIXED_PREFIX)
+            .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: malformed RSDP prefix in final memory map.\r\n\0"))?
+        {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI RSDP prefix is not fully reserved in the final memory map.\r\n\0"));
+        }
+        #[cfg(target_arch = "x86_64")]
+        if high_half_image
+            && !range_is_identity_mapped_ram(memory_map, acpi_rsdp, RSDP_FIXED_PREFIX)?
+        {
+            return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: ACPI RSDP prefix is outside identity-mapped RAM for the high-half kernel.\r\n\0"));
+        }
+
         let rsdp = acpi_rsdp as *const u8;
-        // SAFETY: platform_tables only returns an RSDP after validating its signature,
-        // checksum(s), revision and bounded extended length.
+        // SAFETY: the fixed prefix is covered by reserved RAM and (for high-half
+        // x86-64) the identity map, as checked above.
         let revision = unsafe { ptr::read(rsdp.add(15)) };
         let length = if revision < 2 {
-            20u64
+            RSDP_FIXED_PREFIX
         } else {
-            // SAFETY: a validated extended RSDP contains its 36-byte fixed prefix.
+            // SAFETY: revision >= 2 means the validated fixed prefix includes length.
             let field = unsafe { core::slice::from_raw_parts(rsdp.add(20), 4) };
             u32::from_le_bytes([field[0], field[1], field[2], field[3]]) as u64
         };
-        if !(20..=archiaos_bootloader::acpi::MAX_RSDP_SIZE as u64).contains(&length) {
+        if !(RSDP_FIXED_PREFIX..=archiaos_bootloader::acpi::MAX_RSDP_SIZE as u64).contains(&length) {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid RSDP size during final memory-map audit.\r\n\0"));
         }
         if !memory_map.range_is_fully_reserved(acpi_rsdp, length)
@@ -1506,10 +1521,22 @@ fn audit_platform_table_ranges(
     }
 
     if device_tree != 0 {
+        const FDT_FIXED_PREFIX: u64 = 8;
+        if !memory_map.range_is_fully_reserved(device_tree, FDT_FIXED_PREFIX)
+            .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: malformed Device Tree prefix in final memory map.\r\n\0"))?
+        {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: Device Tree prefix is not fully reserved in the final memory map.\r\n\0"));
+        }
+        #[cfg(target_arch = "x86_64")]
+        if high_half_image
+            && !range_is_identity_mapped_ram(memory_map, device_tree, FDT_FIXED_PREFIX)?
+        {
+            return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: Device Tree prefix is outside identity-mapped RAM for the high-half kernel.\r\n\0"));
+        }
+
         let dtb = device_tree as *const u8;
-        // SAFETY: platform_tables only returns a DTB after validating its bounded header
-        // and complete tree structure.
-        let header = unsafe { core::slice::from_raw_parts(dtb, 8) };
+        // SAFETY: the fixed prefix is reserved and mapped, as checked above.
+        let header = unsafe { core::slice::from_raw_parts(dtb, FDT_FIXED_PREFIX as usize) };
         let length = u32::from_be_bytes([header[4], header[5], header[6], header[7]]) as u64;
         if !(archiaos_bootloader::device_tree::HEADER_SIZE as u64
             ..=archiaos_bootloader::device_tree::MAX_TOTAL_SIZE as u64).contains(&length)
