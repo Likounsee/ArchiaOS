@@ -1,0 +1,40 @@
+ENTRY(_start)
+
+KERNEL_VMA = 0xffffffff80000000;
+KERNEL_LMA = 0x00200000;
+
+PHDRS {
+    text   PT_LOAD FLAGS(5);
+    rodata PT_LOAD FLAGS(4);
+    data   PT_LOAD FLAGS(6);
+}
+
+SECTIONS {
+    . = KERNEL_VMA + KERNEL_LMA;
+    .text ALIGN(4K) : AT(ADDR(.text) - KERNEL_VMA) {
+        KEEP(*(.text.boot))
+        *(.text .text.*)
+    } :text
+
+    .rodata ALIGN(4K) : AT(ADDR(.rodata) - KERNEL_VMA) {
+        *(.rodata .rodata.*)
+    } :rodata
+
+    .data ALIGN(4K) : AT(ADDR(.data) - KERNEL_VMA) {
+        *(.data .data.*)
+    } :data
+
+    .bss ALIGN(4K) (NOLOAD) : AT(ADDR(.bss) - KERNEL_VMA) {
+        *(.bss.stack)
+        *(COMMON)
+        *(.bss .bss.*)
+    } :data
+
+    /DISCARD/ : {
+        *(.eh_frame .eh_frame.*)
+        *(.comment)
+        *(.got .got.*)
+    }
+}
+
+ASSERT(LOADADDR(.bss) < 0x40000000, "test kernel physical image must remain below 1 GiB")
