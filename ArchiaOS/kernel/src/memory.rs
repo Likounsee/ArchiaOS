@@ -223,6 +223,15 @@ pub unsafe fn initialize_from_bootinfo<W: Write>(
     if free_pages == 0 {
         return Err(MemoryError::NoFreePages);
     }
+    // The published count must match the preflighted usable-page total exactly.
+    // Check this before making the allocator visible to the rest of the kernel.
+    let expected_free_pages = usable_bytes / PAGE_SIZE;
+    if free_pages != expected_free_pages {
+        return Err(MemoryError::FreeCountMismatch);
+    }
+    if !validate_bitmap_invariants() {
+        return Err(MemoryError::BitmapInvariantViolation);
+    }
     unsafe { ptr::write_volatile(ptr::addr_of_mut!(PMM_INITIALIZED), true) };
     let _ = writeln!(log, "PMM: conventional UEFI ranges: {}, bytes: {}", usable_ranges, usable_bytes);
     let _ = writeln!(log, "PMM: initial free page count {}", free_pages);
