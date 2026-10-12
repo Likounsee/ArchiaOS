@@ -246,6 +246,25 @@ unsafe fn validate_fdt_header(address:u64)->bool {
     parse_header(image).is_ok()
 }
 
+unsafe fn validate_rsdp_pointer(address:u64)->bool {
+    use archiaos_bootloader::acpi::{
+        parse_rsdp, MAX_RSDP_SIZE, RSDP_V1_SIZE, RSDP_V2_MIN_SIZE,
+    };
+    if address==0||address>usize::MAX as u64 { return false; }
+    let base=address as usize as *const u8;
+    let revision=unsafe { read_volatile(base.add(15)) };
+    let size=if revision<2 {
+        RSDP_V1_SIZE
+    } else {
+        // ACPI revision 2+ defines the length field at byte 20.
+        let length=unsafe { u32::from_le(read_unaligned(base.add(20).cast::<u32>())) as usize };
+        if length<RSDP_V2_MIN_SIZE||length>MAX_RSDP_SIZE { return false; }
+        length
+    };
+    let image=unsafe { core::slice::from_raw_parts(base,size) };
+    parse_rsdp(image).is_ok()
+}
+
 unsafe fn protocol<T>(bs:*mut BootServices,h:Handle,g:*const Guid)->Result<*mut T,Status> {
     if bs.is_null()||h.is_null() { return Err(EFI_INVALID_PARAMETER); }
     let f=unsafe { (*bs).handle_protocol }.ok_or(EFI_UNSUPPORTED)?;
@@ -428,8 +447,11 @@ unsafe fn get_boot_info_and_exit(handle:Handle,st:*mut SystemTable,entry:u64)->R
     // Configuration-table pointers are physical addresses, not runtime service
     // pointers; capture them before relinquishing the UEFI boot environment.
     let mut acpi_rsdp=unsafe { configuration_table_pointer(st,ACPI_20_TABLE_GUID) };
-    if acpi_rsdp==0 {
+    if acpi_rsdp==0||!unsafe{validate_rsdp_pointer(acpi_rsdp)} {
         acpi_rsdp=unsafe { configuration_table_pointer(st,ACPI_10_TABLE_GUID) };
+        if acpi_rsdp!=0&&!unsafe{validate_rsdp_pointer(acpi_rsdp)} {
+            acpi_rsdp=0;
+        }
     }
     let device_tree=unsafe { configuration_table_pointer(st,DEVICE_TREE_TABLE_GUID) };
     #[cfg(target_arch="aarch64")]
