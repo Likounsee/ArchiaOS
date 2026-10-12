@@ -1360,6 +1360,25 @@ pub unsafe fn transfer_to_kernel(
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: memory-map buffer is incorrectly marked conventional RAM.\r\n\0"));
         }
 
+        // BootInfo currently advertises no framebuffer, but keep the final-map
+        // invariant coupled to the ABI so enabling GOP later cannot accidentally
+        // expose a device framebuffer to the PMM as allocatable conventional RAM.
+        // The scalar validator already rejects inconsistent and overflowing ranges.
+        if let Some(info) = if leaked_info.is_null() {
+            Some(info_address)
+        } else {
+            Some(leaked_info)
+        } {
+            let framebuffer_base = unsafe { (*info).framebuffer_base };
+            let framebuffer_size = unsafe { (*info).framebuffer_size };
+            if framebuffer_size != 0
+                && parsed_map.range_overlaps_conventional(framebuffer_base, framebuffer_size)
+                    .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid framebuffer range in final map.\r\n\0"))?
+            {
+                return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer is incorrectly classified as conventional RAM.\r\n\0"));
+            }
+        }
+
         // Every PT_LOAD segment was reserved with AllocateAddress before this
         // final snapshot. Confirm firmware still marks each rounded physical range
         // as loader-owned/reserved instead of conventional RAM.
