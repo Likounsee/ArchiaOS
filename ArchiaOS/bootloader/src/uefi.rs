@@ -1069,6 +1069,46 @@ unsafe fn build_x86_64_page_tables(
         }
     }
 
+    // Map the GOP framebuffer explicitly as uncached device memory. Firmware may
+    // describe these pages as conventional RAM, but they must never receive the
+    // normal write-back RAM mapping. The first kernel bring-up console uses this
+    // identity alias to provide a visible indication after ExitBootServices.
+    if framebuffer_size != 0 {
+        let framebuffer_end = framebuffer_base.checked_add(framebuffer_size)
+            .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer range overflow while mapping GOP memory.\r\n\0"))?;
+        if framebuffer_base != 0 && framebuffer_end <= MAX_KERNEL_PHYSICAL_ADDRESS {
+            let mut address = framebuffer_base & !(EFI_PAGE_SIZE - 1);
+            let rounded_end = framebuffer_end.checked_add(EFI_PAGE_SIZE - 1)
+                .map(|value| value & !(EFI_PAGE_SIZE - 1))
+                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer page range overflow.\r\n\0"))?;
+            while address < rounded_end {
+                let span = (address / (2 * 1024 * 1024)) as usize;
+                if span >= identity_tables.len() {
+                    return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: framebuffer lies outside the supported 4 GiB identity map.\r\n\0"));
+                }
+                let mut table_address = identity_tables[span];
+                if table_address == 0 {
+                    let table = arena.allocate_page()?;
+                    table_address = arena.physical_address(table);
+                    identity_tables[span] = table_address;
+                    let pdpt_index = (address >> 30) as usize;
+                    let pd_index = ((address >> 21) & 0x1ff) as usize;
+                    unsafe { ptr::write(identity_pd[pdpt_index].add(pd_index), table_address | 0x3) };
+                }
+                let pte_index = ((address >> 12) & 0x1ff) as usize;
+                // P=1, RW=1, PWT=1, PCD=1, NX=1: uncached writable framebuffer.
+                unsafe {
+                    ptr::write(
+                        (table_address as *mut u64).add(pte_index),
+                        address | 0x1 | 0x2 | 0x8 | 0x10 | X86_64_PTE_NX,
+                    );
+                }
+                address = address.checked_add(EFI_PAGE_SIZE)
+                    .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer mapping iteration overflow.\r\n\0"))?;
+            }
+        }
+    }
+
     // The default identity map is RW+NX. Override the kernel PT_LOAD pages so
     // their identity aliases cannot bypass high-half W^X: kernel code and rodata
     // are read-only/NX, while data is writable/NX.
