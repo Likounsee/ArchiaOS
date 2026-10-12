@@ -7,7 +7,7 @@
 | Priorité | Domaine | Avancement estimé | État / prochaine preuve attendue |
 |---|---|---:|---|
 | **P0** | Démarrage UEFI maison x86-64 par défaut | **100 % (jalon physique atteint)** | Démarrage depuis la clé USB et premier affichage framebuffer confirmés par l’utilisateur sur le PC physique. Le motif bleu prouve l’écriture dans le framebuffer après le handoff ; il ne constitue pas encore un bureau ni une pile graphique. Un redémarrage à froid n’est pas consigné. |
-| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **78 %** | GOP transmis dans BootInfo ; framebuffer, RSDP ACPI et Device Tree contrôlés contre la carte mémoire finale. Reste : audit de l'accessibilité de toutes les plages et scénarios matériels. |
+| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **80 %** | GOP transmis dans BootInfo ; framebuffer, RSDP ACPI et Device Tree contrôlés contre la carte mémoire finale. Reste : audit de l'accessibilité de toutes les plages et scénarios matériels. |
 | **P2** | Ordonnanceur et synchronisation | **0 %** | Non implémenté ; définir les primitives de tâches et le changement de contexte avant la préemption. |
 | **P3** | Espace utilisateur et ABI système | **0 %** | Non commencé ; dépend notamment des exceptions, syscalls et mécanismes mémoire isolés. |
 | **P4** | Stockage, VFS et préparation OpenFS | **0 %** | Pas de pilote bloc/VFS fonctionnel ; spécifier d'abord les interfaces. |
@@ -43,7 +43,7 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 
 **Critère de sortie :** build reproductible et tests de démarrage verts sur le HEAD courant, sans déclarer les essais QEMU comme une validation de tout matériel physique.
 
-### P1 — Fiabilité du chargeur et de la mémoire — 78 %
+### P1 — Fiabilité du chargeur et de la mémoire — 80 %
 
 **État : EN COURS.** Le premier démarrage physique est confirmé ; P1 continue sur les invariants mémoire et l'accessibilité des plages après changement de tables de pages.
 
