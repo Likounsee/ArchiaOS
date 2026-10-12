@@ -1587,8 +1587,12 @@ mod memory_map_tests {
 
     #[test]
     fn rejects_conventional_page_count_overflow() {
-        let mut bytes = descriptor(EFI_CONVENTIONAL_MEMORY, 0x1000, u64::MAX / 4096);
-        bytes.extend_from_slice(&descriptor(EFI_CONVENTIONAL_MEMORY, 0x2000, 8));
+        let pages = u64::MAX / 4096 - 1;
+        let entry = descriptor(EFI_CONVENTIONAL_MEMORY, 0x1000, pages);
+        let mut bytes = Vec::new();
+        for _ in 0..4097 {
+            bytes.extend_from_slice(&entry);
+        }
         let map = UefiMemoryMap::parse(&bytes, 48).expect("each individual range is valid");
         assert_eq!(map.conventional_page_count(), Err(MemoryMapError::RangeOverflow));
     }
