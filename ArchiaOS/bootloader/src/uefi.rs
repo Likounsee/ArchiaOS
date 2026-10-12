@@ -1398,12 +1398,18 @@ unsafe fn discover_framebuffer(boot_services: *mut BootServices) -> (u64, u64) {
     if mode_info.is_null() || base == 0 || size == 0 || base.checked_add(size).is_none() {
         return (0, 0);
     }
-    // A mode with no scan lines or resolution is not useful framebuffer metadata.
+    // Do not publish a partial or blit-only mode as a linear framebuffer. The
+    // kernel receives only the physical range, so the byte capacity must cover
+    // every scan line and the mode must expose a directly addressable pixel format.
     let info = unsafe { &*mode_info };
-    if info.horizontal_resolution == 0
-        || info.vertical_resolution == 0
-        || info.pixels_per_scan_line < info.horizontal_resolution
-    {
+    if !archiaos_bootloader::framebuffer::is_usable(
+        base,
+        size,
+        info.horizontal_resolution,
+        info.vertical_resolution,
+        info.pixel_format,
+        info.pixels_per_scan_line,
+    ) {
         return (0, 0);
     }
     (base, size)
