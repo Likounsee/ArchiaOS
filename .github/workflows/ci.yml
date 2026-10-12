@@ -103,6 +103,8 @@ jobs:
           grep -Fq "ArchiaOS AArch64: PL011 base discovered from Device Tree" "$RUNNER_TEMP/archiaos-aarch64.log"
           grep -Fq "ArchiaOS AArch64: direct QEMU Device Tree detected" "$RUNNER_TEMP/archiaos-aarch64.log"
           grep -Fq "ArchiaOS AArch64: direct QEMU Device Tree header validated" "$RUNNER_TEMP/archiaos-aarch64.log"
+          grep -Fq "ArchiaOS AArch64: exception vectors installed" "$RUNNER_TEMP/archiaos-aarch64.log"
+          grep -Fq "ArchiaOS AArch64: expected synchronous exception trapped" "$RUNNER_TEMP/archiaos-aarch64.log"
 
   bootloader-uefi-qemu-smoke:
     name: Boot custom UEFI loader and validate kernel image
@@ -307,3 +309,5 @@ jobs:
           grep -Fq "ArchiaOS AArch64: conventional memory pages validated" "$RUNNER_TEMP/archiaos-aarch64-uefi.log"
           grep -Fq "ArchiaOS AArch64: physical page allocator initialized" "$RUNNER_TEMP/archiaos-aarch64-uefi.log"
           grep -Fq "ArchiaOS AArch64: PMM allocation/free self-test passed" "$RUNNER_TEMP/archiaos-aarch64-uefi.log"
+          grep -Fq "ArchiaOS AArch64: exception vectors installed" "$RUNNER_TEMP/archiaos-aarch64-uefi.log"
+          grep -Fq "ArchiaOS AArch64: expected synchronous exception trapped" "$RUNNER_TEMP/archiaos-aarch64-uefi.log"
