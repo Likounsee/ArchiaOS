@@ -150,6 +150,7 @@ pub mod memory_map {
         bytes: &'a [u8],
         descriptor_size: usize,
         count: usize,
+        sorted: bool,
     }
 
     fn le_u32(bytes: &[u8], offset: usize) -> Result<u32, MemoryMapError> {
@@ -190,7 +191,7 @@ pub mod memory_map {
                 return Err(MemoryMapError::TooManyDescriptors);
             }
 
-            let map = Self { bytes, descriptor_size, count };
+            let mut map = Self { bytes, descriptor_size, count, sorted: true };
             for index in 0..count {
                 map.entry(index)?;
             }
@@ -232,6 +233,9 @@ pub mod memory_map {
                     }
                 }
             }
+            // Keep the validated ordering fact so reserved-range checks can use
+            // binary search + a linear walk on normal firmware maps.
+            map.sorted = sorted;
             Ok(map)
         }
 
@@ -289,6 +293,43 @@ pub mod memory_map {
                 .checked_add(byte_length)
                 .ok_or(MemoryMapError::RangeOverflow)?;
             let mut cursor = physical_start;
+            if self.sorted {
+                // Find the descriptor at or immediately before the requested start.
+                // A sequential walk then proves continuous reserved coverage in O(log n + k).
+                let mut low = 0usize;
+                let mut high = self.count;
+                while low < high {
+                    let middle = low + (high - low) / 2;
+                    if self.entry(middle)?.physical_start <= cursor {
+                        low = middle + 1;
+                    } else {
+                        high = middle;
+                    }
+                }
+                if low == 0 {
+                    return Ok(false);
+                }
+                let mut index = low - 1;
+                while cursor < target_end {
+                    if index >= self.count {
+                        return Ok(false);
+                    }
+                    let descriptor = self.entry(index)?;
+                    let descriptor_end = descriptor.physical_end()?;
+                    if descriptor.physical_start > cursor
+                        || cursor >= descriptor_end
+                        || descriptor.is_conventional()
+                    {
+                        return Ok(false);
+                    }
+                    cursor = descriptor_end.min(target_end);
+                    index += 1;
+                }
+                return Ok(true);
+            }
+
+            // Unsorted maps are deliberately capped at MAX_UNSORTED_DESCRIPTOR_COUNT
+            // during parsing; retain a bounded scan for this uncommon compatibility path.
             while cursor < target_end {
                 let mut covered_until = cursor;
                 for index in 0..self.count {
@@ -2167,6 +2208,22 @@ mod memory_map_tests {
         assert_eq!(map.range_is_fully_reserved(0x4000, 0x1000), Ok(false));
         assert_eq!(map.range_is_fully_reserved(0x1000, 0), Err(MemoryMapError::EmptyRange));
         assert_eq!(map.range_is_fully_reserved(u64::MAX - 3, 8), Err(MemoryMapError::RangeOverflow));
+    }
+
+    #[test]
+    fn reserved_coverage_scales_to_large_sorted_maps() {
+        let mut bytes = Vec::new();
+        // 5,000 adjacent reserved descriptors exercise the sorted-map fast path
+        // above the limit where unsorted maps are accepted.
+        for index in 0..5_000u64 {
+            bytes.extend_from_slice(&descriptor(2, 0x1000 + index * 0x1000, 1));
+        }
+        let map = UefiMemoryMap::parse(&bytes, 48).expect("large sorted map");
+        assert_eq!(
+            map.range_is_fully_reserved(0x1000, 5_000 * 0x1000),
+            Ok(true)
+        );
+        assert_eq!(map.range_is_fully_reserved(0x1000, 5_001 * 0x1000), Ok(false));
     }
 
     #[test]
