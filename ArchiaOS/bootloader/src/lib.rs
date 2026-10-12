@@ -135,6 +135,21 @@ pub mod memory_map {
             self.descriptor_size
         }
 
+        /// Sum pages explicitly classified by UEFI as conventional and available
+        /// for general allocation. This does not itself reserve kernel or DMA ranges.
+        pub fn conventional_page_count(&self) -> Result<u64, MemoryMapError> {
+            let mut total = 0u64;
+            for index in 0..self.count {
+                let descriptor = self.entry(index)?;
+                if descriptor.is_conventional() {
+                    total = total
+                        .checked_add(descriptor.number_of_pages)
+                        .ok_or(MemoryMapError::RangeOverflow)?;
+                }
+            }
+            Ok(total)
+        }
+
         pub fn entry(&self, index: usize) -> Result<MemoryDescriptor, MemoryMapError> {
             if index >= self.count {
                 return Err(MemoryMapError::EntryOutOfBounds);
@@ -1559,6 +1574,23 @@ mod memory_map_tests {
         assert_eq!(second.memory_type, 4);
         assert_eq!(second.physical_end(), Ok(0xc000));
         assert!(!second.is_conventional());
+    }
+
+    #[test]
+    fn sums_only_conventional_pages() {
+        let mut bytes = descriptor(EFI_CONVENTIONAL_MEMORY, 0x1000, 8);
+        bytes.extend_from_slice(&descriptor(4, 0x9000, 3));
+        bytes.extend_from_slice(&descriptor(EFI_CONVENTIONAL_MEMORY, 0xc000, 12));
+        let map = UefiMemoryMap::parse(&bytes, 48).expect("valid map");
+        assert_eq!(map.conventional_page_count(), Ok(20));
+    }
+
+    #[test]
+    fn rejects_conventional_page_count_overflow() {
+        let mut bytes = descriptor(EFI_CONVENTIONAL_MEMORY, 0x1000, u64::MAX / 4096);
+        bytes.extend_from_slice(&descriptor(EFI_CONVENTIONAL_MEMORY, 0x2000, 8));
+        let map = UefiMemoryMap::parse(&bytes, 48).expect("each individual range is valid");
+        assert_eq!(map.conventional_page_count(), Err(MemoryMapError::RangeOverflow));
     }
 
     #[test]
