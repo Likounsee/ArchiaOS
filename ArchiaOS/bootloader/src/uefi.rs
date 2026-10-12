@@ -1541,6 +1541,8 @@ fn audit_platform_table_ranges(
 ) -> Result<(), BootError> {
     #[cfg(target_arch = "aarch64")]
     let _ = high_half_image;
+    // Preserve the fully validated RSDP range to prevent aliasing platform-table formats.
+    let mut validated_rsdp_range: Option<(u64, u64)> = None;
     if acpi_rsdp != 0 {
         // Prove the fixed prefix is retained and readable in the kernel's active
         // mapping before dereferencing firmware-controlled length/revision fields.
@@ -1598,6 +1600,7 @@ fn audit_platform_table_ranges(
         if !rsdp_checksums_are_valid(complete, revision, length) {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ACPI RSDP checksum during final memory-map audit.\r\n\0"));
         }
+        validated_rsdp_range = Some((acpi_rsdp, length));
     }
 
     if device_tree != 0 {
@@ -1626,6 +1629,11 @@ fn audit_platform_table_ranges(
             .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: malformed Device Tree range in final memory map.\r\n\0"))?
         {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: Device Tree storage is not fully reserved in the final memory map.\r\n\0"));
+        }
+        if let Some((rsdp_start, rsdp_length)) = validated_rsdp_range {
+            if physical_ranges_overlap(device_tree, length, rsdp_start, rsdp_length) {
+                return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI RSDP overlaps the Device Tree blob.\\r\\n\\0"));
+            }
         }
         #[cfg(target_arch = "x86_64")]
         if high_half_image
