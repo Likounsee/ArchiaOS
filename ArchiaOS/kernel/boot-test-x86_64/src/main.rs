@@ -4,17 +4,9 @@ use core::arch::{asm, global_asm};
 use core::fmt::{self, Write};
 use core::panic::PanicInfo;
 use core::ptr::read_volatile;
-const BOOT_INFO_MAGIC:u64=0x4942_4149_4843_5241;
-const BOOT_INFO_VERSION:u32=1;
+use archiaos_bootloader::bootinfo::{BootInfo, BOOT_INFO_MAGIC, BOOT_INFO_VERSION};
 const COM1:u16=0x3f8;
 const MIN_DESC:u64=40;
-#[repr(C)]
-pub struct BootInfo {
- magic:u64, version:u32, struct_size:u32, kernel_entry:u64,
- memory_map:*const u8, memory_map_size:u64, memory_map_descriptor_size:u64,
- memory_map_descriptor_version:u32, flags:u32, acpi_rsdp:u64, device_tree:u64,
- framebuffer_base:u64, framebuffer_size:u64,
-}
 global_asm!(
  ".section .text.boot, \"ax\"", ".global _start", ".type _start, @function", "_start:",
  "cli", "cld", "lea rsp, [rip + __stack_top]", "and rsp, -16",
