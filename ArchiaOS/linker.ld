@@ -19,6 +19,7 @@ SECTIONS
     {
         KEEP(*(.limine_requests_start))
         KEEP(*(.limine_requests))
+        KEEP(*(.archiaos_image_marker))
         KEEP(*(.limine_requests_end))
     } :requests
 
