@@ -25,8 +25,15 @@ const FILE_INFO_BUFFER_SIZE: usize = 1024;
 const MAX_KERNEL_IMAGE_SIZE: usize = 64 * 1024 * 1024;
 const MAX_MEMORY_MAP_SIZE: usize = 1024 * 1024;
 const MAX_LOAD_SEGMENTS: usize = 1024;
+const MAX_TOTAL_KERNEL_MEMORY_SIZE: u64 = 128 * 1024 * 1024;
+const X86_64_HIGH_HALF_BASE: u64 = 0xffff_ffff_8000_0000;
+const X86_64_HIGH_HALF_END: u64 = X86_64_HIGH_HALF_BASE + MAX_TOTAL_KERNEL_MEMORY_SIZE;
+const X86_64_IDENTITY_PT_SPANS: usize = (MAX_KERNEL_PHYSICAL_ADDRESS / (2 * 1024 * 1024)) as usize;
+const X86_64_HIGH_PT_SPANS: usize = (MAX_TOTAL_KERNEL_MEMORY_SIZE / (2 * 1024 * 1024)) as usize;
+const PAGE_TABLE_ARENA_PAGES: usize = 2200;
 const MAX_EXIT_BOOT_SERVICES_ATTEMPTS: usize = 3;
 const PF_X: u32 = 1;
+const PF_W: u32 = 2;
 
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -544,8 +551,8 @@ unsafe fn flush_instruction_cache(start: u64, length: u64) {
     unsafe { core::arch::asm!("dsb ish", "isb", options(nostack, preserves_flags)) };
 }
 
-/// Allocate and copy only identity-mapped ELF64 PT_LOAD segments. High-half
-/// images are rejected until this loader installs architecture page tables.
+/// Allocate and copy ELF64 PT_LOAD segments. The x86-64 bring-up path accepts
+/// identity or bounded high-half images; AArch64 remains identity-only.
 pub unsafe fn load_kernel_segments(
     boot_services: *mut BootServices,
     image: &[u8],
@@ -561,10 +568,14 @@ pub unsafe fn load_kernel_segments(
     let free_pages = unsafe { (*boot_services).free_pages }
         .ok_or_else(|| error(EFI_UNSUPPORTED, b"ArchiaOS: FreePages is unavailable.\r\n\0"))?;
 
+    let high_half_image = image_uses_highhalf(elf);
     let mut segment_indices = [0u16; MAX_LOAD_SEGMENTS];
     let mut page_starts = [0u64; MAX_LOAD_SEGMENTS];
     let mut page_ends = [0u64; MAX_LOAD_SEGMENTS];
+    let mut virtual_page_starts = [0u64; MAX_LOAD_SEGMENTS];
+    let mut virtual_page_ends = [0u64; MAX_LOAD_SEGMENTS];
     let mut page_counts = [0usize; MAX_LOAD_SEGMENTS];
+    let mut total_memory_size = 0u64;
     let mut segment_count = 0usize;
 
     for index in 0..elf.program_header_count() {
@@ -574,14 +585,34 @@ pub unsafe fn load_kernel_segments(
             Err(_) => return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ELF load segment.\r\n\0")),
         };
 
-        if segment.virtual_address != segment.physical_address
-            || segment.virtual_address % EFI_PAGE_SIZE != 0
+        let virtual_end = segment.virtual_address
+            .checked_add(segment.memory_size)
+            .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF virtual address overflow.\r\n\0"))?;
+        if segment.virtual_address % EFI_PAGE_SIZE != 0
             || segment.physical_address % EFI_PAGE_SIZE != 0
         {
-            return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: this loader milestone requires identity-mapped, page-aligned ELF segments.\r\n\0"));
+            return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: ELF load segments must be page-aligned.\r\n\0"));
+        }
+        if high_half_image {
+            #[cfg(target_arch = "x86_64")]
+            if segment.virtual_address == segment.physical_address
+                || segment.virtual_address < X86_64_HIGH_HALF_BASE
+                || virtual_end > X86_64_HIGH_HALF_END
+            {
+                return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: high-half ELF segments must remain inside the first 128 MiB of the ArchiaOS high-half window.\r\n\0"));
+            }
+            #[cfg(target_arch = "aarch64")]
+            return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: AArch64 high-half loading is not implemented.\r\n\0"));
+        } else if segment.virtual_address != segment.physical_address {
+            return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: this ELF image requires virtual mappings not supported by its entry mode.\r\n\0"));
         }
         if segment.memory_size == 0 || segment.memory_size < segment.file_size {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ELF segment memory size.\r\n\0"));
+        }
+        total_memory_size = total_memory_size.checked_add(segment.memory_size)
+            .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: total ELF memory size overflow.\r\n\0"))?;
+        if total_memory_size > MAX_TOTAL_KERNEL_MEMORY_SIZE {
+            return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: total ELF segment memory exceeds 128 MiB.\r\n\0"));
         }
         if segment_count >= MAX_LOAD_SEGMENTS {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: too many ELF load segments.\r\n\0"));
@@ -603,21 +634,36 @@ pub unsafe fn load_kernel_segments(
         let rounded_length = rounded_end
             .checked_sub(segment.physical_address)
             .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ELF page range.\r\n\0"))?;
+        let rounded_virtual_end = virtual_end
+            .checked_add(EFI_PAGE_SIZE - 1)
+            .map(|value| value & !(EFI_PAGE_SIZE - 1))
+            .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF virtual page-range overflow.\r\n\0"))?;
+        if high_half_image && rounded_virtual_end > X86_64_HIGH_HALF_END {
+            return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: rounded high-half segment exceeds the page-table window.\r\n\0"));
+        }
         let pages = usize::try_from(rounded_length / EFI_PAGE_SIZE)
             .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF allocation size overflows UINTN.\r\n\0"))?;
         if pages == 0 {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: empty ELF page allocation.\r\n\0"));
         }
+        let virtual_page_start = segment.virtual_address;
         for prior in 0..segment_count {
             if segment.physical_address < page_ends[prior]
                 && page_starts[prior] < rounded_end
             {
-                return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ELF segments overlap after page rounding.\r\n\0"));
+                return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ELF segments overlap physically after page rounding.\r\n\0"));
+            }
+            if virtual_page_start < virtual_page_ends[prior]
+                && virtual_page_starts[prior] < rounded_virtual_end
+            {
+                return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ELF segments overlap virtually after page rounding.\r\n\0"));
             }
         }
         segment_indices[segment_count] = index;
         page_starts[segment_count] = segment.physical_address;
         page_ends[segment_count] = rounded_end;
+        virtual_page_starts[segment_count] = virtual_page_start;
+        virtual_page_ends[segment_count] = rounded_virtual_end;
         page_counts[segment_count] = pages;
         segment_count += 1;
     }
@@ -702,6 +748,250 @@ pub unsafe fn load_kernel_segments(
         return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ELF entry is not in an executable loaded segment.\r\n\0"));
     }
     Ok(elf.entry())
+}
+
+
+#[cfg(target_arch = "x86_64")]
+fn image_uses_highhalf(elf: &archiaos_bootloader::elf::ElfFile) -> bool {
+    elf.entry() >= X86_64_HIGH_HALF_BASE && elf.entry() < X86_64_HIGH_HALF_END
+}
+
+#[cfg(target_arch = "aarch64")]
+fn image_uses_highhalf(_elf: &archiaos_bootloader::elf::ElfFile) -> bool {
+    false
+}
+
+#[cfg(target_arch = "x86_64")]
+struct PageTableArena {
+    physical_base: u64,
+    base: *mut u64,
+    used_pages: usize,
+    boot_services: *mut BootServices,
+    owns_allocation: bool,
+}
+
+#[cfg(target_arch = "x86_64")]
+impl PageTableArena {
+    unsafe fn allocate(boot_services: *mut BootServices) -> Result<Self, BootError> {
+        let allocate_pages = unsafe { (*boot_services).allocate_pages }
+            .ok_or_else(|| error(EFI_UNSUPPORTED, b"ArchiaOS: AllocatePages is unavailable for page tables.\r\n\0"))?;
+        let mut physical_base = MAX_KERNEL_PHYSICAL_ADDRESS - 1;
+        let status = unsafe {
+            allocate_pages(
+                1, // EFI_ALLOCATE_MAX_ADDRESS
+                EFI_LOADER_DATA,
+                PAGE_TABLE_ARENA_PAGES,
+                &mut physical_base,
+            )
+        };
+        if status != EFI_SUCCESS {
+            return Err(error(status, b"ArchiaOS: could not reserve the x86-64 page-table arena below 4 GiB.\r\n\0"));
+        }
+        let bytes = (PAGE_TABLE_ARENA_PAGES as u64)
+            .checked_mul(EFI_PAGE_SIZE)
+            .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: page-table arena size overflow.\r\n\0"))?;
+        let end = physical_base.checked_add(bytes)
+            .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: page-table arena address overflow.\r\n\0"))?;
+        if physical_base % EFI_PAGE_SIZE != 0 || end > MAX_KERNEL_PHYSICAL_ADDRESS {
+            if let Some(free_pages) = unsafe { (*boot_services).free_pages } {
+                let _ = unsafe { free_pages(physical_base, PAGE_TABLE_ARENA_PAGES) };
+            }
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: firmware returned an invalid page-table arena.\r\n\0"));
+        }
+        let mut arena = Self {
+            physical_base,
+            base: physical_base as *mut u64,
+            used_pages: 0,
+            boot_services,
+            owns_allocation: true,
+        };
+        // The arena allocation is reserved loader data; clear once before table construction.
+        unsafe {
+            ptr::write_bytes(
+                arena.base,
+                0,
+                PAGE_TABLE_ARENA_PAGES * (EFI_PAGE_SIZE as usize / core::mem::size_of::<u64>()),
+            );
+        }
+        Ok(arena)
+    }
+
+    fn reset(&mut self) {
+        self.used_pages = 0;
+    }
+
+    fn allocate_page(&mut self) -> Result<*mut u64, BootError> {
+        if self.used_pages >= PAGE_TABLE_ARENA_PAGES {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: x86-64 page-table arena exhausted.\r\n\0"));
+        }
+        let offset = self.used_pages * (EFI_PAGE_SIZE as usize / core::mem::size_of::<u64>());
+        let page = unsafe { self.base.add(offset) };
+        unsafe { ptr::write_bytes(page, 0, EFI_PAGE_SIZE as usize / core::mem::size_of::<u64>()) };
+        self.used_pages += 1;
+        Ok(page)
+    }
+
+    fn physical_address(&self, page: *mut u64) -> u64 {
+        self.physical_base + (page as u64 - self.base as u64)
+    }
+
+    fn disarm(&mut self) {
+        self.owns_allocation = false;
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+impl Drop for PageTableArena {
+    fn drop(&mut self) {
+        if !self.owns_allocation || self.boot_services.is_null() {
+            return;
+        }
+        // SAFETY: the arena came from AllocatePages and this destructor runs before EBS.
+        if let Some(free_pages) = unsafe { (*self.boot_services).free_pages } {
+            let _ = unsafe { free_pages(self.physical_base, PAGE_TABLE_ARENA_PAGES) };
+        }
+        self.owns_allocation = false;
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+fn uefi_memory_type_is_ram(memory_type: u32) -> bool {
+    // Include loader/services/conventional RAM and ACPI reclaim/NVS/persistent
+    // RAM. Exclude MMIO and reserved descriptors to avoid caching device ranges.
+    matches!(memory_type, 1..=7 | 9 | 10 | 14)
+}
+
+#[cfg(target_arch = "x86_64")]
+unsafe fn build_x86_64_page_tables(
+    arena: &mut PageTableArena,
+    memory_map: &UefiMemoryMap<'_>,
+    image: &[u8],
+    elf: &archiaos_bootloader::elf::ElfFile,
+) -> Result<u64, BootError> {
+    arena.reset();
+    let pml4 = arena.allocate_page()?;
+    let identity_pdpt = arena.allocate_page()?;
+    let mut identity_pd = [ptr::null_mut::<u64>(); 4];
+    let high_pdpt = arena.allocate_page()?;
+    let high_pd = arena.allocate_page()?;
+
+    for index in 0..4 {
+        let page = arena.allocate_page()?;
+        identity_pd[index] = page;
+        // P=1, RW=1, physical addresses in the identity region use 4 KiB leaves.
+        unsafe { ptr::write(identity_pdpt.add(index), arena.physical_address(page) | 0x3) };
+    }
+    unsafe {
+        ptr::write(pml4, arena.physical_address(identity_pdpt) | 0x3);
+        ptr::write(pml4.add(511), arena.physical_address(high_pdpt) | 0x3);
+        ptr::write(high_pdpt.add(510), arena.physical_address(high_pd) | 0x3);
+    }
+
+    // Index the identity PTs by their 2 MiB physical span. The fixed arena can
+    // map all RAM below 4 GiB with 4 KiB leaves, while leaving reserved/MMIO
+    // descriptors unmapped instead of giving devices ordinary write-back aliases.
+    let mut identity_tables = [0u64; X86_64_IDENTITY_PT_SPANS];
+    for index in 0..memory_map.len() {
+        let descriptor = memory_map.entry(index)
+            .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid descriptor during x86-64 page-table construction.\r\n\0"))?;
+        if !uefi_memory_type_is_ram(descriptor.memory_type) {
+            continue;
+        }
+        let mut address = descriptor.physical_start;
+        let end = descriptor.physical_end()
+            .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: memory descriptor overflow during page-table construction.\r\n\0"))?
+            .min(MAX_KERNEL_PHYSICAL_ADDRESS);
+        while address < end {
+            if address != 0 {
+                let span = (address / (2 * 1024 * 1024)) as usize;
+                if span >= identity_tables.len() {
+                    return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: physical memory span exceeds the identity map.\r\n\0"));
+                }
+                let mut table_address = identity_tables[span];
+                if table_address == 0 {
+                    let table = arena.allocate_page()?;
+                    table_address = arena.physical_address(table);
+                    identity_tables[span] = table_address;
+                    let pdpt_index = (address >> 30) as usize;
+                    let pd_index = ((address >> 21) & 0x1ff) as usize;
+                    unsafe {
+                        ptr::write(identity_pd[pdpt_index].add(pd_index), table_address | 0x3);
+                    }
+                }
+                let pte_index = ((address >> 12) & 0x1ff) as usize;
+                unsafe {
+                    ptr::write(
+                        (table_address as *mut u64).add(pte_index),
+                        address | 0x3,
+                    );
+                }
+            }
+            address = address.checked_add(EFI_PAGE_SIZE)
+                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: identity-map page iteration overflow.\r\n\0"))?;
+        }
+    }
+
+    // Map each validated ELF segment at its high-half virtual address, using
+    // its physical load address. The supported virtual window is 128 MiB.
+    let mut high_tables = [0u64; X86_64_HIGH_PT_SPANS];
+    let mut entry_is_executable = false;
+    for index in 0..elf.program_header_count() {
+        let segment = match archiaos_bootloader::elf::load_segment(image, elf, index) {
+            Ok(segment) => segment,
+            Err(archiaos_bootloader::elf::ElfError::NotLoadableSegment) => continue,
+            Err(_) => return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid high-half ELF segment.\r\n\0")),
+        };
+        let segment_end = segment.virtual_address.checked_add(segment.memory_size)
+            .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: high-half virtual range overflow.\r\n\0"))?;
+        if segment.virtual_address < X86_64_HIGH_HALF_BASE
+            || segment_end > X86_64_HIGH_HALF_END
+            || segment.virtual_address % EFI_PAGE_SIZE != 0
+            || segment.physical_address % EFI_PAGE_SIZE != 0
+            || segment.virtual_address == segment.physical_address
+        {
+            return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: ELF segment does not fit the supported high-half window.\r\n\0"));
+        }
+        entry_is_executable |= segment.flags & PF_X != 0
+            && elf.entry() >= segment.virtual_address
+            && elf.entry() < segment_end;
+
+        let mut virtual_address = segment.virtual_address;
+        let mut physical_address = segment.physical_address;
+        let rounded_end = segment_end.checked_add(EFI_PAGE_SIZE - 1)
+            .map(|value| value & !(EFI_PAGE_SIZE - 1))
+            .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: high-half page-range overflow.\r\n\0"))?;
+        let pte_flags = 0x1 | if segment.flags & PF_W != 0 { 0x2 } else { 0 };
+        while virtual_address < rounded_end {
+            let span = ((virtual_address - X86_64_HIGH_HALF_BASE) / (2 * 1024 * 1024)) as usize;
+            if span >= high_tables.len() {
+                return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: high-half page-table span exceeds 128 MiB.\r\n\0"));
+            }
+            let mut table_address = high_tables[span];
+            if table_address == 0 {
+                let table = arena.allocate_page()?;
+                table_address = arena.physical_address(table);
+                high_tables[span] = table_address;
+                let pd_index = ((virtual_address >> 21) & 0x1ff) as usize;
+                unsafe { ptr::write(high_pd.add(pd_index), table_address | 0x3) };
+            }
+            let pte_index = ((virtual_address >> 12) & 0x1ff) as usize;
+            unsafe {
+                ptr::write(
+                    (table_address as *mut u64).add(pte_index),
+                    physical_address | pte_flags,
+                );
+            }
+            virtual_address = virtual_address.checked_add(EFI_PAGE_SIZE)
+                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: high-half VA iteration overflow.\r\n\0"))?;
+            physical_address = physical_address.checked_add(EFI_PAGE_SIZE)
+                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: high-half PA iteration overflow.\r\n\0"))?;
+        }
+    }
+    if !entry_is_executable {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ELF entry is not in an executable high-half segment.\r\n\0"));
+    }
+
+    Ok(arena.physical_address(pml4))
 }
 
 fn configuration_table(system_table: *mut SystemTable, wanted: &Guid) -> *mut c_void {
