@@ -17,7 +17,6 @@ Depuis ce dossier :
 
 ```sh
 cargo build --release
-
 ```
 
 ## Vérification locale du noyau avec entrée UEFI maison
