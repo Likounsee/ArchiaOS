@@ -59,9 +59,12 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 - [ ] Auditer toutes les plages réservées : chargeur, noyau, buffers, framebuffer, tables de pages et zones firmware.
 - [x] Vérifier en CI les rejets de libérations invalides/doubles, la cohérence bitmap (toute page libre est gérée, mémoire basse réservée), la réutilisation après libération et la restauration du compte de pages.
 - [x] Extraire la validation scalaire du contrat BootInfo en fonction testable sans déréférencer la carte mémoire, avec tests négatifs magic/version, taille de structure, pointeur absent/désaligné, taille de carte et métadonnées.
-- [ ] Ajouter une simulation d'épuisement mémoire isolée et déterministe (sans perturber le démarrage QEMU), puis auditer les plages réservées (chargeur, noyau, buffers, framebuffer, tables de pages et zones firmware).
+- [x] Ajouter une simulation d'épuisement mémoire isolée et déterministe sur des bitmaps locaux, incluant filtrage des frames réservées et réutilisation, sans consommer la mémoire firmware ni bloquer QEMU (validation CI en attente).
+- [ ] Auditer toutes les plages réservées réellement utilisées par le chargeur (noyau, buffers, framebuffer, tables de pages et zones firmware) et vérifier leurs types UEFI après ExitBootServices.
 - [x] Réinitialiser les bitmaps PMM après la prévalidation et avant chaque tentative de population, afin qu'une tentative échouée ne laisse pas d'état périmé pour une reprise.
-- [ ] Clarifier le comportement en cas d'épuisement mémoire et empêcher toute libération d'une plage réservée.
+- [x] Refuser l'allocation lorsque le bitmap ne contient aucune frame à la fois libre et gérée ; la simulation locale teste l'épuisement déterministe.
+- [x] Empêcher la libération des frames qui ne sont pas gérées par le PMM ; tests de frames réservées et de double libération intégrés.
+- [ ] Confirmer ces contrôles sur le HEAD courant en CI et achever l'audit des plages réservées.
 
 **Critère de sortie :** invariants mémoire documentés et testés, sans chevauchement dangereux ni accès hors plage.
 
