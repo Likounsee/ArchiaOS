@@ -315,6 +315,84 @@ pub mod acpi {
             xsdt_address: le_u64(image, 24)?,
         })
     }
+
+    pub const SDT_HEADER_SIZE: usize = 36;
+    pub const MAX_SDT_SIZE: usize = 16 * 1024 * 1024;
+    pub const SPCR_INTERFACE_ARM_PL011: u8 = 0x03;
+    pub const SPCR_MIN_SIZE: usize = 52;
+    pub const UART_REGISTER_WINDOW_SIZE: u64 = 0x48;
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum SdtError {
+        Truncated,
+        InvalidLength,
+        InvalidChecksum,
+        WrongSignature,
+        UnsupportedInterface,
+        UnsupportedAddressSpace,
+        InvalidAddress,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub struct SdtInfo {
+        pub signature: [u8; 4],
+        pub length: usize,
+        pub revision: u8,
+    }
+
+    /// Validate the common ACPI System Description Table header, advertised
+    /// length, and checksum before interpreting any table-specific fields.
+    pub fn parse_sdt_header(image: &[u8]) -> Result<SdtInfo, SdtError> {
+        if image.len() < SDT_HEADER_SIZE {
+            return Err(SdtError::Truncated);
+        }
+        let length = u32::from_le_bytes([image[4], image[5], image[6], image[7]]) as usize;
+        if !(SDT_HEADER_SIZE..=MAX_SDT_SIZE).contains(&length) || length > image.len() {
+            return Err(SdtError::InvalidLength);
+        }
+        if !checksum_valid(&image[..length]) {
+            return Err(SdtError::InvalidChecksum);
+        }
+        Ok(SdtInfo {
+            signature: [image[0], image[1], image[2], image[3]],
+            length,
+            revision: image[8],
+        })
+    }
+
+    /// Extract the memory-mapped PL011 base address from an ACPI SPCR table.
+    /// The input may contain trailing bytes, but only the validated table length
+    /// participates in checksum and field validation.
+    pub fn parse_spcr_uart_base(image: &[u8]) -> Result<u64, SdtError> {
+        let header = parse_sdt_header(image)?;
+        if header.signature != *b"SPCR" {
+            return Err(SdtError::WrongSignature);
+        }
+        if header.length < SPCR_MIN_SIZE {
+            return Err(SdtError::InvalidLength);
+        }
+        // ACPI SPCR InterfaceType=3 denotes ARM PL011 UART; the Generic
+        // Address Structure begins at byte 40 and its Address is at byte 44.
+        if image[36] != SPCR_INTERFACE_ARM_PL011 {
+            return Err(SdtError::UnsupportedInterface);
+        }
+        // AddressSpaceId 0 is System Memory. System I/O ports are not used for
+        // the ARM PL011 MMIO console.
+        if image[40] != 0 {
+            return Err(SdtError::UnsupportedAddressSpace);
+        }
+        let address = u64::from_le_bytes([
+            image[44], image[45], image[46], image[47],
+            image[48], image[49], image[50], image[51],
+        ]);
+        if address == 0
+            || address % 4 != 0
+            || address.checked_add(UART_REGISTER_WINDOW_SIZE).is_none()
+        {
+            return Err(SdtError::InvalidAddress);
+        }
+        Ok(address)
+    }
 }
 
 /// Minimal, allocation-free parser for the flattened Device Tree (FDT) header.
@@ -1563,6 +1641,60 @@ mod acpi_tests {
         let mut image = valid_v2();
         image.truncate(24);
         assert_eq!(parse_rsdp(&image), Err(RsdpError::Truncated));
+    }
+
+    fn valid_spcr() -> Vec<u8> {
+        let mut image = vec![0u8; 56];
+        image[0..4].copy_from_slice(b"SPCR");
+        image[4..8].copy_from_slice(&(56u32).to_le_bytes());
+        image[8] = 2;
+        image[36] = super::acpi::SPCR_INTERFACE_ARM_PL011;
+        image[40] = 0; // System Memory address space
+        image[41] = 32; // Register bit width
+        image[44..52].copy_from_slice(&0x0900_0000u64.to_le_bytes());
+        set_checksum(&mut image, 9, 56);
+        image
+    }
+
+    #[test]
+    fn accepts_spcr_pl011_uart() {
+        let image = valid_spcr();
+        assert_eq!(
+            super::acpi::parse_spcr_uart_base(&image),
+            Ok(0x0900_0000)
+        );
+    }
+
+    #[test]
+    fn rejects_spcr_bad_checksum() {
+        let mut image = valid_spcr();
+        image[48] ^= 1;
+        assert_eq!(
+            super::acpi::parse_spcr_uart_base(&image),
+            Err(super::acpi::SdtError::InvalidChecksum)
+        );
+    }
+
+    #[test]
+    fn rejects_spcr_non_pl011_interface() {
+        let mut image = valid_spcr();
+        image[36] = 0;
+        set_checksum(&mut image, 9, 56);
+        assert_eq!(
+            super::acpi::parse_spcr_uart_base(&image),
+            Err(super::acpi::SdtError::UnsupportedInterface)
+        );
+    }
+
+    #[test]
+    fn rejects_spcr_non_memory_address_space() {
+        let mut image = valid_spcr();
+        image[40] = 1;
+        set_checksum(&mut image, 9, 56);
+        assert_eq!(
+            super::acpi::parse_spcr_uart_base(&image),
+            Err(super::acpi::SdtError::UnsupportedAddressSpace)
+        );
     }
 }
 
