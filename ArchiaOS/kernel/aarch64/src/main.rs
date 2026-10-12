@@ -6,6 +6,7 @@ use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
 use archiaos_bootloader::bootinfo::{BootInfo, BOOT_INFO_MAGIC, BOOT_INFO_VERSION};
 use archiaos_bootloader::device_tree::{parse_header as parse_fdt_header, FDT_MAGIC, HEADER_SIZE as FDT_HEADER_SIZE, MAX_TOTAL_SIZE as MAX_FDT_SIZE};
+use archiaos_bootloader::memory_map::UefiMemoryMap;
 
 const MIN_MEMORY_DESCRIPTOR_SIZE: u64 = 40;
 const MAX_MEMORY_MAP_BYTES: u64 = 1024 * 1024;
@@ -153,15 +154,26 @@ fn validate_boot_info(info: *const BootInfo, serial: &mut Serial) {
         halt_forever();
     }
 
-    // Touch every descriptor's type field to verify the handoff map is readable.
-    for i in 0..count {
-        let descriptor = unsafe { b.memory_map.add(i * stride) };
-        let _memory_type = unsafe { read_volatile(descriptor.cast::<u32>()) };
+    // The shared parser validates every descriptor's stride, physical alignment,
+    // non-zero page range and checked physical end before the kernel trusts the map.
+    let map_bytes = unsafe {
+        core::slice::from_raw_parts(b.memory_map, b.memory_map_size as usize)
+    };
+    let memory_map = match UefiMemoryMap::parse(map_bytes, stride) {
+        Ok(map) if map.len() == count => map,
+        _ => {
+            serial.write_str("ArchiaOS AArch64: UEFI memory map rejected\\n");
+            halt_forever();
+        }
+    };
+    if memory_map.is_empty() {
+        serial.write_str("ArchiaOS AArch64: UEFI memory map is empty\\n");
+        halt_forever();
     }
 
     serial.write_str("ArchiaOS AArch64: BootInfo validated\\n");
     serial.write_str("ArchiaOS AArch64: Device Tree header validated\\n");
-    serial.write_str("ArchiaOS AArch64: UEFI memory-map descriptors readable\\n");
+    serial.write_str("ArchiaOS AArch64: UEFI memory-map descriptors validated\\n");
 }
 
 #[no_mangle]
