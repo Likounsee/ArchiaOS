@@ -423,10 +423,22 @@ pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
     // reservation tested above. Never require a specific firmware map layout.
     let managed = managed_bitmap_ptr() as *const u64;
     let mut reserved_frame = None;
-    for frame in (ONE_MIB / PAGE_SIZE)..MAX_FRAMES {
-        if !unsafe { bit_is_set(managed, frame) } {
-            reserved_frame = Some(frame);
-            break;
+    // Search by bitmap word, not by individual frame. The previous per-frame
+    // loop performed up to one million volatile-ish bitmap reads on every boot
+    // and could consume the entire QEMU smoke-test timeout before allocations
+    // began. Mask low memory in the first word, then find the first zero bit.
+    let first_frame = ONE_MIB / PAGE_SIZE;
+    let first_word = (first_frame / 64) as usize;
+    for word_index in first_word..BITMAP_WORDS {
+        let managed_word = unsafe { ptr::read(managed.add(word_index)) };
+        let candidates = !managed_word;
+        if candidates != 0 {
+            let bit = candidates.trailing_zeros() as u64;
+            let frame = word_index as u64 * 64 + bit;
+            if frame >= first_frame && frame < MAX_FRAMES {
+                reserved_frame = Some(frame);
+                break;
+            }
         }
     }
     if let Some(frame) = reserved_frame {
