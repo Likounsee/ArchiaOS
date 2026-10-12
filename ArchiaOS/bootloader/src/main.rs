@@ -261,10 +261,18 @@ unsafe fn read_kernel_image(handle:Handle,st:*mut SystemTable)->Result<(*mut u8,
     let read=match unsafe { (*file).read } {
         Some(f)=>f,None=>{unsafe{free_pool(bs,buffer.cast());close_file(file);close_file(root);}return Err(EFI_UNSUPPORTED)}
     };
-    let mut actual=file_size as usize;
-    let s=unsafe { read(file,&mut actual,buffer.cast()) };
+    let expected=file_size as usize;
+    let mut actual=0usize;
+    while actual<expected {
+        let mut chunk=expected-actual;
+        let s=unsafe { read(file,&mut chunk,buffer.add(actual).cast()) };
+        if s!=EFI_SUCCESS||chunk==0||chunk>expected-actual {
+            unsafe { free_pool(bs,buffer.cast());close_file(file);close_file(root); }
+            return Err(if s==EFI_SUCCESS {EFI_BAD_BUFFER_SIZE}else{s});
+        }
+        actual+=chunk;
+    }
     unsafe { close_file(file);close_file(root); }
-    if s!=EFI_SUCCESS||actual!=file_size as usize { unsafe { free_pool(bs,buffer.cast()); } return Err(if s==EFI_SUCCESS {EFI_BAD_BUFFER_SIZE}else{s}); }
     Ok((buffer,actual))
 }
 
