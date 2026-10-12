@@ -11,7 +11,7 @@ test = false
 bench = false
 
 [features]
-default = []
+default = ["uefi-boot"]
 uefi-boot = []
 
 [dependencies]
