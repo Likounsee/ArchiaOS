@@ -53,7 +53,8 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 - [x] Réessayer ExitBootServices avec une clé de carte mémoire fraîche si nécessaire.
 - [ ] Auditer toutes les plages réservées : chargeur, noyau, buffers, framebuffer, tables de pages et zones firmware.
 - [x] Vérifier en CI les rejets de libérations invalides/doubles et la restauration du compte de pages après autotest.
-- [ ] Ajouter des tests d'échec et de limites pour les allocations et la validation du BootInfo.
+- [x] Extraire la validation scalaire du contrat BootInfo en fonction testable sans déréférencer la carte mémoire, avec tests négatifs magic/version, taille de structure, pointeur absent/désaligné, taille de carte et métadonnées.
+- [ ] Ajouter des tests d'échec d'allocation et auditer les plages réservées (chargeur, noyau, buffers, framebuffer, tables de pages et zones firmware).
 - [x] Réinitialiser les bitmaps PMM après la prévalidation et avant chaque tentative de population, afin qu'une tentative échouée ne laisse pas d'état périmé pour une reprise.
 - [ ] Clarifier le comportement en cas d'épuisement mémoire et empêcher toute libération d'une plage réservée.
 

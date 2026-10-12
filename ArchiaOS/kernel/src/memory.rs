@@ -1,7 +1,7 @@
 use core::fmt::Write;
 use core::ptr;
 
-use archiaos_bootloader::bootinfo::{BootInfo, BOOT_INFO_MAGIC, BOOT_INFO_VERSION};
+use archiaos_bootloader::bootinfo::BootInfo;
 use archiaos_bootloader::memory_map::UefiMemoryMap;
 use core::slice;
 

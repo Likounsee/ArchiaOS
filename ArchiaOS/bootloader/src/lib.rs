@@ -8,6 +8,7 @@ extern crate std;
 pub mod bootinfo {
     pub const BOOT_INFO_MAGIC: u64 = 0x4942_4149_4843_5241; // "ARCHIABI"
     pub const BOOT_INFO_VERSION: u32 = 1;
+    pub const MAX_MEMORY_MAP_SIZE: u64 = 1024 * 1024;
 
     #[repr(C)]
     pub struct BootInfo {
@@ -24,6 +25,44 @@ pub mod bootinfo {
         pub device_tree: u64,
         pub framebuffer_base: u64,
         pub framebuffer_size: u64,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum BootInfoError {
+        BadMagic,
+        UnsupportedVersion,
+        StructureTooSmall,
+        MissingMemoryMap,
+        InvalidMemoryMapSize,
+        InvalidDescriptorMetadata,
+        UnalignedMemoryMap,
+    }
+
+    /// Validate scalar ABI fields before the caller dereferences the memory map.
+    /// This does not prove the pointers are mapped or readable in the active address space.
+    pub fn validate_header(info: &BootInfo) -> Result<(), BootInfoError> {
+        if info.magic != BOOT_INFO_MAGIC {
+            return Err(BootInfoError::BadMagic);
+        }
+        if info.version != BOOT_INFO_VERSION {
+            return Err(BootInfoError::UnsupportedVersion);
+        }
+        if (info.struct_size as usize) < core::mem::size_of::<BootInfo>() {
+            return Err(BootInfoError::StructureTooSmall);
+        }
+        if info.memory_map.is_null() {
+            return Err(BootInfoError::MissingMemoryMap);
+        }
+        if info.memory_map_size == 0 || info.memory_map_size > MAX_MEMORY_MAP_SIZE {
+            return Err(BootInfoError::InvalidMemoryMapSize);
+        }
+        if info.memory_map_descriptor_version == 0 || info.memory_map_descriptor_size == 0 {
+            return Err(BootInfoError::InvalidDescriptorMetadata);
+        }
+        if (info.memory_map as usize) % core::mem::align_of::<u64>() != 0 {
+            return Err(BootInfoError::UnalignedMemoryMap);
+        }
+        Ok(())
     }
 }
 
@@ -1124,7 +1163,67 @@ mod tests {
     use std::vec;
     use std::vec::Vec;
 
+    use super::bootinfo::{validate_header, BootInfo, BootInfoError, BOOT_INFO_MAGIC, BOOT_INFO_VERSION};
     use super::elf::{parse_elf64, load_segment, ElfError};
+
+    fn valid_boot_info() -> BootInfo {
+        BootInfo {
+            magic: BOOT_INFO_MAGIC,
+            version: BOOT_INFO_VERSION,
+            struct_size: core::mem::size_of::<BootInfo>() as u32,
+            kernel_entry: 0x100000,
+            memory_map: 0x1000usize as *const u8,
+            memory_map_size: 40,
+            memory_map_descriptor_size: 40,
+            memory_map_descriptor_version: 1,
+            flags: 0,
+            acpi_rsdp: 0,
+            device_tree: 0,
+            framebuffer_base: 0,
+            framebuffer_size: 0,
+        }
+    }
+
+    #[test]
+    fn boot_info_header_accepts_valid_contract() {
+        assert_eq!(validate_header(&valid_boot_info()), Ok(()));
+    }
+
+    #[test]
+    fn boot_info_header_rejects_bad_magic_and_version() {
+        let mut info = valid_boot_info();
+        info.magic = 0;
+        assert_eq!(validate_header(&info), Err(BootInfoError::BadMagic));
+        let mut info = valid_boot_info();
+        info.version += 1;
+        assert_eq!(validate_header(&info), Err(BootInfoError::UnsupportedVersion));
+    }
+
+    #[test]
+    fn boot_info_header_rejects_short_struct_and_missing_map() {
+        let mut info = valid_boot_info();
+        info.struct_size = 1;
+        assert_eq!(validate_header(&info), Err(BootInfoError::StructureTooSmall));
+        let mut info = valid_boot_info();
+        info.memory_map = core::ptr::null();
+        assert_eq!(validate_header(&info), Err(BootInfoError::MissingMemoryMap));
+    }
+
+    #[test]
+    fn boot_info_header_rejects_invalid_map_bounds_and_metadata() {
+        let mut info = valid_boot_info();
+        info.memory_map_size = 0;
+        assert_eq!(validate_header(&info), Err(BootInfoError::InvalidMemoryMapSize));
+        let mut info = valid_boot_info();
+        info.memory_map_size = super::bootinfo::MAX_MEMORY_MAP_SIZE + 1;
+        assert_eq!(validate_header(&info), Err(BootInfoError::InvalidMemoryMapSize));
+        let mut info = valid_boot_info();
+        info.memory_map_descriptor_version = 0;
+        assert_eq!(validate_header(&info), Err(BootInfoError::InvalidDescriptorMetadata));
+        let mut info = valid_boot_info();
+        info.memory_map = 0x1001usize as *const u8;
+        assert_eq!(validate_header(&info), Err(BootInfoError::UnalignedMemoryMap));
+    }
 
     const X86_64: u16 = 62;
     const AARCH64: u16 = 183;
