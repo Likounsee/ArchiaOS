@@ -1,11 +1,8 @@
 use core::fmt::Write;
 use core::ptr;
 
-#[cfg(feature = "uefi-boot")]
 use archiaos_bootloader::bootinfo::{BootInfo, BOOT_INFO_MAGIC, BOOT_INFO_VERSION};
-#[cfg(feature = "uefi-boot")]
 use archiaos_bootloader::memory_map::UefiMemoryMap;
-#[cfg(feature = "uefi-boot")]
 use core::slice;
 
 const PAGE_SIZE: u64 = 4096;
@@ -15,56 +12,6 @@ const MAX_FRAMES: u64 = MAX_PHYSICAL_ADDRESS / PAGE_SIZE;
 const BITMAP_WORDS: usize = (MAX_FRAMES / 64) as usize;
 const MAX_MEMMAP_ENTRIES: u64 = 4096;
 const PMM_SELF_TEST_PAGES: usize = 130;
-#[cfg(not(feature = "uefi-boot"))]
-const LIMINE_MEMMAP_USABLE: u64 = 0;
-
-#[cfg(not(feature = "uefi-boot"))]
-#[used]
-#[link_section = ".limine_requests"]
-static mut LIMINE_BASE_REVISION: [u64; 3] = [
-    0xf956_2b2d_5c95_a6c8,
-    0x6a7b_3849_4453_6bdc,
-    6,
-];
-
-#[cfg(not(feature = "uefi-boot"))]
-#[repr(C)]
-struct LimineMemmapEntry {
-    base: u64,
-    length: u64,
-    kind: u64,
-}
-
-#[cfg(not(feature = "uefi-boot"))]
-#[repr(C)]
-struct LimineMemmapResponse {
-    revision: u64,
-    entry_count: u64,
-    entries: *mut *mut LimineMemmapEntry,
-}
-
-#[cfg(not(feature = "uefi-boot"))]
-#[repr(C)]
-struct LimineMemmapRequest {
-    id: [u64; 4],
-    revision: u64,
-    response: *mut LimineMemmapResponse,
-}
-
-#[cfg(not(feature = "uefi-boot"))]
-#[used]
-#[link_section = ".limine_requests"]
-static mut LIMINE_MEMMAP_REQUEST: LimineMemmapRequest = LimineMemmapRequest {
-    id: [
-        0xc7b1_dd30_df4c_8b88,
-        0x0a82_e883_a194_f07b,
-        0x67cf_3d9d_378a_806f,
-        0xe304_acdf_c50c_3c62,
-    ],
-    revision: 0,
-    response: ptr::null_mut(),
-};
-
 // A managed bit distinguishes usable frames from reserved frames; a free bit
 // distinguishes free from allocated frames. Reserved frames can never be freed.
 static mut MANAGED_BITMAP: [u64; BITMAP_WORDS] = [0; BITMAP_WORDS];
@@ -75,14 +22,12 @@ static mut PMM_TEST_PAGES: [u64; PMM_SELF_TEST_PAGES] = [0; PMM_SELF_TEST_PAGES]
 
 #[derive(Clone, Copy, Debug)]
 pub enum MemoryError {
-    UnsupportedLimineBaseRevision,
     InvalidBootInfoPointer,
     InvalidBootInfo,
     InvalidUefiMemoryMap,
     AlreadyInitialized,
     MissingMemoryMap,
     InvalidMemoryMapMetadata,
-    NullMemoryMapEntry,
     InvalidMemoryRange,
     UsableMemoryTotalOverflow,
     NoFreePages,
@@ -162,115 +107,7 @@ fn apply_range(base: u64, length: u64, managed: bool, free: bool) {
     }
 }
 
-#[cfg(not(feature = "uefi-boot"))]
-fn read_entry(response: &LimineMemmapResponse, index: u64) -> Result<LimineMemmapEntry, MemoryError> {
-    // SAFETY: caller bounds index by the validated entry_count.
-    let entry_ptr = unsafe { ptr::read_volatile(response.entries.add(index as usize)) };
-    if entry_ptr.is_null() {
-        return Err(MemoryError::NullMemoryMapEntry);
-    }
-    // SAFETY: Limine supplies the pointer; it is checked for null and its range is validated.
-    let entry = unsafe { ptr::read_volatile(entry_ptr) };
-    if entry.length == 0 || entry.base.checked_add(entry.length).is_none() {
-        return Err(MemoryError::InvalidMemoryRange);
-    }
-    Ok(entry)
-}
-
-#[cfg(not(feature = "uefi-boot"))]
-pub fn initialize<W: Write>(log: &mut W) -> Result<MemoryStats, MemoryError> {
-    // The allocator is an early-boot singleton and must not be reinitialized.
-    if unsafe { ptr::read_volatile(ptr::addr_of!(PMM_INITIALIZED)) } {
-        return Err(MemoryError::AlreadyInitialized);
-    }
-    let _ = writeln!(log, "PMM: checking Limine base revision");
-    let base_revision_ptr = ptr::addr_of!(LIMINE_BASE_REVISION).cast::<u64>();
-    // SAFETY: the pointer addresses the third u64 in the Limine base-revision request.
-    let supported_revision = unsafe { ptr::read_volatile(base_revision_ptr.add(2)) };
-    if supported_revision != 0 {
-        return Err(MemoryError::UnsupportedLimineBaseRevision);
-    }
-
-    // SAFETY: Limine writes the response pointer before transferring control.
-    let _ = writeln!(log, "PMM: base revision supported");
-    let response_ptr = unsafe { ptr::read_volatile(ptr::addr_of!(LIMINE_MEMMAP_REQUEST.response)) };
-    if response_ptr.is_null() {
-        return Err(MemoryError::MissingMemoryMap);
-    }
-    // SAFETY: pointer supplied by Limine; validate metadata before reading entries.
-    let response = unsafe { &*response_ptr };
-    if response.entry_count == 0
-        || response.entry_count > MAX_MEMMAP_ENTRIES
-        || response.entries.is_null()
-    {
-        return Err(MemoryError::InvalidMemoryMapMetadata);
-    }
-
-    let _ = writeln!(log, "PMM: memory map metadata valid: {} entries", response.entry_count);
-    let mut usable_ranges = 0u64;
-    let mut usable_bytes = 0u64;
-    for index in 0..response.entry_count {
-        let entry = read_entry(response, index)?;
-        if entry.kind == LIMINE_MEMMAP_USABLE {
-            usable_ranges += 1;
-            usable_bytes = usable_bytes
-                .checked_add(entry.length)
-                .ok_or(MemoryError::UsableMemoryTotalOverflow)?;
-        }
-    }
-    if usable_ranges == 0 {
-        return Err(MemoryError::NoFreePages);
-    }
-    let _ = writeln!(log, "PMM: map entries validated, {} usable ranges", usable_ranges);
-
-    // Set the guard before touching bitmap state. Any later error is fatal to the
-    // caller and must not allow a second initialization over partially changed bits.
-    unsafe { ptr::write_volatile(ptr::addr_of_mut!(PMM_INITIALIZED), true) };
-
-    // Both bitmap statics live in ELF BSS, which Limine zero-initializes.
-    // Initialization is single-shot; do not redundantly clear 256 KiB here.
-    let _ = writeln!(log, "PMM: using zero-initialized BSS bitmaps");
-
-    // Mark only full pages from usable regions as managed and free.
-    for index in 0..response.entry_count {
-        let entry = read_entry(response, index)?;
-        if entry.kind == LIMINE_MEMMAP_USABLE {
-            apply_range(entry.base, entry.length, true, true);
-        }
-    }
-
-    let _ = writeln!(log, "PMM: usable ranges marked");
-
-    // Reserved regions take precedence if the supplied map ever overlaps.
-    for index in 0..response.entry_count {
-        let entry = read_entry(response, index)?;
-        if entry.kind != LIMINE_MEMMAP_USABLE {
-            apply_range(entry.base, entry.length, false, false);
-        }
-    }
-
-    let _ = writeln!(log, "PMM: reserved ranges marked");
-
-    // Never allocate the low 1 MiB, which contains legacy and boot structures.
-    unsafe {
-        set_bit_range(managed_bitmap_ptr(), 0, ONE_MIB / PAGE_SIZE, false);
-        set_bit_range(free_bitmap_ptr(), 0, ONE_MIB / PAGE_SIZE, false);
-    }
-
-    let _ = writeln!(log, "PMM: low memory reserved");
-    let free_pages = free_page_count();
-    if free_pages == 0 {
-        return Err(MemoryError::NoFreePages);
-    }
-    let _ = writeln!(log, "PMM: initial free page count {}", free_pages);
-    Ok(MemoryStats { map_entries: response.entry_count, usable_ranges, usable_bytes, free_pages })
-}
-
-
-/// Initialize the same physical-page allocator from the ArchiaOS UEFI handoff.
-/// This path is compiled only for the custom-bootloader kernel build; the normal
-/// kernel build continues using Limine until the production switch is validated.
-#[cfg(feature = "uefi-boot")]
+/// Initialize the physical-page allocator from the ArchiaOS UEFI handoff.
 pub unsafe fn initialize_from_bootinfo<W: Write>(
     log: &mut W,
     boot_info_ptr: *const BootInfo,
@@ -334,7 +171,7 @@ pub unsafe fn initialize_from_bootinfo<W: Write>(
         return Err(MemoryError::NoFreePages);
     }
 
-    // Match the existing Limine path's fail-closed, single-shot initialization.
+    // Fail closed: this early allocator can only be initialized once.
     // Only UEFI EfiConventionalMemory ranges become allocatable; loader, runtime,
     // ACPI, MMIO and all other descriptor types remain reserved.
     unsafe { ptr::write_volatile(ptr::addr_of_mut!(PMM_INITIALIZED), true) };
