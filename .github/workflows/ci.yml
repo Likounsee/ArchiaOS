@@ -29,6 +29,17 @@ jobs:
         run: rustc --version && cargo --version
       - name: Install QEMU for the UEFI smoke-test jobs
         run: sudo apt-get update && sudo apt-get install -y qemu-system-x86
+      - name: Reject operational Limine dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RniE 'limine|LIMINE' kernel/src linker.ld Cargo.toml scripts; then
+            echo "Operational kernel/build files still reference Limine" >&2
+            exit 1
+          fi
+          test ! -e limine.conf
+          test ! -e scripts/make-iso.sh
+          echo "No Limine source, linker, configuration, or ISO-build dependency found"
       - name: Build kernel
         run: cargo build --release
       - name: Verify ELF virtual addresses
