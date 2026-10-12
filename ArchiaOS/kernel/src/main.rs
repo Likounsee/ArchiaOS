@@ -149,6 +149,22 @@ pub extern "C" fn rust_kernel_main(
         }
     };
     let _ = writeln!(serial, "ArchiaOS: UEFI BootInfo validated");
+    if boot_info.is_null() {
+        let _ = writeln!(serial, "ArchiaOS: framebuffer metadata unavailable (BootInfo pointer is null)");
+    } else {
+        // BootInfo has already passed scalar/range validation in the PMM initializer.
+        let info = unsafe { &*boot_info };
+        if info.framebuffer_size == 0 {
+            let _ = writeln!(serial, "ArchiaOS: UEFI GOP framebuffer unavailable (headless mode)");
+        } else {
+            let _ = writeln!(
+                serial,
+                "ArchiaOS: UEFI GOP framebuffer base={:#x} size={} bytes",
+                info.framebuffer_base,
+                info.framebuffer_size
+            );
+        }
+    }
     let _ = writeln!(serial, "ArchiaOS: UEFI memory map entries: {}", stats.map_entries);
     let _ = writeln!(serial, "ArchiaOS: conventional memory ranges: {}, bytes: {}", stats.usable_ranges, stats.usable_bytes);
     let _ = writeln!(serial, "ArchiaOS: free physical pages below 4 GiB: {}", stats.free_pages);
