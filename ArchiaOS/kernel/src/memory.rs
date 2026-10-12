@@ -234,33 +234,41 @@ pub unsafe fn initialize_from_bootinfo<W: Write>(
     })
 }
 
+/// Find the first frame marked both managed and free in a bounded bitmap view.
+/// Kept independent of global allocator state so exhaustion can be simulated safely.
+fn first_free_frame(
+    free: &[u64],
+    managed: &[u64],
+    first_frame: u64,
+    frame_limit: u64,
+) -> Option<u64> {
+    let limit = frame_limit.min((free.len().min(managed.len()) as u64).saturating_mul(64));
+    let mut frame = first_frame;
+    while frame < limit {
+        let word_index = (frame / 64) as usize;
+        let bit = 1u64 << (frame % 64);
+        let available = free[word_index] & managed[word_index] & bit;
+        if available != 0 {
+            return Some(frame);
+        }
+        frame += 1;
+    }
+    None
+}
+
 pub fn alloc_page() -> Option<u64> {
     if !unsafe { ptr::read_volatile(ptr::addr_of!(PMM_INITIALIZED)) } {
         return None;
     }
-    let free = free_bitmap_ptr() as *const u64;
-    let managed = managed_bitmap_ptr() as *const u64;
-    let first_word = (ONE_MIB / PAGE_SIZE / 64) as usize;
-
-    for word_index in first_word..BITMAP_WORDS {
-        let word_ptr = unsafe { free.add(word_index) };
-        let mut available = unsafe { ptr::read(word_ptr) };
-        while available != 0 {
-            let bit = available.trailing_zeros() as u64;
-            available &= available - 1;
-            let frame = (word_index as u64) * 64 + bit;
-            if frame >= MAX_FRAMES {
-                continue;
-            }
-            if !unsafe { bit_is_set(managed, frame) } {
-                unsafe { set_bit(free_bitmap_ptr(), frame, false) };
-                continue;
-            }
-            unsafe { set_bit(free_bitmap_ptr(), frame, false) };
-            return Some(frame * PAGE_SIZE);
-        }
-    }
-    None
+    let free_ptr = free_bitmap_ptr() as *const u64;
+    let managed_ptr = managed_bitmap_ptr() as *const u64;
+    // SAFETY: both global bitmaps have exactly BITMAP_WORDS elements.
+    let free = unsafe { slice::from_raw_parts(free_ptr, BITMAP_WORDS) };
+    let managed = unsafe { slice::from_raw_parts(managed_ptr, BITMAP_WORDS) };
+    let frame = first_free_frame(free, managed, ONE_MIB / PAGE_SIZE, MAX_FRAMES)?;
+    // Clear the free bit only after selecting a frame that is also managed.
+    unsafe { set_bit(free_bitmap_ptr(), frame, false) };
+    Some(frame * PAGE_SIZE)
 }
 
 pub fn free_page(physical_address: u64) -> bool {
@@ -331,6 +339,35 @@ pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
         return Err(MemoryError::BitmapInvariantViolation);
     }
     let _ = writeln!(log, "PMM test: free bitmap is a subset of managed memory; low memory reserved");
+
+    // Deterministic exhaustion test on tiny local bitmaps: no firmware-dependent
+    // allocation loop, no global PMM mutation, and no risk of stalling QEMU.
+    let mut simulated_managed = [0b111u64, 0];
+    let mut simulated_free = [0b111u64, 0];
+    for expected in 0..3u64 {
+        let frame = first_free_frame(&simulated_free, &simulated_managed, 0, 3)
+            .ok_or(MemoryError::AllocationFailed)?;
+        if frame != expected {
+            return Err(MemoryError::AllocationAddressInvalid);
+        }
+        simulated_free[0] &= !(1u64 << frame);
+    }
+    if first_free_frame(&simulated_free, &simulated_managed, 0, 3).is_some() {
+        return Err(MemoryError::BitmapInvariantViolation);
+    }
+    // A stale free bit on an unmanaged frame must never be returned.
+    simulated_free[0] = 1u64 << 3;
+    simulated_managed[0] &= !(1u64 << 3);
+    if first_free_frame(&simulated_free, &simulated_managed, 0, 4).is_some() {
+        return Err(MemoryError::BitmapInvariantViolation);
+    }
+    // Releasing a managed frame makes it selectable again.
+    simulated_managed[0] |= 1;
+    simulated_free[0] = 1;
+    if first_free_frame(&simulated_free, &simulated_managed, 0, 1) != Some(0) {
+        return Err(MemoryError::AllocationFailed);
+    }
+    let _ = writeln!(log, "PMM test: deterministic exhaustion, reserved-frame filtering, and reuse passed");
 
     let _ = writeln!(log, "PMM test: rejecting invalid free addresses");
     // Reserved, unaligned, zero, and exclusive-limit addresses must never free a frame.
