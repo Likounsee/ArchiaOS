@@ -6,7 +6,7 @@
 // milestone is allocating/loading PT_LOAD segments and performing the handoff.
 use core::ffi::c_void;
 use core::panic::PanicInfo;
-use core::ptr::{read_unaligned, read_volatile, write_volatile};
+use core::ptr::{read_unaligned, read_volatile};
 
 use archiaos_bootloader::elf::parse_elf64;
 
@@ -240,23 +240,23 @@ const fn ascii_to_utf16<const N: usize>(bytes: &[u8; N]) -> [u16; N] {
 
 static BANNER: [u16; 42] =
     ascii_to_utf16(b"ArchiaOS Bootloader: UEFI entry reached\r\n\0");
-static STAGE_FS: [u16; 47] =
+static STAGE_FS: [u16; 48] =
     ascii_to_utf16(b"ArchiaOS Bootloader: opening EFI kernel image\r\n\0");
-static STAGE_ELF: [u16; 51] =
+static STAGE_ELF: [u16; 47] =
     ascii_to_utf16(b"ArchiaOS Bootloader: validating ELF64 kernel\r\n\0");
-static SUCCESS: [u16; 57] =
+static SUCCESS: [u16; 61] =
     ascii_to_utf16(b"ArchiaOS Bootloader: kernel ELF validated; handoff pending\r\n\0");
-static FAIL_SYSTEM_TABLE: [u16; 54] =
+static FAIL_SYSTEM_TABLE: [u16; 49] =
     ascii_to_utf16(b"ArchiaOS Bootloader: invalid UEFI system table\r\n\0");
-static FAIL_SERVICES: [u16; 57] =
+static FAIL_SERVICES: [u16; 58] =
     ascii_to_utf16(b"ArchiaOS Bootloader: required UEFI boot service missing\r\n\0");
 static FAIL_FS: [u16; 53] =
     ascii_to_utf16(b"ArchiaOS Bootloader: cannot open EFI system volume\r\n\0");
-static FAIL_FILE: [u16; 48] =
+static FAIL_FILE: [u16; 59] =
     ascii_to_utf16(b"ArchiaOS Bootloader: cannot read EFI/ArchiaOS/kernel.elf\r\n\0");
-static FAIL_SIZE: [u16; 53] =
+static FAIL_SIZE: [u16; 50] =
     ascii_to_utf16(b"ArchiaOS Bootloader: kernel image size rejected\r\n\0");
-static FAIL_ELF: [u16; 49] =
+static FAIL_ELF: [u16; 50] =
     ascii_to_utf16(b"ArchiaOS Bootloader: invalid ELF64 kernel image\r\n\0");
 
 static KERNEL_PATH: [u16; 25] =
@@ -419,7 +419,17 @@ unsafe fn read_kernel_image(
             return Err(status);
         }
     };
-    let read = unsafe { (*file).read }.ok_or(EFI_UNSUPPORTED)?;
+    let read = match unsafe { (*file).read } {
+        Some(function) => function,
+        None => {
+            unsafe {
+                free_pool(boot_services, image_buffer.cast::<c_void>());
+                close_file(file);
+                close_file(root);
+            }
+            return Err(EFI_UNSUPPORTED);
+        }
+    };
     let mut actual_size = file_size as usize;
     let status = unsafe {
         read(file, &mut actual_size, image_buffer.cast::<c_void>())
