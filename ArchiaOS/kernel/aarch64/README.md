@@ -1,6 +1,6 @@
 # AArch64 kernel bring-up prototype
 
-This is an isolated, dependency-free `no_std` kernel prototype for advancing AArch64 support without destabilizing the current x86-64/Limine production kernel.
+This is an isolated `no_std` kernel prototype for advancing AArch64 support without destabilizing the current x86-64/Limine production kernel. It has no third-party dependencies and depends on ArchiaOS's own bootloader library to share the BootInfo ABI and tested FDT header parser.
 
 ## Implemented in the prototype
 
@@ -24,4 +24,4 @@ The project CI also compiles the UEFI application and attempts to boot this kern
 
 ## Limits
 
-This is not yet a general ARM64 kernel. The current loader requires identity-mapped ELF64 segments below 4 GiB and the kernel is tailored to QEMU `virt`. The kernel does not yet establish its own MMU tables, exception vectors, timer, interrupt controller, or a full Device Tree token parser. It does not yet share the x86-64 PMM implementation. No production ARM64 compatibility is claimed yet.
+This is not yet a general ARM64 kernel. The current loader requires identity-mapped ELF64 segments below 4 GiB and the kernel is tailored to QEMU `virt`. The kernel does not yet establish its own MMU tables, exception vectors, timer, interrupt controller, or a full Device Tree token parser. It does not yet share the x86-64 PMM implementation or contain a full Device Tree token/reservation-map parser. No production ARM64 compatibility is claimed yet.
