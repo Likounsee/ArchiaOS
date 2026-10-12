@@ -126,31 +126,42 @@ jobs:
         run: |
           cd kernel/boot-test-x86_64
           RUSTFLAGS="-C link-arg=-Tlinker.ld -C relocation-model=static -C no-redzone=yes" cargo build --release --target x86_64-unknown-none --target-dir ../../target/boot-test-x86_64
+      - name: Build high-half handoff test kernel
+        shell: bash
+        run: |
+          cd kernel/boot-test-highhalf-x86_64
+          RUSTFLAGS="-C link-arg=-Tlinker.ld -C relocation-model=static -C no-redzone=yes" cargo build --release --target x86_64-unknown-none --target-dir ../../target/boot-test-highhalf-x86_64
+          image="../../target/boot-test-highhalf-x86_64/x86_64-unknown-none/release/archiaos-boot-highhalf-test"
+          readelf -h "$image"
+          readelf -lW "$image"
+          readelf -lW "$image" | awk '$1 == "LOAD" && $3 ~ /^0xffffffff/ { high = 1 } END { exit !high }'
       - name: Build first-party UEFI loader
         run: cargo build --manifest-path bootloader/Cargo.toml --release --target x86_64-unknown-uefi --target-dir target
-      - name: Prepare UEFI FAT disk image
+      - name: Prepare identity and high-half UEFI FAT disk images
         shell: bash
         run: |
           set -euo pipefail
-          image="$RUNNER_TEMP/archiaos-uefi.img"
           loader="target/x86_64-unknown-uefi/release/archiaos-bootloader.efi"
-          kernel="target/boot-test-x86_64/x86_64-unknown-none/release/archiaos-boot-handoff-test"
-          echo "Checking loader artifact: $loader"
-          ls -lh "$loader"
-          echo "Checking kernel artifact: $kernel"
-          ls -lh "$kernel"
+          identity_kernel="target/boot-test-x86_64/x86_64-unknown-none/release/archiaos-boot-handoff-test"
+          highhalf_kernel="target/boot-test-highhalf-x86_64/x86_64-unknown-none/release/archiaos-boot-highhalf-test"
           test -s "$loader"
-          test -s "$kernel"
-          truncate -s 128M "$image"
-          mkfs.vfat -F 32 "$image"
-          mmd -i "$image" ::/EFI
-          mmd -i "$image" ::/EFI/BOOT
-          mmd -i "$image" ::/EFI/ArchiaOS
-          mcopy -i "$image" "$loader" ::/EFI/BOOT/BOOTX64.EFI
-          mcopy -i "$image" "$kernel" ::/EFI/ArchiaOS/kernel.elf
-          mdir -i "$image" ::/EFI/BOOT
-          mdir -i "$image" ::/EFI/ArchiaOS
-          echo "UEFI disk image prepared with BOOTX64.EFI and kernel.elf"
+          test -s "$identity_kernel"
+          test -s "$highhalf_kernel"
+          make_efi_image() {
+            image="$1"
+            kernel="$2"
+            truncate -s 128M "$image"
+            mkfs.vfat -F 32 "$image"
+            mmd -i "$image" ::/EFI
+            mmd -i "$image" ::/EFI/BOOT
+            mmd -i "$image" ::/EFI/ArchiaOS
+            mcopy -i "$image" "$loader" ::/EFI/BOOT/BOOTX64.EFI
+            mcopy -i "$image" "$kernel" ::/EFI/ArchiaOS/kernel.elf
+            mdir -i "$image" ::/EFI/ArchiaOS
+          }
+          make_efi_image "$RUNNER_TEMP/archiaos-uefi.img" "$identity_kernel"
+          make_efi_image "$RUNNER_TEMP/archiaos-highhalf-uefi.img" "$highhalf_kernel"
+          echo "UEFI images prepared for identity and high-half kernels"
       - name: Boot custom loader with OVMF
         shell: bash
         run: |
@@ -193,6 +204,23 @@ jobs:
           grep -Fq "ArchiaOS UEFI test kernel: BootInfo validated" "$RUNNER_TEMP/archiaos-uefi.log"
           grep -Fq "ArchiaOS UEFI test kernel: conventional memory pages:" "$RUNNER_TEMP/archiaos-uefi.log"
           grep -Fq "ArchiaOS UEFI test kernel: identity-mapped handoff passed" "$RUNNER_TEMP/archiaos-uefi.log"
+
+          # Repeat with a high-half-linked ELF to exercise the new CR3 handoff.
+          cp "$firmware_vars" "$RUNNER_TEMP/OVMF_VARS_HIGHHALF.fd"
+          set +e
+          timeout 20s qemu-system-x86_64 -machine q35 -m 512M -drive "if=pflash,format=raw,readonly=on,file=$firmware_code" -drive "if=pflash,format=raw,file=$RUNNER_TEMP/OVMF_VARS_HIGHHALF.fd" -drive "file=$RUNNER_TEMP/archiaos-highhalf-uefi.img,format=raw,if=ide" -boot order=c -display none -serial stdio -monitor none -no-reboot -no-shutdown > "$RUNNER_TEMP/archiaos-highhalf-uefi.log" 2>&1
+          highhalf_qemu_status=$?
+          set -e
+          cat "$RUNNER_TEMP/archiaos-highhalf-uefi.log"
+          if [[ "$highhalf_qemu_status" -ne 0 && "$highhalf_qemu_status" -ne 124 ]]; then
+            echo "QEMU high-half UEFI exited unexpectedly with status $highhalf_qemu_status"
+            exit 1
+          fi
+          grep -Fq "ArchiaOS Bootloader: loading high-half ELF segments" "$RUNNER_TEMP/archiaos-highhalf-uefi.log"
+          grep -Fq "ArchiaOS Bootloader: exiting UEFI boot services" "$RUNNER_TEMP/archiaos-highhalf-uefi.log"
+          grep -Fq "ArchiaOS high-half test kernel: entry reached" "$RUNNER_TEMP/archiaos-highhalf-uefi.log"
+          grep -Fq "ArchiaOS high-half test kernel: executing at" "$RUNNER_TEMP/archiaos-highhalf-uefi.log"
+          grep -Fq "ArchiaOS high-half test kernel: high-half page-table handoff passed" "$RUNNER_TEMP/archiaos-highhalf-uefi.log"
 
   bootloader-aarch64-uefi-smoke:
     name: Boot custom UEFI loader and AArch64 kernel under AAVMF
