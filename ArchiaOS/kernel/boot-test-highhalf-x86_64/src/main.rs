@@ -10,6 +10,15 @@ use core::panic::PanicInfo;
 const COM1: u16 = 0x3f8;
 const MIN_DESC: u64 = 40;
 const HIGH_HALF_BASE: u64 = 0xffff_ffff_8000_0000;
+const KERNEL_PHYSICAL_BASE: u64 = 0x0020_0000;
+const PAGE_PRESENT: u64 = 1;
+const PAGE_WRITABLE: u64 = 1 << 1;
+const PAGE_LARGE: u64 = 1 << 7;
+const PAGE_NO_EXECUTE: u64 = 1 << 63;
+
+#[used]
+#[link_section = ".data"]
+static mut PAGE_PERMISSION_TEST_DATA: u64 = 0x4152_4348_4941_4f53;
 
 global_asm!(
     ".section .text.boot, \"ax\"",
@@ -96,6 +105,35 @@ unsafe fn port_in(port: u16) -> u8 {
     value
 }
 
+/// Walk a four-level paging structure. The bootloader currently builds only
+/// 4 KiB leaf mappings, so large-page entries are rejected instead of misread.
+fn lookup_leaf_pte(virtual_address: u64) -> Option<u64> {
+    let root: u64;
+    unsafe {
+        asm!(
+            "mov {}, cr3",
+            out(reg) root,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    let mut table = (root & !0xfff) as *const u64;
+    for shift in [39u32, 30, 21] {
+        let index = ((virtual_address >> shift) & 0x1ff) as usize;
+        let entry = unsafe { core::ptr::read_volatile(table.add(index)) };
+        if entry & PAGE_PRESENT == 0 || entry & PAGE_LARGE != 0 {
+            return None;
+        }
+        table = (entry & 0x000f_ffff_ffff_f000) as *const u64;
+    }
+    let index = ((virtual_address >> 12) & 0x1ff) as usize;
+    let leaf = unsafe { core::ptr::read_volatile(table.add(index)) };
+    if leaf & PAGE_PRESENT == 0 {
+        None
+    } else {
+        Some(leaf)
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn rust_kernel_main(info: *const BootInfo) -> ! {
     let mut serial = Serial;
@@ -155,8 +193,53 @@ pub extern "C" fn rust_kernel_main(info: *const BootInfo) -> ! {
         halt();
     }
 
+    // The custom page tables must be active, not merely prepared. Verify the
+    // executable text leaf, a writable/non-executable data leaf, and the NX
+    // physical identity alias of the currently executing text page.
+    let text_pte = match lookup_leaf_pte(current_rip) {
+        Some(entry) => entry,
+        None => {
+            let _ = writeln!(serial, "ArchiaOS high-half test kernel: text page is unmapped");
+            halt();
+        }
+    };
+    if text_pte & PAGE_WRITABLE != 0 || text_pte & PAGE_NO_EXECUTE != 0 {
+        let _ = writeln!(serial, "ArchiaOS high-half test kernel: text is not read-only executable");
+        halt();
+    }
+
+    let data_virtual = core::ptr::addr_of!(PAGE_PERMISSION_TEST_DATA) as u64;
+    let data_pte = match lookup_leaf_pte(data_virtual) {
+        Some(entry) => entry,
+        None => {
+            let _ = writeln!(serial, "ArchiaOS high-half test kernel: data page is unmapped");
+            halt();
+        }
+    };
+    if data_pte & PAGE_WRITABLE == 0 || data_pte & PAGE_NO_EXECUTE == 0 {
+        let _ = writeln!(serial, "ArchiaOS high-half test kernel: data page is not writable/NX");
+        halt();
+    }
+
+    let text_physical = current_rip
+        .checked_sub(HIGH_HALF_BASE)
+        .and_then(|offset| offset.checked_add(KERNEL_PHYSICAL_BASE))
+        .expect("linker physical address calculation overflow");
+    let identity_pte = match lookup_leaf_pte(text_physical) {
+        Some(entry) => entry,
+        None => {
+            let _ = writeln!(serial, "ArchiaOS high-half test kernel: text identity alias is unmapped");
+            halt();
+        }
+    };
+    if identity_pte & PAGE_NO_EXECUTE == 0 {
+        let _ = writeln!(serial, "ArchiaOS high-half test kernel: executable identity alias lacks NX");
+        halt();
+    }
+
     let _ = writeln!(serial, "ArchiaOS high-half test kernel: executing at {:#018x}", current_rip);
     let _ = writeln!(serial, "ArchiaOS high-half test kernel: BootInfo and identity map validated");
+    let _ = writeln!(serial, "ArchiaOS high-half test kernel: high-half W^X/NX permissions passed");
     let _ = writeln!(serial, "ArchiaOS high-half test kernel: high-half page-table handoff passed");
     halt()
 }
