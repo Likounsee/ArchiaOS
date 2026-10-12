@@ -56,11 +56,14 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 - [x] Activer NXE et CR0.WP dans le chemin testé.
 - [x] Fournir un BootInfo versionné et récupérer la carte mémoire UEFI finale.
 - [x] Réessayer ExitBootServices avec une clé de carte mémoire fraîche si nécessaire.
-- [ ] Auditer toutes les plages réservées : chargeur, noyau, buffers, framebuffer, tables de pages et zones firmware.
+- [x] Ajouter un contrôle de la carte mémoire UEFI finale pour détecter les buffers BootInfo/carte mémoire, segments ELF, image du chargeur et arène de tables de pages incorrectement classés en RAM conventionnelle.
+- [ ] Compléter l'audit du framebuffer et des autres plages plateforme ; BootInfo indique actuellement un framebuffer absent (base/taille à zéro).
 - [x] Vérifier en CI les rejets de libérations invalides/doubles, la cohérence bitmap (toute page libre est gérée, mémoire basse réservée), la réutilisation après libération et la restauration du compte de pages.
 - [x] Extraire la validation scalaire du contrat BootInfo en fonction testable sans déréférencer la carte mémoire, avec tests négatifs magic/version, taille de structure, pointeur absent/désaligné, taille de carte et métadonnées.
 - [x] Ajouter une simulation d'épuisement mémoire isolée et déterministe sur des bitmaps locaux, incluant filtrage des frames réservées et réutilisation, sans consommer la mémoire firmware ni bloquer QEMU (validation CI en attente).
-- [ ] Auditer toutes les plages réservées réellement utilisées par le chargeur (noyau, buffers, framebuffer, tables de pages et zones firmware) et vérifier leurs types UEFI après ExitBootServices.
+- [x] Vérifier avant ExitBootServices que les buffers BootInfo/carte mémoire, les segments noyau, l'image du chargeur et l'arène de tables de pages ne chevauchent aucune plage UEFI conventionnelle.
+- [ ] Vérifier le framebuffer quand un vrai framebuffer sera exposé dans BootInfo et terminer l'audit des plages spécifiques à chaque plateforme.
+- [ ] Confirmer ces nouveaux contrôles par la CI du HEAD courant.
 - [x] Réinitialiser les bitmaps PMM après la prévalidation et avant chaque tentative de population, afin qu'une tentative échouée ne laisse pas d'état périmé pour une reprise.
 - [x] Refuser l'allocation lorsque le bitmap ne contient aucune frame à la fois libre et gérée ; la simulation locale teste l'épuisement déterministe.
 - [x] Empêcher la libération des frames qui ne sont pas gérées par le PMM ; tests de frames réservées et de double libération intégrés.
