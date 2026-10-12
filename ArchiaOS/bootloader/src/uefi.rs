@@ -821,8 +821,8 @@ pub unsafe fn transfer_to_kernel(
 
     let (acpi_rsdp, device_tree) = platform_tables(system_table);
     #[cfg(target_arch = "aarch64")]
-    if device_tree == 0 {
-        return Err(error(EFI_NOT_FOUND, b"ArchiaOS: no valid UEFI Device Tree table was found.\r\n\0"));
+    if device_tree == 0 && acpi_rsdp == 0 {
+        return Err(error(EFI_NOT_FOUND, b"ArchiaOS: neither a valid UEFI Device Tree nor ACPI RSDP table was found.\r\n\0"));
     }
 
     let mut info_allocation = unsafe {
