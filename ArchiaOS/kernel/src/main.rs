@@ -54,12 +54,20 @@ global_asm!(
     "mov dx, 0x3f8",
     "mov al, 0x45",
     "out dx, al",
+    "mov al, 0x0d",
+    "out dx, al",
+    "mov al, 0x0a",
+    "out dx, al",
     // Do not depend on the EFI application's inherited stack after handoff.
     "lea rsp, [rip + __boot_stack_top]",
     "and rsp, -16",
     // 'S' means the kernel-owned boot stack is installed and aligned.
     "mov dx, 0x3f8",
     "mov al, 0x53",
+    "out dx, al",
+    "mov al, 0x0d",
+    "out dx, al",
+    "mov al, 0x0a",
     "out dx, al",
     // Bootloader contract: BootInfo arrives in RDI and is preserved into Rust.
     "call rust_kernel_main",
