@@ -447,7 +447,7 @@ pub unsafe fn read_kernel_image(
     }
     let kernel = FileGuard(kernel_raw);
 
-    let mut info = unsafe { PoolAllocation::new(boot_services, FILE_INFO_BUFFER_SIZE)? };
+    let info = unsafe { PoolAllocation::new(boot_services, FILE_INFO_BUFFER_SIZE)? };
     // SAFETY: GetInfo is a member of the file protocol interface.
     let get_info = unsafe { (*kernel.0).get_info }
         .ok_or_else(|| error(EFI_UNSUPPORTED, b"ArchiaOS: file GetInfo is unavailable.\r\n\0"))?;
@@ -470,7 +470,7 @@ pub unsafe fn read_kernel_image(
     }
     drop(info);
 
-    let mut image_buffer = unsafe { PoolAllocation::new(boot_services, file_size)? };
+    let image_buffer = unsafe { PoolAllocation::new(boot_services, file_size)? };
     // SAFETY: Read is part of the file protocol interface.
     let read = unsafe { (*kernel.0).read }
         .ok_or_else(|| error(EFI_UNSUPPORTED, b"ArchiaOS: file Read is unavailable.\r\n\0"))?;
