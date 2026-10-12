@@ -285,7 +285,9 @@ fn install_page_fault_test_handler() -> bool {
     }
     let idtr = Idtr {
         limit: (core::mem::size_of::<[IdtEntry; 256]>() - 1) as u16,
-        base: core::ptr::addr_of!(ARCHIAOS_TEST_IDT.0) as u64,
+        // SAFETY: taking the raw address of mutable static storage is required
+        // for LIDT; no Rust reference to the table is created or retained.
+        base: unsafe { core::ptr::addr_of!(ARCHIAOS_TEST_IDT.0) as u64 },
     };
     // SAFETY: IDT storage remains mapped by the active high-half data mapping.
     unsafe {
