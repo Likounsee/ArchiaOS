@@ -243,7 +243,7 @@ jobs:
           grep -Fq "ArchiaOS: custom UEFI bootloader entered production kernel" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "ArchiaOS: UEFI BootInfo validated" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "ArchiaOS: UEFI PMM allocation/free self-test passed" "$RUNNER_TEMP/archiaos-production-uefi.log"
-          grep -Fq "ArchiaOS: Limine-independent kernel entry validated" "$RUNNER_TEMP/archiaos-production-uefi.log"
+          grep -Fq "ArchiaOS: UEFI kernel entry validated" "$RUNNER_TEMP/archiaos-production-uefi.log"
 
   bootloader-aarch64-uefi-smoke:
     name: Boot custom UEFI loader and AArch64 kernel under AAVMF
