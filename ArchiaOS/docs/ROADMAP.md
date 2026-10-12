@@ -6,8 +6,8 @@
 
 | Priorité | Domaine | Avancement estimé | État / prochaine preuve attendue |
 |---|---|---:|---|
-| **P0** | Démarrage UEFI maison x86-64 par défaut | **80 %** | CI verte sur le commit `cca0f07` : build x86-64, chargeurs x86-64/ARM64, boot OVMF/QEMU x86-64 et AAVMF/QEMU ARM64. Renforcer les tests d'échec et documenter les limites restantes. |
-| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **72 %** | Fondations présentes ; couvrir les échecs, réservations mémoire et cas limites. |
+| **P0** | Démarrage UEFI maison x86-64 par défaut | **88 %** | CI verte sur le commit `da556433` : builds x86-64/ARM64, démarrages OVMF/QEMU et AAVMF/QEMU, assertions CPU/PCI/BootInfo/PMM. Vérifier la nouvelle couverture renforcée sur le HEAD courant. |
+| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **74 %** | Carte mémoire, ELF, BootInfo et autotests PMM validés ; ajouter des scénarios d'échec du chemin complet et approfondir l'audit des plages réservées. |
 | **P2** | Ordonnanceur et synchronisation | **0 %** | Non implémenté ; définir les primitives de tâches et le changement de contexte avant la préemption. |
 | **P3** | Espace utilisateur et ABI système | **0 %** | Non commencé ; dépend notamment des exceptions, syscalls et mécanismes mémoire isolés. |
 | **P4** | Stockage, VFS et préparation OpenFS | **0 %** | Pas de pilote bloc/VFS fonctionnel ; spécifier d'abord les interfaces. |
@@ -24,20 +24,21 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 
 ## Ordre de travail prioritaire
 
-### P0 — Démarrage UEFI maison x86-64 — 80 %
+### P0 — Démarrage UEFI maison x86-64 — 88 %
 
 **Objectif :** faire du chemin UEFI ArchiaOS le démarrage par défaut fiable.
 
 - [x] Remplacer l'ancien chemin Limine dans la configuration par défaut.
 - [x] Utiliser le contrat UEFI du chargeur ArchiaOS.
 - [x] Confirmer une CI verte sur le commit `cca0f07a96709cb099831cac711a3165037c7b7e` : compilation du noyau x86-64, chargeurs UEFI x86-64/ARM64 et démarrages QEMU/OVMF + AAVMF.
-- [ ] Confirmer à nouveau compilation, démarrage et sortie attendue sous OVMF/QEMU après les prochains changements.
-- [ ] Tester les erreurs de démarrage et vérifier que les logs série permettent de les diagnostiquer.
+- [x] Confirmer compilation et démarrage sous OVMF/QEMU et AAVMF/QEMU sur le commit `da556433`.
+- [x] Vérifier en CI les signatures de sortie CPU, inventaire PCI, BootInfo et autotests PMM.
+- [ ] Ajouter des tests de démarrage négatifs (image ELF invalide, BootInfo invalide, mémoire insuffisante) avec arrêt attendu et diagnostic série.
 - [ ] Documenter précisément les configurations testées et les limites restantes.
 
 **Critère de sortie :** build reproductible et tests de démarrage verts sur le HEAD courant, sans déclarer les essais QEMU comme une validation de tout matériel physique.
 
-### P1 — Fiabilité du chargeur et de la mémoire — 72 %
+### P1 — Fiabilité du chargeur et de la mémoire — 74 %
 
 **Objectif :** sécuriser le transfert UEFI → noyau et la gestion de la mémoire physique.
 
@@ -49,6 +50,7 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 - [x] Fournir un BootInfo versionné et récupérer la carte mémoire UEFI finale.
 - [x] Réessayer ExitBootServices avec une clé de carte mémoire fraîche si nécessaire.
 - [ ] Auditer toutes les plages réservées : chargeur, noyau, buffers, framebuffer, tables de pages et zones firmware.
+- [x] Vérifier en CI les rejets de libérations invalides/doubles et la restauration du compte de pages après autotest.
 - [ ] Ajouter des tests d'échec et de limites pour les allocations et la validation du BootInfo.
 - [ ] Clarifier le comportement en cas d'épuisement mémoire et empêcher toute libération d'une plage réservée.
 
