@@ -541,6 +541,182 @@ pub mod device_tree {
         validate_structure_block(structure, strings)?;
         Ok(header)
     }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub struct RegRange {
+        pub address: u64,
+        pub size: u64,
+    }
+
+    fn compatible_list_contains(value: &[u8], compatible: &[u8]) -> Result<bool, FdtError> {
+        let mut offset = 0usize;
+        while offset < value.len() {
+            let (entry, next) = nul_terminated(value, offset)?;
+            if entry.is_empty() {
+                return Err(FdtError::InvalidStructure);
+            }
+            if entry == compatible {
+                return Ok(true);
+            }
+            offset = next;
+        }
+        Ok(false)
+    }
+
+    fn decode_cells(bytes: &[u8], cell_count: usize) -> Result<u64, FdtError> {
+        if cell_count > 2 || bytes.len() < cell_count * 4 {
+            return Err(FdtError::InvalidStructure);
+        }
+        let mut value = 0u64;
+        for index in 0..cell_count {
+            value = (value << 32) | be32(bytes, index * 4)?;
+        }
+        Ok(value)
+    }
+
+    fn decode_reg(
+        value: &[u8],
+        address_cells: u32,
+        size_cells: u32,
+    ) -> Result<RegRange, FdtError> {
+        if address_cells == 0 || address_cells > 2 || size_cells > 2 {
+            return Err(FdtError::InvalidStructure);
+        }
+        let address_bytes = (address_cells as usize)
+            .checked_mul(4)
+            .ok_or(FdtError::InvalidStructure)?;
+        let size_bytes = (size_cells as usize)
+            .checked_mul(4)
+            .ok_or(FdtError::InvalidStructure)?;
+        let tuple_size = address_bytes
+            .checked_add(size_bytes)
+            .filter(|size| *size != 0)
+            .ok_or(FdtError::InvalidStructure)?;
+        if value.len() < tuple_size || value.len() % tuple_size != 0 {
+            return Err(FdtError::InvalidStructure);
+        }
+        let address = decode_cells(&value[..address_bytes], address_cells as usize)?;
+        let size = decode_cells(&value[address_bytes..tuple_size], size_cells as usize)?;
+        if size == 0 || address.checked_add(size).is_none() {
+            return Err(FdtError::InvalidStructure);
+        }
+        Ok(RegRange { address, size })
+    }
+
+    /// Find the first node declaring a compatible string and decode its first reg tuple.
+    /// This does not translate addresses across non-identity parent bus ranges.
+    pub fn find_compatible_reg(
+        image: &[u8],
+        compatible: &[u8],
+    ) -> Result<Option<RegRange>, FdtError> {
+        const MAX_TREE_DEPTH: usize = 256;
+        const FDT_BEGIN_NODE: u32 = 1;
+        const FDT_END_NODE: u32 = 2;
+        const FDT_PROP: u32 = 3;
+        const FDT_NOP: u32 = 4;
+        const FDT_END: u32 = 9;
+
+        let header = validate_tree(image)?;
+        let structure_start = header.structure_offset as usize;
+        let structure_end = structure_start
+            .checked_add(header.structure_size as usize)
+            .ok_or(FdtError::BlockOutOfBounds)?;
+        let strings_start = header.strings_offset as usize;
+        let strings_end = strings_start
+            .checked_add(header.strings_size as usize)
+            .ok_or(FdtError::BlockOutOfBounds)?;
+        let block = image.get(structure_start..structure_end).ok_or(FdtError::BlockOutOfBounds)?;
+        let strings = image.get(strings_start..strings_end).ok_or(FdtError::BlockOutOfBounds)?;
+
+        let mut address_cells = [1u32; MAX_TREE_DEPTH];
+        let mut size_cells = [1u32; MAX_TREE_DEPTH];
+        let mut compatible_match = [false; MAX_TREE_DEPTH];
+        let mut reg_values: [Option<&[u8]>; MAX_TREE_DEPTH] = [None; MAX_TREE_DEPTH];
+        let mut depth = 0usize;
+        let mut offset = 0usize;
+
+        while offset < block.len() {
+            let token = be32(block, offset).map_err(|_| FdtError::InvalidStructure)?;
+            offset = offset.checked_add(4).ok_or(FdtError::InvalidStructure)?;
+            match token {
+                FDT_BEGIN_NODE => {
+                    if depth >= MAX_TREE_DEPTH {
+                        return Err(FdtError::InvalidStructure);
+                    }
+                    let (_, name_end) = nul_terminated(block, offset)?;
+                    offset = align4(name_end)?;
+                    if offset > block.len() {
+                        return Err(FdtError::InvalidStructure);
+                    }
+                    address_cells[depth] = if depth == 0 { 2 } else { 1 };
+                    size_cells[depth] = 1;
+                    compatible_match[depth] = false;
+                    reg_values[depth] = None;
+                    depth += 1;
+                }
+                FDT_END_NODE => {
+                    if depth == 0 {
+                        return Err(FdtError::InvalidStructure);
+                    }
+                    let index = depth - 1;
+                    if compatible_match[index] {
+                        if let Some(reg) = reg_values[index] {
+                            if index == 0 {
+                                return Err(FdtError::InvalidStructure);
+                            }
+                            return decode_reg(reg, address_cells[index - 1], size_cells[index - 1])
+                                .map(Some);
+                        }
+                    }
+                    depth -= 1;
+                }
+                FDT_PROP => {
+                    if depth == 0 {
+                        return Err(FdtError::InvalidStructure);
+                    }
+                    let length = be32(block, offset).map_err(|_| FdtError::InvalidStructure)? as usize;
+                    let name_offset = be32(
+                        block,
+                        offset.checked_add(4).ok_or(FdtError::InvalidStructure)?,
+                    ).map_err(|_| FdtError::InvalidStructure)? as usize;
+                    offset = offset.checked_add(8).ok_or(FdtError::InvalidStructure)?;
+                    let (name, _) = nul_terminated(strings, name_offset)?;
+                    let data_end = offset.checked_add(length).ok_or(FdtError::InvalidStructure)?;
+                    let value = block.get(offset..data_end).ok_or(FdtError::InvalidStructure)?;
+                    let index = depth - 1;
+                    match name {
+                        b"#address-cells" => {
+                            if value.len() != 4 {
+                                return Err(FdtError::InvalidStructure);
+                            }
+                            address_cells[index] = be32(value, 0)?;
+                        }
+                        b"#size-cells" => {
+                            if value.len() != 4 {
+                                return Err(FdtError::InvalidStructure);
+                            }
+                            size_cells[index] = be32(value, 0)?;
+                        }
+                        b"compatible" => {
+                            compatible_match[index] |= compatible_list_contains(value, compatible)?;
+                        }
+                        b"reg" => {
+                            reg_values[index] = Some(value);
+                        }
+                        _ => {}
+                    }
+                    offset = align4(data_end)?;
+                    if offset > block.len() {
+                        return Err(FdtError::InvalidStructure);
+                    }
+                }
+                FDT_NOP => {}
+                FDT_END => break,
+                _ => return Err(FdtError::InvalidStructure),
+            }
+        }
+        Ok(None)
+    }
 }
 
 // Defensive, allocation-free ELF64 validation for the first-party loader.
@@ -1123,6 +1299,104 @@ mod device_tree_tests {
         image[40..48].copy_from_slice(&0x1000u64.to_be_bytes());
         image[48..56].copy_from_slice(&0x1000u64.to_be_bytes());
         assert!(validate_tree(&image).is_err());
+    }
+
+    fn append_token(bytes: &mut Vec<u8>, token: u32) {
+        bytes.extend_from_slice(&token.to_be_bytes());
+    }
+
+    fn append_cstring(bytes: &mut Vec<u8>, value: &[u8]) {
+        bytes.extend_from_slice(value);
+        bytes.push(0);
+        while bytes.len() % 4 != 0 {
+            bytes.push(0);
+        }
+    }
+
+    fn append_property(bytes: &mut Vec<u8>, name_offset: u32, value: &[u8]) {
+        append_token(bytes, 3);
+        append_token(bytes, value.len() as u32);
+        append_token(bytes, name_offset);
+        bytes.extend_from_slice(value);
+        while bytes.len() % 4 != 0 {
+            bytes.push(0);
+        }
+    }
+
+    fn fdt_with_pl011() -> Vec<u8> {
+        let mut image = vec![0u8; 56]; // Header + terminating reservation entry.
+        let structure_offset = image.len();
+        let strings = b"#address-cells\\0#size-cells\\0compatible\\0reg\\0";
+        let offset_address = 0u32;
+        let offset_size = b"#address-cells\\0".len() as u32;
+        let offset_compatible = (b"#address-cells\\0#size-cells\\0").len() as u32;
+        let offset_reg = (b"#address-cells\\0#size-cells\\0compatible\\0").len() as u32;
+
+        append_token(&mut image, 1); // Root begin
+        append_cstring(&mut image, b"");
+        append_property(&mut image, offset_address, &2u32.to_be_bytes());
+        append_property(&mut image, offset_size, &2u32.to_be_bytes());
+
+        append_token(&mut image, 1); // soc node
+        append_cstring(&mut image, b"soc");
+        append_property(&mut image, offset_address, &2u32.to_be_bytes());
+        append_property(&mut image, offset_size, &2u32.to_be_bytes());
+
+        append_token(&mut image, 1); // UART node
+        append_cstring(&mut image, b"pl011@9000000");
+        let mut compatible_value = b"arm,pl011\\0arm,primecell\\0".to_vec();
+        append_property(&mut image, offset_compatible, &compatible_value);
+        let mut reg = Vec::new();
+        for cell in [0u32, 0x0900_0000, 0, 0x1000] {
+            reg.extend_from_slice(&cell.to_be_bytes());
+        }
+        append_property(&mut image, offset_reg, &reg);
+        append_token(&mut image, 2); // UART end
+        append_token(&mut image, 2); // soc end
+        append_token(&mut image, 2); // Root end
+        append_token(&mut image, 9); // FDT_END
+
+        let structure_size = image.len() - structure_offset;
+        while image.len() % 4 != 0 {
+            image.push(0);
+        }
+        let strings_offset = image.len();
+        image.extend_from_slice(strings);
+        while image.len() % 4 != 0 {
+            image.push(0);
+        }
+        let total_size = image.len();
+
+        put_be32(&mut image, 0, FDT_MAGIC);
+        put_be32(&mut image, 4, total_size as u32);
+        put_be32(&mut image, 8, structure_offset as u32);
+        put_be32(&mut image, 12, strings_offset as u32);
+        put_be32(&mut image, 16, 40);
+        put_be32(&mut image, 20, 17);
+        put_be32(&mut image, 24, 16);
+        put_be32(&mut image, 28, 0);
+        put_be32(&mut image, 32, strings.len() as u32);
+        put_be32(&mut image, 36, structure_size as u32);
+        image
+    }
+
+    #[test]
+    fn finds_uart_reg_from_compatible_string_and_parent_cells() {
+        let image = fdt_with_pl011();
+        let reg = super::device_tree::find_compatible_reg(&image, b"arm,pl011")
+            .expect("valid FDT")
+            .expect("PL011 node should exist");
+        assert_eq!(reg.address, 0x0900_0000);
+        assert_eq!(reg.size, 0x1000);
+    }
+
+    #[test]
+    fn returns_none_when_compatible_device_is_absent() {
+        let image = fdt_with_pl011();
+        assert_eq!(
+            super::device_tree::find_compatible_reg(&image, b"arm,gic-v3"),
+            Ok(None)
+        );
     }
 
     #[test]
