@@ -120,8 +120,8 @@ impl Serial {
 
     fn write_str(&mut self, text: &str) {
         for byte in text.bytes() {
-            if byte == b'\\n' {
-                self.write_byte(b'\\r');
+            if byte == b'\n' {
+                self.write_byte(b'\r');
             }
             self.write_byte(byte);
         }
@@ -271,10 +271,10 @@ fn exception_registers() -> Option<(u64, u64, u64)> {
 pub extern "C" fn rust_exception_handler(vector: u64) -> ! {
     let base = unsafe { read_volatile(core::ptr::addr_of!(EARLY_SERIAL_BASE)) };
     let mut serial = Serial::new(base);
-    serial.write_str("ArchiaOS AArch64: exception vector entered\\n");
+    serial.write_str("ArchiaOS AArch64: exception vector entered\n");
     serial.write_str("ArchiaOS AArch64: vector=");
     serial.write_hex(vector);
-    serial.write_str("\\n");
+    serial.write_str("\n");
 
     if let Some((esr, elr, far)) = exception_registers() {
         serial.write_str("ArchiaOS AArch64: ESR=");
@@ -283,14 +283,14 @@ pub extern "C" fn rust_exception_handler(vector: u64) -> ! {
         serial.write_hex(elr);
         serial.write_str(" FAR=");
         serial.write_hex(far);
-        serial.write_str("\\n");
+        serial.write_str("\n");
     } else {
-        serial.write_str("ArchiaOS AArch64: unknown exception level\\n");
+        serial.write_str("ArchiaOS AArch64: unknown exception level\n");
     }
 
     // The bring-up test executes BRK while running with SPx, which is vector 4.
     if vector == 4 {
-        serial.write_str("ArchiaOS AArch64: expected synchronous exception trapped\\n");
+        serial.write_str("ArchiaOS AArch64: expected synchronous exception trapped\n");
     }
     halt_forever()
 }
@@ -312,7 +312,7 @@ unsafe fn validate_fdt_at_address(address: u64) -> bool {
 
 fn validate_boot_info(info: *const BootInfo, serial: &mut Serial) {
     if info.is_null() {
-        serial.write_str("ArchiaOS AArch64: no UEFI BootInfo (direct QEMU boot)\\n");
+        serial.write_str("ArchiaOS AArch64: no UEFI BootInfo (direct QEMU boot)\n");
         return;
     }
 
@@ -322,15 +322,15 @@ fn validate_boot_info(info: *const BootInfo, serial: &mut Serial) {
     if magic != BOOT_INFO_MAGIC {
         let fdt_magic = unsafe { u32::from_be(read_volatile(info.cast::<u32>())) };
         if fdt_magic == FDT_MAGIC {
-            serial.write_str("ArchiaOS AArch64: direct QEMU Device Tree detected\\n");
+            serial.write_str("ArchiaOS AArch64: direct QEMU Device Tree detected\n");
             if unsafe { validate_fdt_at_address(info as usize as u64) } {
-                serial.write_str("ArchiaOS AArch64: direct QEMU Device Tree header validated\\n");
+                serial.write_str("ArchiaOS AArch64: direct QEMU Device Tree header validated\n");
             } else {
-                serial.write_str("ArchiaOS AArch64: direct QEMU Device Tree header rejected\\n");
+                serial.write_str("ArchiaOS AArch64: direct QEMU Device Tree header rejected\n");
                 halt_forever();
             }
         } else {
-            serial.write_str("ArchiaOS AArch64: no UEFI BootInfo (direct QEMU boot)\\n");
+            serial.write_str("ArchiaOS AArch64: no UEFI BootInfo (direct QEMU boot)\n");
         }
         return;
     }
@@ -348,21 +348,21 @@ fn validate_boot_info(info: *const BootInfo, serial: &mut Serial) {
         || b.memory_map_size % b.memory_map_descriptor_size != 0
         || b.device_tree == 0
     {
-        serial.write_str("ArchiaOS AArch64: BootInfo validation failed\\n");
+        serial.write_str("ArchiaOS AArch64: BootInfo validation failed\n");
         halt_forever();
     }
 
     let count = (b.memory_map_size / b.memory_map_descriptor_size) as usize;
     let stride = b.memory_map_descriptor_size as usize;
     if count == 0 || count > 65_536 {
-        serial.write_str("ArchiaOS AArch64: memory-map entry count rejected\\n");
+        serial.write_str("ArchiaOS AArch64: memory-map entry count rejected\n");
         halt_forever();
     }
 
     // UEFI publishes the flattened Device Tree via EFI_DTB_TABLE_GUID. Its
     // header is big-endian, unlike the native-endian BootInfo fields.
     if !unsafe { validate_fdt_at_address(b.device_tree) } {
-        serial.write_str("ArchiaOS AArch64: Device Tree header rejected\\n");
+        serial.write_str("ArchiaOS AArch64: Device Tree header rejected\n");
         halt_forever();
     }
 
@@ -374,42 +374,42 @@ fn validate_boot_info(info: *const BootInfo, serial: &mut Serial) {
     let memory_map = match UefiMemoryMap::parse(map_bytes, stride) {
         Ok(map) if map.len() == count => map,
         _ => {
-            serial.write_str("ArchiaOS AArch64: UEFI memory map rejected\\n");
+            serial.write_str("ArchiaOS AArch64: UEFI memory map rejected\n");
             halt_forever();
         }
     };
     if memory_map.is_empty() {
-        serial.write_str("ArchiaOS AArch64: UEFI memory map is empty\\n");
+        serial.write_str("ArchiaOS AArch64: UEFI memory map is empty\n");
         halt_forever();
     }
     let conventional_pages = match memory_map.conventional_page_count() {
         Ok(pages) if pages > 0 => pages,
         _ => {
-            serial.write_str("ArchiaOS AArch64: conventional memory validation failed\\n");
+            serial.write_str("ArchiaOS AArch64: conventional memory validation failed\n");
             halt_forever();
         }
     };
 
-    serial.write_str("ArchiaOS AArch64: BootInfo validated\\n");
-    serial.write_str("ArchiaOS AArch64: Device Tree header validated\\n");
-    serial.write_str("ArchiaOS AArch64: UEFI memory-map descriptors validated\\n");
+    serial.write_str("ArchiaOS AArch64: BootInfo validated\n");
+    serial.write_str("ArchiaOS AArch64: Device Tree header validated\n");
+    serial.write_str("ArchiaOS AArch64: UEFI memory-map descriptors validated\n");
     if conventional_pages > 0 {
-        serial.write_str("ArchiaOS AArch64: conventional memory pages validated\\n");
+        serial.write_str("ArchiaOS AArch64: conventional memory pages validated\n");
     }
 
     match memory::initialize(&memory_map) {
         Ok(stats) if stats.free_pages > 0 && stats.conventional_pages_below_4g > 0 => {
-            serial.write_str("ArchiaOS AArch64: physical page allocator initialized\\n");
+            serial.write_str("ArchiaOS AArch64: physical page allocator initialized\n");
         }
         _ => {
-            serial.write_str("ArchiaOS AArch64: physical page allocator initialization failed\\n");
+            serial.write_str("ArchiaOS AArch64: physical page allocator initialization failed\n");
             halt_forever();
         }
     }
     match memory::self_test() {
-        Ok(()) => serial.write_str("ArchiaOS AArch64: PMM allocation/free self-test passed\\n"),
+        Ok(()) => serial.write_str("ArchiaOS AArch64: PMM allocation/free self-test passed\n"),
         Err(_) => {
-            serial.write_str("ArchiaOS AArch64: PMM allocation/free self-test failed\\n");
+            serial.write_str("ArchiaOS AArch64: PMM allocation/free self-test failed\n");
             halt_forever();
         }
     }
@@ -423,21 +423,21 @@ pub extern "C" fn rust_kernel_main(info: *const BootInfo) -> ! {
     unsafe { write_volatile(core::ptr::addr_of_mut!(EARLY_SERIAL_BASE), serial_base); }
     let mut serial = Serial::new(serial_base);
     serial.init();
-    serial.write_str("ArchiaOS AArch64: kernel entry reached\\n");
-    serial.write_str("ArchiaOS AArch64: PL011 diagnostics initialized\\n");
+    serial.write_str("ArchiaOS AArch64: kernel entry reached\n");
+    serial.write_str("ArchiaOS AArch64: PL011 diagnostics initialized\n");
     if discovered_base.is_some() {
-        serial.write_str("ArchiaOS AArch64: PL011 base discovered from Device Tree\\n");
+        serial.write_str("ArchiaOS AArch64: PL011 base discovered from Device Tree\n");
     } else {
-        serial.write_str("ArchiaOS AArch64: using QEMU virt PL011 fallback\\n");
+        serial.write_str("ArchiaOS AArch64: using QEMU virt PL011 fallback\n");
     }
     if install_exception_vectors() {
-        serial.write_str("ArchiaOS AArch64: exception vectors installed\\n");
+        serial.write_str("ArchiaOS AArch64: exception vectors installed\n");
     } else {
-        serial.write_str("ArchiaOS AArch64: exception vector installation failed\\n");
+        serial.write_str("ArchiaOS AArch64: exception vector installation failed\n");
         halt_forever();
     }
     validate_boot_info(info, &mut serial);
-    serial.write_str("ArchiaOS AArch64: executing synchronous exception self-test\\n");
+    serial.write_str("ArchiaOS AArch64: executing synchronous exception self-test\n");
     unsafe { asm!("brk #0", options(nostack)); }
     halt_forever();
 }
@@ -453,6 +453,6 @@ fn panic(_info: &PanicInfo<'_>) -> ! {
     let base = unsafe { read_volatile(core::ptr::addr_of!(EARLY_SERIAL_BASE)) };
     let mut serial = Serial::new(base);
     serial.init();
-    serial.write_str("ArchiaOS AArch64: PANIC\\n");
+    serial.write_str("ArchiaOS AArch64: PANIC\n");
     halt_forever();
 }
