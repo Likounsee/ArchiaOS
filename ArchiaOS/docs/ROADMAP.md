@@ -7,7 +7,7 @@
 | Priorité | Domaine | Avancement estimé | État / prochaine preuve attendue |
 |---|---|---:|---|
 | **P0** | Démarrage UEFI maison x86-64 par défaut | **100 % (jalon physique atteint)** | Démarrage depuis la clé USB et premier affichage framebuffer confirmés par l’utilisateur sur le PC physique. Le motif bleu prouve l’écriture dans le framebuffer après le handoff ; il ne constitue pas encore un bureau ni une pile graphique. Un redémarrage à froid n’est pas consigné. |
-| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **89 %** | CI verte sur le code GOP du HEAD `d218075`; ajout du bornage des tables de configuration UEFI et lectures non alignées défensives. Le commit de code `2f360f7` doit encore passer sa CI. Reste : audit des autres plages réservées spécifiques à chaque plateforme et validation matérielle étendue. |
+| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **90 %** | Le HEAD `e31db2a` ajoute le rejet des flags BootInfo v1 inconnus et l’audit des chevauchements framebuffer avec les buffers de handoff, les segments ELF, l’image UEFI et l’arène de tables de pages. Les builds x86-64/ARM64 et les scénarios négatifs BootInfo sont verts ; le test de démarrage OVMF reste en cours. Reste : audit des autres plages réservées spécifiques aux plateformes et validation matérielle étendue. |
 | **P2** | Ordonnanceur et synchronisation | **0 %** | Non implémenté ; définir les primitives de tâches et le changement de contexte avant la préemption. |
 | **P3** | Espace utilisateur et ABI système | **0 %** | Non commencé ; dépend notamment des exceptions, syscalls et mécanismes mémoire isolés. |
 | **P4** | Stockage, VFS et préparation OpenFS | **0 %** | Pas de pilote bloc/VFS fonctionnel ; spécifier d'abord les interfaces. |
@@ -45,7 +45,7 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 
 ### P1 — Fiabilité du chargeur et de la mémoire — 90 %
 
-**État : EN COURS.** CI verte sur le HEAD `2c3058e` : tests négatifs BootInfo, démarrage UEFI local, CI x86-64/ARM64 et paquet USB. Le lot récent sécurise les lectures des métadonnées RSDP/Device Tree après contrôle de réservation et d'accessibilité ; l'audit des autres plages spécifiques aux plateformes et les scénarios matériels restent à faire.
+**État : EN COURS — 90 %.** Le HEAD `e31db2a` ajoute le rejet des flags non définis de BootInfo v1 et le refus des chevauchements framebuffer avec la mémoire critique de démarrage. Les builds x86-64/ARM64 et les scénarios négatifs BootInfo sont verts ; le démarrage OVMF de la CI complète est encore en cours. L’audit des autres plages spécifiques aux plateformes et les scénarios matériels restent à faire.
 
 **Objectif :** sécuriser le transfert UEFI → noyau et la gestion de la mémoire physique.
 
