@@ -7,7 +7,7 @@
 | Priorité | Domaine | Avancement estimé | État / prochaine preuve attendue |
 |---|---|---:|---|
 | **P0** | Démarrage UEFI maison x86-64 par défaut | **98 %** | **Seul reste le test sur le PC physique** : démarrer depuis la clé USB avec l’artefact `archiaos-p0-usb-x86_64`, vérifier les diagnostics réels puis redémarrer à froid. Le workflow de packaging a réussi sur le commit `977fa0c5088f015f48f7f5a5261ffcc3c8cec7d8`; cela valide la compilation et l’artefact, pas encore le démarrage matériel. P0 reste ouvert jusqu’à ce test. |
-| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **76 %** | GOP UEFI détecté sans allocation, framebuffer transmis dans BootInfo et plage contrôlée dans la carte mémoire finale. Reste : audit des autres plages plateforme et scénarios matériels. |
+| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **78 %** | GOP transmis dans BootInfo ; framebuffer, RSDP ACPI et Device Tree contrôlés contre la carte mémoire finale. Reste : audit de l'accessibilité de toutes les plages et scénarios matériels. |
 | **P2** | Ordonnanceur et synchronisation | **0 %** | Non implémenté ; définir les primitives de tâches et le changement de contexte avant la préemption. |
 | **P3** | Espace utilisateur et ABI système | **0 %** | Non commencé ; dépend notamment des exceptions, syscalls et mécanismes mémoire isolés. |
 | **P4** | Stockage, VFS et préparation OpenFS | **0 %** | Pas de pilote bloc/VFS fonctionnel ; spécifier d'abord les interfaces. |
@@ -43,7 +43,7 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 
 **Critère de sortie :** build reproductible et tests de démarrage verts sur le HEAD courant, sans déclarer les essais QEMU comme une validation de tout matériel physique.
 
-### P1 — Fiabilité du chargeur et de la mémoire — 76 %
+### P1 — Fiabilité du chargeur et de la mémoire — 78 %
 
 **État : EN COURS.** P1 peut avancer pendant que la validation physique P0 attend la disponibilité du PC ; P0 reste à 98 % et ne sera fermé qu’après le test USB réel.
 
@@ -58,7 +58,8 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 - [x] Réessayer ExitBootServices avec une clé de carte mémoire fraîche si nécessaire.
 - [x] Ajouter un contrôle de la carte mémoire UEFI finale pour détecter les buffers BootInfo/carte mémoire, segments ELF, image du chargeur et arène de tables de pages incorrectement classés en RAM conventionnelle.
 - [x] Découvrir le framebuffer actif via UEFI GOP, transmettre base/taille dans BootInfo et refuser le transfert si sa plage chevauche de la RAM conventionnelle ou traverse un trou de carte mémoire.
-- [ ] Compléter l'audit des autres plages plateforme et leur accessibilité dans les mappings actifs ; la découverte GOP ne signifie pas encore que le framebuffer est mappé pour l'écriture graphique.
+- [x] Auditer aussi les plages du RSDP ACPI et du Device Tree : chaque table transmise dans BootInfo doit rester entièrement couverte par des descripteurs UEFI réservés.
+- [ ] Compléter l'audit de l'accessibilité de toutes les plages plateforme dans les mappings actifs ; la découverte GOP ne signifie pas encore que le framebuffer est mappé pour l'écriture graphique.
 - [x] Vérifier en CI les rejets de libérations invalides/doubles, la cohérence bitmap (toute page libre est gérée, mémoire basse réservée), la réutilisation après libération et la restauration du compte de pages.
 - [x] Extraire la validation scalaire du contrat BootInfo en fonction testable sans déréférencer la carte mémoire, avec tests négatifs magic/version, taille de structure, pointeur absent/désaligné, taille de carte et métadonnées.
 - [x] Valider aussi l'adresse d'entrée noyau non nulle et la cohérence/non-débordement de la plage framebuffer, avec tests unitaires (validation CI du HEAD courant en attente).
