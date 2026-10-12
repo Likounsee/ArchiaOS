@@ -1,6 +1,8 @@
 #![no_std]
 #![no_main]
 
+mod memory;
+
 use core::arch::{asm, global_asm};
 use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
@@ -242,6 +244,23 @@ fn validate_boot_info(info: *const BootInfo, serial: &mut Serial) {
     serial.write_str("ArchiaOS AArch64: UEFI memory-map descriptors validated\\n");
     if conventional_pages > 0 {
         serial.write_str("ArchiaOS AArch64: conventional memory pages validated\\n");
+    }
+
+    match memory::initialize(&memory_map) {
+        Ok(stats) if stats.free_pages > 0 && stats.conventional_pages_below_4g > 0 => {
+            serial.write_str("ArchiaOS AArch64: physical page allocator initialized\\n");
+        }
+        _ => {
+            serial.write_str("ArchiaOS AArch64: physical page allocator initialization failed\\n");
+            halt_forever();
+        }
+    }
+    match memory::self_test() {
+        Ok(()) => serial.write_str("ArchiaOS AArch64: PMM allocation/free self-test passed\\n"),
+        Err(_) => {
+            serial.write_str("ArchiaOS AArch64: PMM allocation/free self-test failed\\n");
+            halt_forever();
+        }
     }
 }
 
