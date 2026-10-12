@@ -35,6 +35,7 @@ pub enum MemoryError {
     AllocationAddressInvalid,
     AllocationNotUnique,
     InvalidFreeAccepted,
+    ReservedFreeAccepted,
     FreeFailed,
     DoubleFreeAccepted,
     FreeCountMismatch,
@@ -314,6 +315,26 @@ pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
         return Err(MemoryError::InvalidFreeAccepted);
     }
     let _ = writeln!(log, "PMM test: invalid frees rejected");
+
+    // Also select a reserved frame inside the allocator's managed address window.
+    // This covers firmware-reserved holes above 1 MiB, not only the fixed low-memory
+    // reservation tested above. Never require a specific firmware map layout.
+    let managed = managed_bitmap_ptr() as *const u64;
+    let mut reserved_frame = None;
+    for frame in (ONE_MIB / PAGE_SIZE)..MAX_FRAMES {
+        if !unsafe { bit_is_set(managed, frame) } {
+            reserved_frame = Some(frame);
+            break;
+        }
+    }
+    if let Some(frame) = reserved_frame {
+        if free_page(frame * PAGE_SIZE) {
+            return Err(MemoryError::ReservedFreeAccepted);
+        }
+        let _ = writeln!(log, "PMM test: firmware-reserved frame cannot be freed");
+    } else {
+        let _ = writeln!(log, "PMM test: no additional reserved frame in 1 MiB..4 GiB window");
+    }
 
     // Cross multiple 64-bit bitmap words to exercise allocation and fragmented frees.
     // Keep addresses in kernel BSS rather than consuming the limited boot stack.
