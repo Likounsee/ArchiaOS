@@ -1,6 +1,15 @@
-/ArchiaOS/target/
-/ArchiaOS/build/
+# Rust build output, including nested test crates
+**/target/
+**/build/
+
+# Generated boot media and binaries
 *.iso
 *.img
 *.elf
 *.log
+
+# Local editor / operating-system files
+.DS_Store
+Thumbs.db
+*.swp
+*.tmp
