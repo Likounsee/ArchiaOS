@@ -3,8 +3,9 @@
 
 mod uefi;
 
+use core::convert::Infallible;
 use core::panic::PanicInfo;
-use uefi::{BootError, Status, SystemTable, EFI_INVALID_PARAMETER, EFI_SUCCESS};
+use uefi::{BootError, Status, SystemTable, EFI_INVALID_PARAMETER, EFI_LOAD_ERROR, EFI_SUCCESS};
 
 unsafe fn print_ascii(output: *mut uefi::SimpleTextOutputProtocol, message: &[u8]) -> Status {
     if output.is_null() {
@@ -65,6 +66,15 @@ unsafe fn print_entry(output: *mut uefi::SimpleTextOutputProtocol, entry: u64) -
     unsafe { output_string(output, line.as_ptr()) }
 }
 
+unsafe fn report_boot_error(
+    output: *mut uefi::SimpleTextOutputProtocol,
+    error: BootError,
+) -> Status {
+    // SAFETY: output is the firmware console interface while boot services are active.
+    let _ = unsafe { print_ascii(output, error.message) };
+    error.status
+}
+
 #[no_mangle]
 pub extern "efiapi" fn efi_main(
     image_handle: uefi::Handle,
@@ -73,41 +83,83 @@ pub extern "efiapi" fn efi_main(
     if system_table.is_null() {
         return EFI_INVALID_PARAMETER;
     }
-
-    // SAFETY: UEFI passes a valid SystemTable to an EFI application.
+    // SAFETY: UEFI passes a valid SystemTable to this EFI application.
     let output = unsafe { (*system_table).con_out };
-    // SAFETY: output is obtained from the system table provided by firmware.
-    let status = unsafe {
+    // SAFETY: output came from the firmware system table.
+    let mut status = unsafe {
         print_ascii(output, b"ArchiaOS Bootloader: first-party UEFI loader\r\n\0")
     };
     if status != EFI_SUCCESS {
         return status;
     }
 
-    // This milestone reads the image from the same filesystem as the EFI
-    // application and validates the full ELF program table. It deliberately
-    // does not jump to the kernel until memory mapping and handoff are ready.
-    match unsafe { uefi::inspect_kernel(image_handle, system_table) } {
-        Ok(entry) => {
-            // SAFETY: output is the firmware console interface, valid before EBS.
-            let status = unsafe {
-                print_ascii(output, b"ArchiaOS: kernel ELF validated for this architecture; handoff pending.\r\n\0")
+    // Read from the same filesystem device from which this EFI application was loaded.
+    // SAFETY: firmware handles and protocols are queried only while boot services are active.
+    status = unsafe { print_ascii(output, b"ArchiaOS Bootloader: opening EFI kernel image\r\n\0") };
+    if status != EFI_SUCCESS {
+        return status;
+    }
+    let kernel_image = match unsafe { uefi::read_kernel_image(image_handle, system_table) } {
+        Ok(image) => image,
+        Err(error) => return unsafe { report_boot_error(output, error) },
+    };
+
+    // Validate the full ELF header/program table for the current firmware architecture.
+    // SAFETY: the kernel file was read into a live bounded pool allocation.
+    status = unsafe { print_ascii(output, b"ArchiaOS Bootloader: validating ELF64 kernel\r\n\0") };
+    if status != EFI_SUCCESS {
+        return status;
+    }
+    let parsed = match archiaos_bootloader::elf::parse_elf64(
+        kernel_image.as_slice(),
+        uefi::EXPECTED_ELF_MACHINE,
+    ) {
+        Ok(elf) => elf,
+        Err(_) => {
+            // SAFETY: output remains valid before ExitBootServices.
+            let _ = unsafe {
+                print_ascii(output, b"ArchiaOS Bootloader: ELF64 validation failed\r\n\0")
             };
-            if status != EFI_SUCCESS {
-                return status;
-            }
-            // SAFETY: this prints the validated address; it does not dereference it.
-            let status = unsafe { print_entry(output, entry) };
-            if status != EFI_SUCCESS {
-                return status;
-            }
-            EFI_SUCCESS
+            return EFI_LOAD_ERROR;
         }
-        Err(BootError { status, message }) => {
-            // SAFETY: output remains valid while the EFI application is running.
-            let _ = unsafe { print_ascii(output, message) };
-            status
-        }
+    };
+
+    // This initial loader supports identity-mapped physical ELF images. The production
+    // x86-64 high-half kernel remains on Limine until page-table setup is implemented.
+    // SAFETY: segments have been validated; the loader checks address/page overlap before allocation.
+    status = unsafe {
+        print_ascii(output, b"ArchiaOS Bootloader: loading identity-mapped ELF segments\r\n\0")
+    };
+    if status != EFI_SUCCESS {
+        return status;
+    }
+    // SAFETY: firmware services and the kernel image buffer remain valid at this point.
+    let kernel_entry = match unsafe {
+        uefi::load_kernel_segments(
+            unsafe { (*system_table).boot_services },
+            kernel_image.as_slice(),
+            &parsed,
+        )
+    } {
+        Ok(entry) => entry,
+        Err(error) => return unsafe { report_boot_error(output, error) },
+    };
+    // No longer needed; freeing it before the final memory-map snapshot avoids a stale EBS key.
+    drop(kernel_image);
+
+    // This message is printed before taking the final memory map. No console or allocation
+    // service is called between the successful GetMemoryMap and ExitBootServices attempts.
+    // SAFETY: output remains valid up until ExitBootServices succeeds.
+    status = unsafe {
+        print_ascii(output, b"ArchiaOS Bootloader: exiting UEFI boot services\r\n\0")
+    };
+    if status != EFI_SUCCESS {
+        return status;
+    }
+
+    match unsafe { uefi::transfer_to_kernel(image_handle, system_table, kernel_entry) } {
+        Ok(never) => match never {},
+        Err(error) => unsafe { report_boot_error(output, error) },
     }
 }
 
