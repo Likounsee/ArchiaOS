@@ -1,22 +1,29 @@
 # ArchiaOS — documentation technique
 
-ArchiaOS est un OS expérimental en Rust `no_std`. Le noyau de production x86-64 démarre encore avec Limine ; un chargeur UEFI maison et le bring-up ARM64 sont en développement actif.
+ArchiaOS est un OS expérimental en Rust `no_std`. Le noyau de production x86-64 démarre encore avec Limine ; un bootloader UEFI maison est désormais testé de bout en bout avec des noyaux de test x86-64 et AArch64.
 
 ## État
 
-- **Noyau de production x86-64 :** entrée série, validation de la carte mémoire Limine et test PMM de 130 pages sous QEMU.
-- **Bootloader maison :** lit `\\EFI\\ArchiaOS\\kernel.elf`, valide ELF64, charge les segments identité x86-64 ou AArch64 sous 4 Gio, met à zéro le BSS, construit BootInfo, obtient la carte mémoire finale et appelle `ExitBootServices`. Sur ARM64, la maintenance I-cache est ajoutée avant le transfert. Les pointeurs ACPI/FDT sont vérifiés avant d'être transmis au noyau ; leurs parseurs de signature/checksum et de structure FDT ont des tests unitaires.
-- **Handoff x86-64 :** image de test distincte validée par un job OVMF/QEMU de la CI ; le noyau de production reste high-half et dépend de Limine.
-- **Handoff AArch64 :** le noyau prototype reçoit et valide BootInfo dans `x0`. Un job CI dédié construit l'image EFI, prépare un volume FAT avec le noyau et tente de démarrer la chaîne complète sous AAVMF/QEMU. Le résultat doit être vérifié avant de déclarer le jalon terminé.
+- **Noyau de production x86-64 :** entrée série, validation de la carte mémoire Limine et auto-test PMM de 130 pages sous QEMU.
+- **Bootloader maison :** lit `\\EFI\\ArchiaOS\\kernel.elf`, valide ELF64, charge les segments identité sous 4 Gio, met le BSS à zéro, construit BootInfo, obtient la carte mémoire finale et appelle `ExitBootServices`. Sur AArch64, la maintenance I-cache précède le transfert. Les pointeurs ACPI/FDT transmis sont validés.
+- **Handoff x86-64 :** test de bout en bout réussi sous OVMF/QEMU avec un noyau de test identité ; le noyau de production reste high-half et dépend de Limine.
+- **Handoff AArch64 :** test de bout en bout réussi sous AAVMF/QEMU. Le noyau prototype reçoit BootInfo, découvre le PL011 via ACPI SPCR sur cette plateforme, valide la carte mémoire, initialise le PMM et réussit l'auto-test d'exception synchrone.
+- **ARM64 direct QEMU :** entrée noyau, diagnostics série et test d'exception synchrone validés.
 
-## Build du noyau principal x86-64
+Le chargeur accepte pour l'instant des segments ELF identité, alignés sur page et dans la fenêtre physique 1 Mio–4 Gio. Le fichier noyau est plafonné à 64 Mio, et la mémoire des segments est plafonnée à 128 Mio. Ces tests valident les configurations QEMU de la CI, pas tous les appareils ARM64. Le chargeur maison n'est pas encore le chemin de démarrage du noyau de production.
+
+## Compilation
+
+Depuis le dossier `ArchiaOS` :
 
 ```sh
 cargo build --release
 scripts/make-iso.sh
 ```
 
-## Build et tests du bootloader
+## Bootloader UEFI
+
+Depuis le dossier `ArchiaOS` :
 
 ```sh
 cargo test --manifest-path bootloader/Cargo.toml --lib --target x86_64-unknown-linux-gnu
@@ -24,7 +31,7 @@ cargo build --manifest-path bootloader/Cargo.toml --release --target x86_64-unkn
 cargo build --manifest-path bootloader/Cargo.toml --release --target aarch64-unknown-uefi
 ```
 
-## Build du prototype noyau AArch64
+## Prototype noyau AArch64
 
 Depuis `kernel/aarch64` :
 
@@ -32,7 +39,7 @@ Depuis `kernel/aarch64` :
 cargo build --release --target aarch64-unknown-none
 ```
 
-Le test direct QEMU et le test de transfert UEFI AArch64 sont tous deux définis dans la CI. Le noyau reste un prototype QEMU `virt`. Il localise la console PL011 par `compatible`/`reg` du Device Tree, valide la carte mémoire UEFI et initialise un PMM bitmap sous 4 Gio qui teste 130 allocations/libérations sur plusieurs mots. Il réutilise la même ABI BootInfo, le parseur FDT et le parseur de carte mémoire que le chargeur. La MMU, les exceptions, la synchronisation SMP, les traductions `ranges`, la découverte mémoire complète et les pilotes ARM64 restent à implémenter.
+Le prototype cible QEMU `virt`. Le MMU, les timers, le contrôleur d'interruptions, le retour depuis exceptions et les pilotes propres aux plateformes restent à implémenter.
 
 Voir [la roadmap](docs/ROADMAP.md), [le plan boot/ARM64](docs/BOOT_AND_ARCHITECTURES.md), [le bootloader](bootloader/README.md) et [le test de transfert UEFI x86-64](kernel/boot-test-x86_64/README.md).
 
