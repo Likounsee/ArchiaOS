@@ -55,7 +55,7 @@ pub struct TableHeader {
 #[repr(C)]
 pub struct SimpleTextOutputProtocol {
     reset: usize,
-    output_string: Option<
+    pub output_string: Option<
         unsafe extern "efiapi" fn(
             this: *mut SimpleTextOutputProtocol,
             string: *const u16,
