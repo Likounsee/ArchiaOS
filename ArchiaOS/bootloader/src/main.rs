@@ -163,6 +163,44 @@ unsafe fn mirror_to_com1(msg:*const u16) {
     }
 }
 
+#[cfg(target_arch="x86_64")]
+unsafe fn emergency_exit_diagnostic() {
+    unsafe { mirror_to_com1(FAIL_EXIT.as_ptr()); }
+}
+
+#[cfg(target_arch="aarch64")]
+unsafe fn emergency_exit_diagnostic() {
+    // This emergency path is used only after an ExitBootServices attempt, when
+    // UEFI console services may no longer be callable. The ARM64 CI target is
+    // QEMU virt, whose PL011 UART is mapped at 0x09000000.
+    const BASE: usize = 0x0900_0000;
+    const DR: usize = BASE;
+    const FR: usize = BASE + 0x18;
+    const IBRD: usize = BASE + 0x24;
+    const FBRD: usize = BASE + 0x28;
+    const LCR_H: usize = BASE + 0x2c;
+    const CR: usize = BASE + 0x30;
+    const ICR: usize = BASE + 0x44;
+    unsafe {
+        write_volatile(CR as *mut u32, 0);
+        write_volatile(ICR as *mut u32, 0x7ff);
+        write_volatile(IBRD as *mut u32, 13);
+        write_volatile(FBRD as *mut u32, 1);
+        write_volatile(LCR_H as *mut u32, 0x70);
+        write_volatile(CR as *mut u32, 0x301);
+    }
+    for i in 0..256usize {
+        let word = unsafe { read_volatile(FAIL_EXIT.as_ptr().add(i)) };
+        if word == 0 { break; }
+        let byte = if word <= 0x7f { word as u8 } else { b'?' };
+        for _ in 0..100_000 {
+            if unsafe { read_volatile(FR as *const u32) } & (1 << 5) == 0 { break; }
+            core::hint::spin_loop();
+        }
+        unsafe { write_volatile(DR as *mut u32, byte as u32); }
+    }
+}
+
 unsafe fn protocol<T>(bs:*mut BootServices,h:Handle,g:*const Guid)->Result<*mut T,Status> {
     if bs.is_null()||h.is_null() { return Err(EFI_INVALID_PARAMETER); }
     let f=unsafe { (*bs).handle_protocol }.ok_or(EFI_UNSUPPORTED)?;
@@ -230,14 +268,10 @@ unsafe fn read_kernel_image(handle:Handle,st:*mut SystemTable)->Result<(*mut u8,
     Ok((buffer,actual))
 }
 
-#[cfg(target_arch="x86_64")]
 static mut ALLOC_BASES:[u64;MAX_ELF_PROGRAM_HEADERS]=[0;MAX_ELF_PROGRAM_HEADERS];
-#[cfg(target_arch="x86_64")]
 static mut ALLOC_COUNTS:[usize;MAX_ELF_PROGRAM_HEADERS]=[0;MAX_ELF_PROGRAM_HEADERS];
-#[cfg(target_arch="x86_64")]
 static mut ALLOC_COUNT:usize=0;
 
-#[cfg(target_arch="x86_64")]
 unsafe fn cleanup_segments(bs:*mut BootServices) {
     let free=match unsafe { (*bs).free_pages } {Some(f)=>f,None=>return};
     let count=unsafe { read_volatile(ptr::addr_of!(ALLOC_COUNT)) };
@@ -249,12 +283,10 @@ unsafe fn cleanup_segments(bs:*mut BootServices) {
     }
     unsafe { write_volatile(ptr::addr_of_mut!(ALLOC_COUNT),0); }
 }
-#[cfg(target_arch="x86_64")]
 fn physical_page_end(s:&archiaos_bootloader::elf::LoadSegment)->Result<u64,Status> {
     let pages=s.memory_size.checked_add(PAGE_SIZE-1).ok_or(EFI_BAD_BUFFER_SIZE)?/PAGE_SIZE;
     s.physical_address.checked_add(pages.checked_mul(PAGE_SIZE).ok_or(EFI_BAD_BUFFER_SIZE)?).ok_or(EFI_BAD_BUFFER_SIZE)
 }
-#[cfg(target_arch="x86_64")]
 unsafe fn load_identity_segments(image:&[u8],elf:&ElfFile,bs:*mut BootServices)->Result<u64,Status> {
     let mut load_count=0usize; let mut total=0u64;
     // Validate every segment address and overlap before any destination write.
@@ -305,7 +337,7 @@ unsafe fn load_identity_segments(image:&[u8],elf:&ElfFile,bs:*mut BootServices)-
     Ok(elf.entry())
 }
 
-#[cfg(target_arch="x86_64")]
+#[cfg(any(target_arch="x86_64", target_arch="aarch64"))]
 unsafe fn get_boot_info_and_exit(handle:Handle,st:*mut SystemTable,entry:u64)->Result<*mut BootInfo,Status> {
     let bs=unsafe{(*st).boot_services};
     if bs.is_null(){return Err(EFI_UNSUPPORTED);}
@@ -329,7 +361,7 @@ unsafe fn get_boot_info_and_exit(handle:Handle,st:*mut SystemTable,entry:u64)->R
             if exit_was_attempted {
                 // After any failed ExitBootServices attempt, avoid all further
                 // services except GetMemoryMap/ExitBootServices. Do not free pools.
-                unsafe{mirror_to_com1(FAIL_EXIT.as_ptr());}
+                unsafe{emergency_exit_diagnostic();}
                 halt_forever();
             }
             unsafe{free_pool(bs,map_mem);free_pool(bs,info_mem);}
@@ -337,7 +369,7 @@ unsafe fn get_boot_info_and_exit(handle:Handle,st:*mut SystemTable,entry:u64)->R
         }
         if size==0||size>MAX_MEMORY_MAP_SIZE||desc_size<EFI_MEMORY_DESCRIPTOR_MIN_SIZE||size%desc_size!=0 {
             if exit_was_attempted {
-                unsafe{mirror_to_com1(FAIL_EXIT.as_ptr());}
+                unsafe{emergency_exit_diagnostic();}
                 halt_forever();
             }
             unsafe{free_pool(bs,map_mem);free_pool(bs,info_mem);}
@@ -365,14 +397,14 @@ unsafe fn get_boot_info_and_exit(handle:Handle,st:*mut SystemTable,entry:u64)->R
         exit_was_attempted=true;
         if status==EFI_SUCCESS{return Ok(info);}
         if status!=EFI_INVALID_PARAMETER {
-            unsafe{mirror_to_com1(FAIL_EXIT.as_ptr());}
+            unsafe{emergency_exit_diagnostic();}
             halt_forever();
         }
         // For a stale map key, retry only GetMemoryMap followed immediately
         // by ExitBootServices, retaining all buffer allocations.
     }
 
-    unsafe{mirror_to_com1(FAIL_EXIT.as_ptr());}
+    unsafe{emergency_exit_diagnostic();}
     halt_forever()
 }
 #[cfg(target_arch="x86_64")]
@@ -382,6 +414,29 @@ unsafe fn jump_to_kernel(entry:u64,info:*const BootInfo)->! {
 }
 #[cfg(target_arch="x86_64")]
 fn halt_forever()->! { use core::arch::asm;loop{unsafe{asm!("cli; hlt",options(nomem,nostack));}} }
+
+#[cfg(target_arch="aarch64")]
+unsafe fn jump_to_kernel(entry:u64,info:*const BootInfo)->! {
+    use core::arch::asm;
+    // UEFI AArch64 uses x0 for the first argument. Mask interrupts before handing
+    // control to the kernel, preserving the versioned BootInfo pointer in x0.
+    unsafe {
+        asm!(
+            "msr daifset, #0xf",
+            "dsb sy",
+            "isb",
+            "br x16",
+            in("x16") entry as usize,
+            in("x0") info as usize,
+            options(noreturn)
+        );
+    }
+}
+#[cfg(target_arch="aarch64")]
+fn halt_forever()->! {
+    use core::arch::asm;
+    loop { unsafe { asm!("msr daifset, #0xf", "wfe", options(nomem,nostack)); } }
+}
 
 #[no_mangle]
 pub extern "efiapi" fn efi_main(handle:Handle,st:*mut SystemTable)->Status {
@@ -406,30 +461,34 @@ pub extern "efiapi" fn efi_main(handle:Handle,st:*mut SystemTable)->Status {
         Err(_)=>{let bs=unsafe{(*st).boot_services};unsafe{free_pool(bs,image.cast());}let _=unsafe{serial.print(FAIL_ELF.as_ptr())};return EFI_LOAD_ERROR;}
     };
     let _=unsafe{serial.print(STAGE_ELF.as_ptr())};
-    #[cfg(target_arch="x86_64")]
-    {
-        let _=unsafe{serial.print(STAGE_LOADING.as_ptr())};
-        let bs=unsafe{(*st).boot_services};
-        let result={let bytes=unsafe{core::slice::from_raw_parts(image,image_size)};unsafe{load_identity_segments(bytes,&elf,bs)}};
-        unsafe{free_pool(bs,image.cast());}
-        let entry=match result{
-            Ok(e)=>e,
-            Err(status)=>{unsafe{cleanup_segments(bs);}let msg=if status==EFI_UNSUPPORTED{FAIL_HANDOFF.as_ptr()}else{FAIL_SEGMENT.as_ptr()};let _=unsafe{serial.print(msg)};return status;}
-        };
-        let _=unsafe{serial.print(STAGE_EXIT.as_ptr())};
-        let info=match unsafe{get_boot_info_and_exit(handle,st,entry)}{
-            Ok(p)=>p,
-            Err(status)=>{unsafe{cleanup_segments(bs);}let msg=if status==EFI_UNSUPPORTED{FAIL_SERVICES.as_ptr()}else{FAIL_EXIT.as_ptr()};let _=unsafe{serial.print(msg)};return status;}
-        };
-        // No firmware service is called after ExitBootServices succeeds.
-        unsafe{jump_to_kernel(entry,info)}
-    }
-    #[cfg(target_arch="aarch64")]
-    {
-        let bs=unsafe{(*st).boot_services};unsafe{free_pool(bs,image.cast());}
-        let _=unsafe{serial.print(STAGE_ELF.as_ptr())};
-        EFI_SUCCESS
-    }
+    let _=unsafe{serial.print(STAGE_LOADING.as_ptr())};
+    let bs=unsafe{(*st).boot_services};
+    let result={
+        let bytes=unsafe{core::slice::from_raw_parts(image,image_size)};
+        unsafe{load_identity_segments(bytes,&elf,bs)}
+    };
+    unsafe{free_pool(bs,image.cast());}
+    let entry=match result{
+        Ok(e)=>e,
+        Err(status)=>{
+            unsafe{cleanup_segments(bs);}
+            let msg=if status==EFI_UNSUPPORTED{FAIL_HANDOFF.as_ptr()}else{FAIL_SEGMENT.as_ptr()};
+            let _=unsafe{serial.print(msg)};
+            return status;
+        }
+    };
+    let _=unsafe{serial.print(STAGE_EXIT.as_ptr())};
+    let info=match unsafe{get_boot_info_and_exit(handle,st,entry)}{
+        Ok(p)=>p,
+        Err(status)=>{
+            unsafe{cleanup_segments(bs);}
+            let msg=if status==EFI_UNSUPPORTED{FAIL_SERVICES.as_ptr()}else{FAIL_EXIT.as_ptr()};
+            let _=unsafe{serial.print(msg)};
+            return status;
+        }
+    };
+    // No firmware service is called after ExitBootServices succeeds.
+    unsafe{jump_to_kernel(entry,info)}
 }
 #[panic_handler]
 fn panic(_info:&PanicInfo<'_>)->!{loop{core::hint::spin_loop();}}
