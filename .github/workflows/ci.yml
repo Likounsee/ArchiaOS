@@ -27,8 +27,8 @@ jobs:
         run: rustup target add x86_64-unknown-none
       - name: Show toolchain
         run: rustc --version && cargo --version
-      - name: Install boot and VM tools
-        run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 xorriso
+      - name: Install QEMU for the UEFI smoke-test jobs
+        run: sudo apt-get update && sudo apt-get install -y qemu-system-x86
       - name: Build kernel
         run: cargo build --release
       - name: Verify ELF virtual addresses
