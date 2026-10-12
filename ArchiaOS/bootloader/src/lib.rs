@@ -215,6 +215,33 @@ pub mod memory_map {
             self.descriptor_size
         }
 
+        /// Return whether any conventional-memory descriptor intersects a physical range.
+        /// Callers use this to ensure loader-owned handoff buffers remain reserved in the
+        /// final map passed to the kernel. The map parser has already validated all ranges.
+        pub fn range_overlaps_conventional(
+            &self,
+            physical_start: u64,
+            byte_length: u64,
+        ) -> Result<bool, MemoryMapError> {
+            if byte_length == 0 {
+                return Err(MemoryMapError::EmptyRange);
+            }
+            let end = physical_start
+                .checked_add(byte_length)
+                .ok_or(MemoryMapError::RangeOverflow)?;
+            for index in 0..self.count {
+                let descriptor = self.entry(index)?;
+                if !descriptor.is_conventional() {
+                    continue;
+                }
+                let descriptor_end = descriptor.physical_end()?;
+                if physical_start < descriptor_end && descriptor.physical_start < end {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+
         /// Sum pages explicitly classified by UEFI as conventional and available
         /// for general allocation. This does not itself reserve kernel or DMA ranges.
         pub fn conventional_page_count(&self) -> Result<u64, MemoryMapError> {
@@ -1959,6 +1986,19 @@ mod memory_map_tests {
         let bytes = descriptor(EFI_CONVENTIONAL_MEMORY, 0x1000, 1);
         let map = UefiMemoryMap::parse(&bytes, 48).expect("valid EFI memory map");
         assert_eq!(map.entry(1), Err(MemoryMapError::EntryOutOfBounds));
+    }
+
+    #[test]
+    fn detects_ranges_intersecting_conventional_memory() {
+        let mut bytes = descriptor(2, 0x1000, 2);
+        bytes.extend_from_slice(&descriptor(EFI_CONVENTIONAL_MEMORY, 0x3000, 4));
+        let map = UefiMemoryMap::parse(&bytes, 48).expect("valid map");
+        assert_eq!(map.range_overlaps_conventional(0x1000, 0x2000), Ok(false));
+        assert_eq!(map.range_overlaps_conventional(0x2000, 0x2000), Ok(true));
+        assert_eq!(map.range_overlaps_conventional(0x5000, 0x1000), Ok(true));
+        assert_eq!(map.range_overlaps_conventional(0x7000, 0x1000), Ok(false));
+        assert_eq!(map.range_overlaps_conventional(0x1000, 0), Err(MemoryMapError::EmptyRange));
+        assert_eq!(map.range_overlaps_conventional(u64::MAX - 1, 8), Err(MemoryMapError::RangeOverflow));
     }
 
     #[test]
