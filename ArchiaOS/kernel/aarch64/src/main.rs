@@ -4,29 +4,11 @@
 use core::arch::{asm, global_asm};
 use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
+use archiaos_bootloader::bootinfo::{BootInfo, BOOT_INFO_MAGIC, BOOT_INFO_VERSION};
+use archiaos_bootloader::device_tree::{parse_header as parse_fdt_header, FDT_MAGIC, HEADER_SIZE as FDT_HEADER_SIZE, MAX_TOTAL_SIZE as MAX_FDT_SIZE};
 
-const BOOT_INFO_MAGIC: u64 = 0x4942_4149_4843_5241;
-const BOOT_INFO_VERSION: u32 = 1;
 const MIN_MEMORY_DESCRIPTOR_SIZE: u64 = 40;
 const MAX_MEMORY_MAP_BYTES: u64 = 1024 * 1024;
-const FDT_MAGIC: u32 = 0xd00d_feed;
-
-#[repr(C)]
-struct BootInfo {
-    magic: u64,
-    version: u32,
-    struct_size: u32,
-    kernel_entry: u64,
-    memory_map: *const u8,
-    memory_map_size: u64,
-    memory_map_descriptor_size: u64,
-    memory_map_descriptor_version: u32,
-    flags: u32,
-    acpi_rsdp: u64,
-    device_tree: u64,
-    framebuffer_base: u64,
-    framebuffer_size: u64,
-}
 
 global_asm!(
     ".section .text.boot, \"ax\"",
@@ -100,6 +82,21 @@ impl Serial {
     }
 }
 
+unsafe fn validate_fdt_at_address(address: u64) -> bool {
+    if address == 0 || address > usize::MAX as u64 {
+        return false;
+    }
+    let base = address as usize as *const u8;
+    // Firmware/QEMU supplies a valid pointer to an FDT object. Read total_size
+    // from the header, cap the slice, then invoke the shared bounds-checked parser.
+    let total = unsafe { u32::from_be(read_volatile(base.add(4).cast::<u32>())) as usize };
+    if total < FDT_HEADER_SIZE || total > MAX_FDT_SIZE {
+        return false;
+    }
+    let image = unsafe { core::slice::from_raw_parts(base, total) };
+    parse_fdt_header(image).is_ok()
+}
+
 fn validate_boot_info(info: *const BootInfo, serial: &mut Serial) {
     if info.is_null() {
         serial.write_str("ArchiaOS AArch64: no UEFI BootInfo (direct QEMU boot)\\n");
@@ -107,13 +104,18 @@ fn validate_boot_info(info: *const BootInfo, serial: &mut Serial) {
     }
 
     // QEMU's direct -kernel path supplies a Device Tree pointer in x0, whereas
-    // our UEFI loader supplies the versioned ARCHIABI structure. Read only the
-    // first word before distinguishing those two entry contracts.
+    // our UEFI loader supplies the versioned ARCHIABI structure.
     let magic = unsafe { read_volatile(info.cast::<u64>()) };
     if magic != BOOT_INFO_MAGIC {
         let fdt_magic = unsafe { u32::from_be(read_volatile(info.cast::<u32>())) };
         if fdt_magic == FDT_MAGIC {
             serial.write_str("ArchiaOS AArch64: direct QEMU Device Tree detected\\n");
+            if unsafe { validate_fdt_at_address(info as usize as u64) } {
+                serial.write_str("ArchiaOS AArch64: direct QEMU Device Tree header validated\\n");
+            } else {
+                serial.write_str("ArchiaOS AArch64: direct QEMU Device Tree header rejected\\n");
+                halt_forever();
+            }
         } else {
             serial.write_str("ArchiaOS AArch64: no UEFI BootInfo (direct QEMU boot)\\n");
         }
@@ -146,10 +148,7 @@ fn validate_boot_info(info: *const BootInfo, serial: &mut Serial) {
 
     // UEFI publishes the flattened Device Tree via EFI_DTB_TABLE_GUID. Its
     // header is big-endian, unlike the native-endian BootInfo fields.
-    let fdt_base = b.device_tree as usize as *const u8;
-    let fdt_magic = unsafe { u32::from_be(read_volatile(fdt_base.cast::<u32>())) };
-    let fdt_size = unsafe { u32::from_be(read_volatile(fdt_base.add(4).cast::<u32>())) } as u64;
-    if fdt_magic != FDT_MAGIC || !(40..=16 * 1024 * 1024).contains(&fdt_size) {
+    if !unsafe { validate_fdt_at_address(b.device_tree) } {
         serial.write_str("ArchiaOS AArch64: Device Tree header rejected\\n");
         halt_forever();
     }
