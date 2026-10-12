@@ -146,8 +146,10 @@ fn validate_boot_info(info: *const BootInfo, serial: &mut Serial) {
 
     // UEFI publishes the flattened Device Tree via EFI_DTB_TABLE_GUID. Its
     // header is big-endian, unlike the native-endian BootInfo fields.
-    let fdt_magic = unsafe { u32::from_be(read_volatile((b.device_tree as usize as *const u32))) };
-    if fdt_magic != FDT_MAGIC {
+    let fdt_base = b.device_tree as usize as *const u8;
+    let fdt_magic = unsafe { u32::from_be(read_volatile(fdt_base.cast::<u32>())) };
+    let fdt_size = unsafe { u32::from_be(read_volatile(fdt_base.add(4).cast::<u32>())) } as u64;
+    if fdt_magic != FDT_MAGIC || !(40..=16 * 1024 * 1024).contains(&fdt_size) {
         serial.write_str("ArchiaOS AArch64: Device Tree header rejected\\n");
         halt_forever();
     }
