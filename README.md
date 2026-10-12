@@ -2,10 +2,10 @@
 
 **ArchiaOS est un système d'exploitation expérimental en cours de construction.** Le firmware UEFI standard de la machine reste utilisé ; le bootloader est désormais développé par ArchiaOS. Le chemin de démarrage par défaut du noyau x86-64 utilise maintenant le bootloader UEFI développé par ArchiaOS. Le noyau principal reçoit le contrat BootInfo maison et initialise son allocateur physique depuis la carte mémoire UEFI.
 
-## État confirmé par la CI
+## État technique (CI à revalider après la bascule)
 
 - Compilation du noyau principal x86-64 avec l’entrée UEFI maison par défaut.
-- Démarrage du vrai noyau x86-64 sous OVMF/QEMU via le chargeur ArchiaOS et auto-test PMM de 130 pages (test CI dédié).
+- Le chemin de démarrage du vrai noyau x86-64 via OVMF/QEMU avait un test CI dédié avant cette migration ; il doit être relancé pour valider les derniers changements.
 - Tests des parseurs BootInfo, ELF64, ACPI, Device Tree et carte mémoire.
 - Compilation du bootloader maison pour UEFI x86-64 et AArch64.
 - Démarrage UEFI du noyau de production x86-64 high-half avec BootInfo UEFI et auto-test PMM réussi.
