@@ -39,8 +39,9 @@ const X86_64_HIGH_PT_SPANS: usize = (MAX_TOTAL_KERNEL_MEMORY_SIZE / (2 * 1024 * 
 const PAGE_TABLE_ARENA_PAGES: usize = 2200;
 const MAX_EXIT_BOOT_SERVICES_ATTEMPTS: usize = 3;
 const PF_X: u32 = 1;
-#[cfg(target_arch = "x86_64")]
 const PF_W: u32 = 2;
+#[cfg(target_arch = "x86_64")]
+const X86_64_PTE_NX: u64 = 1u64 << 63;
 
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -592,6 +593,14 @@ pub unsafe fn load_kernel_segments(
             Err(_) => return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ELF load segment.\r\n\0")),
         };
 
+        // Enforce W^X across both architectures: no segment may be writable and
+        // executable at the same time. The x86-64 page-table builder applies
+        // these permissions with NX; AArch64 permission tables will do likewise
+        // when its MMU transition is introduced.
+        if segment.flags & (PF_W | PF_X) == (PF_W | PF_X) {
+            return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: writable-executable ELF segments are rejected by the W^X policy.\r\n\0"));
+        }
+
         let virtual_end = segment.virtual_address
             .checked_add(segment.memory_size)
             .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF virtual address overflow.\r\n\0"))?;
@@ -934,7 +943,7 @@ unsafe fn build_x86_64_page_tables(
                 unsafe {
                     ptr::write(
                         (table_address as *mut u64).add(pte_index),
-                        address | 0x3,
+                        address | 0x3 | X86_64_PTE_NX,
                     );
                 }
             }
@@ -972,7 +981,12 @@ unsafe fn build_x86_64_page_tables(
         let rounded_end = segment_end.checked_add(EFI_PAGE_SIZE - 1)
             .map(|value| value & !(EFI_PAGE_SIZE - 1))
             .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: high-half page-range overflow.\r\n\0"))?;
-        let pte_flags = 0x1 | if segment.flags & PF_W != 0 { 0x2 } else { 0 };
+        // High-half leaves mirror ELF permissions: code is read-only/executable,
+        // rodata read-only/NX, and data writable/NX. RWX segments were rejected
+        // before allocation by the common W^X policy.
+        let pte_flags = 0x1
+            | if segment.flags & PF_W != 0 { 0x2 } else { 0 }
+            | if segment.flags & PF_X == 0 { X86_64_PTE_NX } else { 0 };
         while virtual_address < rounded_end {
             let span = ((virtual_address - X86_64_HIGH_HALF_BASE) / (2 * 1024 * 1024)) as usize;
             if span >= high_tables.len() {
