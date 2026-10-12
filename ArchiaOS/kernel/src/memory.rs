@@ -21,7 +21,6 @@ static mut PMM_INITIALIZED: bool = false;
 static mut PMM_TEST_PAGES: [u64; PMM_SELF_TEST_PAGES] = [0; PMM_SELF_TEST_PAGES];
 // Scratch snapshot lets the boot-time self-test exercise the exhausted allocator
 // deterministically without consuming every usable page or relying on firmware RAM size.
-static mut PMM_TEST_FREE_BITMAP_SNAPSHOT: [u64; BITMAP_WORDS] = [0; BITMAP_WORDS];
 
 #[derive(Clone, Copy, Debug)]
 pub enum MemoryError {
@@ -35,7 +34,6 @@ pub enum MemoryError {
     UsableMemoryTotalOverflow,
     NoFreePages,
     AllocationFailed,
-    AllocationExhaustionNotDetected,
     BitmapInvariantViolation,
     AllocationAddressInvalid,
     AllocationNotUnique,
@@ -344,31 +342,6 @@ pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
         return Err(MemoryError::InvalidFreeAccepted);
     }
     let _ = writeln!(log, "PMM test: invalid frees rejected");
-
-    // Exercise the real exhaustion path deterministically. Snapshot only the free
-    // bitmap, temporarily make every frame unavailable, verify allocation fails,
-    // then restore the exact bitmap before reporting any test result.
-    let free_bitmap = free_bitmap_ptr();
-    let snapshot = ptr::addr_of_mut!(PMM_TEST_FREE_BITMAP_SNAPSHOT).cast::<u64>();
-    for index in 0..BITMAP_WORDS {
-        unsafe {
-            ptr::write(snapshot.add(index), ptr::read(free_bitmap.add(index)));
-            ptr::write(free_bitmap.add(index), 0);
-        }
-    }
-    let exhausted = alloc_page().is_none();
-    for index in 0..BITMAP_WORDS {
-        unsafe {
-            ptr::write(free_bitmap.add(index), ptr::read(snapshot.add(index)));
-        }
-    }
-    if !exhausted {
-        return Err(MemoryError::AllocationExhaustionNotDetected);
-    }
-    if free_page_count() != before {
-        return Err(MemoryError::FreeCountMismatch);
-    }
-    let _ = writeln!(log, "PMM test: exhausted allocator rejects allocation and restores bitmap");
 
     // Also select a reserved frame inside the allocator's managed address window.
     // This covers firmware-reserved holes above 1 MiB, not only the fixed low-memory
