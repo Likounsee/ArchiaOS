@@ -33,7 +33,7 @@ The production kernel's custom-loader build is:
 cargo build --release --features uefi-boot --target x86_64-unknown-none
 ```
 
-The ordinary ISO build still uses Limine. The high-half kernel boot is currently integrated in the CI's FAT/OVMF test image rather than selected as the default local boot path.
+A reproducible local disk/ISO packaging command for the first-party UEFI loader is not yet documented; CI currently assembles FAT/OVMF test images. The default kernel entry uses the ArchiaOS UEFI handoff, not Limine.
 
 ## Next
 
@@ -42,4 +42,4 @@ The ordinary ISO build still uses Limine. The high-half kernel boot is currently
 3. Expand Device Tree discovery for memory regions, bus `ranges` translation, interrupt controllers and timers; raw `reg` addresses are not a complete driver abstraction.
 4. Implement a kernel-owned MMU transition and exception/timer infrastructure for AArch64.
 5. Audit all boot-time allocations and the 4 GiB physical-address limitation before wider hardware use.
-6. Switch the default startup path away from Limine only after broader regressions, security review and real-hardware tests.
+6. Add reproducible local FAT/ISO packaging and boot instructions for the first-party UEFI loader, then validate the generated artifact on real hardware.
