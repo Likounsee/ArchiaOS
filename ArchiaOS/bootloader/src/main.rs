@@ -3,7 +3,6 @@
 
 mod uefi;
 
-use core::convert::Infallible;
 use core::panic::PanicInfo;
 use uefi::{BootError, Status, SystemTable, EFI_INVALID_PARAMETER, EFI_LOAD_ERROR, EFI_SUCCESS};
 
@@ -37,33 +36,6 @@ unsafe fn print_ascii(output: *mut uefi::SimpleTextOutputProtocol, message: &[u8
     };
     // SAFETY: UEFI provides and owns this console protocol.
     unsafe { output_string(output, wide.as_ptr()) }
-}
-
-unsafe fn print_entry(output: *mut uefi::SimpleTextOutputProtocol, entry: u64) -> Status {
-    if output.is_null() {
-        return EFI_INVALID_PARAMETER;
-    }
-    let mut line = [0u16; 32];
-    let prefix = *b"entry=0x";
-    for (index, byte) in prefix.iter().enumerate() {
-        line[index] = *byte as u16;
-    }
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    for digit in 0..16 {
-        let shift = (15 - digit) * 4;
-        line[8 + digit] = HEX[((entry >> shift) & 0xf) as usize] as u16;
-    }
-    line[24] = b'\r' as u16;
-    line[25] = b'\n' as u16;
-    line[26] = 0;
-    // SAFETY: output is checked and line is NUL-terminated UTF-16.
-    let output_string = unsafe { (*output).output_string };
-    let output_string = match output_string {
-        Some(function) => function,
-        None => return EFI_INVALID_PARAMETER,
-    };
-    // SAFETY: UEFI provides and owns this console protocol.
-    unsafe { output_string(output, line.as_ptr()) }
 }
 
 unsafe fn report_boot_error(
@@ -136,7 +108,7 @@ pub extern "efiapi" fn efi_main(
     // SAFETY: firmware services and the kernel image buffer remain valid at this point.
     let kernel_entry = match unsafe {
         uefi::load_kernel_segments(
-            unsafe { (*system_table).boot_services },
+            (*system_table).boot_services,
             kernel_image.as_slice(),
             &parsed,
         )
