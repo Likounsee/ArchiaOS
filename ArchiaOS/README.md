@@ -47,6 +47,6 @@ cargo build --release --target aarch64-unknown-none
 
 Le prototype cible QEMU `virt`. Une MMU propre, timers, contrôleur d'interruptions, gestion plus complète des exceptions et pilotes propres aux plateformes restent à implémenter.
 
-Voir [la roadmap](docs/ROADMAP.md), [l'architecture de contrôle matériel bas niveau](docs/HARDWARE_CONTROL.md), [le plan boot/ARM64](docs/BOOT_AND_ARCHITECTURES.md), [le bootloader](bootloader/README.md) et [le test high-half x86-64](kernel/boot-test-highhalf-x86_64/README.md).
+Voir [la roadmap](docs/ROADMAP.md), [la vision du centre de contrôle matériel tout-en-un](docs/CONTROL_CENTER.md), [l'architecture de contrôle matériel bas niveau](docs/HARDWARE_CONTROL.md), [le plan boot/ARM64](docs/BOOT_AND_ARCHITECTURES.md), [le bootloader](bootloader/README.md) et [le test high-half x86-64](kernel/boot-test-highhalf-x86_64/README.md).
 
 Le développement se fait exclusivement sur la branche `ArchiaOS`.
