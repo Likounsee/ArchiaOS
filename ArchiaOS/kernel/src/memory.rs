@@ -184,6 +184,16 @@ pub unsafe fn initialize_from_bootinfo<W: Write>(
         return Err(MemoryError::NoFreePages);
     }
 
+    // A previous failed initialization attempt must not leak stale managed/free
+    // bits into a retry. Reset the complete allocator state only after all BootInfo
+    // and descriptor preflight checks have passed, while PMM_INITIALIZED is false.
+    // This also makes the failure path deterministic if the handoff map changes
+    // unexpectedly between validation and population.
+    unsafe {
+        set_bit_range(managed_bitmap_ptr(), 0, MAX_FRAMES, false);
+        set_bit_range(free_bitmap_ptr(), 0, MAX_FRAMES, false);
+    }
+
     // Only UEFI EfiConventionalMemory ranges become allocatable; loader, runtime,
     // ACPI, MMIO and all other descriptor types remain reserved. Do not publish
     // the allocator as initialized until every bitmap is populated and verified.

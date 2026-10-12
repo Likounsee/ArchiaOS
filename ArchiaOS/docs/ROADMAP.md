@@ -54,6 +54,7 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 - [ ] Auditer toutes les plages réservées : chargeur, noyau, buffers, framebuffer, tables de pages et zones firmware.
 - [x] Vérifier en CI les rejets de libérations invalides/doubles et la restauration du compte de pages après autotest.
 - [ ] Ajouter des tests d'échec et de limites pour les allocations et la validation du BootInfo.
+- [x] Réinitialiser les bitmaps PMM après la prévalidation et avant chaque tentative de population, afin qu'une tentative échouée ne laisse pas d'état périmé pour une reprise.
 - [ ] Clarifier le comportement en cas d'épuisement mémoire et empêcher toute libération d'une plage réservée.
 
 **Critère de sortie :** invariants mémoire documentés et testés, sans chevauchement dangereux ni accès hors plage.
