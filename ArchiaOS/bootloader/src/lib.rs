@@ -65,6 +65,7 @@ pub mod bootinfo {
         if info.memory_map_descriptor_version == 0
             || info.memory_map_descriptor_size < super::memory_map::MIN_DESCRIPTOR_SIZE as u64
             || info.memory_map_descriptor_size > super::memory_map::MAX_DESCRIPTOR_SIZE as u64
+            || info.memory_map_descriptor_size % core::mem::align_of::<u64>() as u64 != 0
         {
             return Err(BootInfoError::InvalidDescriptorMetadata);
         }
@@ -1110,6 +1111,11 @@ pub mod elf {
         header.virtual_address
             .checked_add(header.memory_size)
             .ok_or(ElfError::IntegerOverflow)?;
+        // The loader copies PT_LOAD data to p_paddr; reject wrapping physical
+        // ranges during parsing rather than after allocation has begun.
+        header.physical_address
+            .checked_add(header.memory_size)
+            .ok_or(ElfError::IntegerOverflow)?;
 
         if header.alignment > 1 {
             if !header.alignment.is_power_of_two()
@@ -1308,6 +1314,17 @@ mod tests {
     }
 
     #[test]
+    fn boot_info_header_rejects_unaligned_descriptor_stride() {
+        let mut info = valid_boot_info();
+        info.memory_map_descriptor_size = 49;
+        info.memory_map_size = 49;
+        assert_eq!(
+            validate_header(&info),
+            Err(BootInfoError::InvalidDescriptorMetadata)
+        );
+    }
+
+    #[test]
     fn boot_info_header_rejects_invalid_descriptor_stride() {
         let mut info = valid_boot_info();
         info.memory_map_descriptor_size = 8;
@@ -1452,6 +1469,17 @@ mod tests {
         assert_eq!(
             parse_elf64(&image, X86_64),
             Err(ElfError::SegmentSizeMismatch)
+        );
+    }
+
+    #[test]
+    fn rejects_physical_address_overflow() {
+        let mut image = valid_elf(X86_64);
+        put_u64(&mut image, 88, u64::MAX - 7);
+        put_u64(&mut image, 104, 16);
+        assert_eq!(
+            parse_elf64(&image, X86_64),
+            Err(ElfError::IntegerOverflow)
         );
     }
 
