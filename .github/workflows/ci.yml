@@ -305,3 +305,5 @@ jobs:
           grep -Fq "ArchiaOS AArch64: Device Tree header validated" "$RUNNER_TEMP/archiaos-aarch64-uefi.log"
           grep -Fq "ArchiaOS AArch64: UEFI memory-map descriptors validated" "$RUNNER_TEMP/archiaos-aarch64-uefi.log"
           grep -Fq "ArchiaOS AArch64: conventional memory pages validated" "$RUNNER_TEMP/archiaos-aarch64-uefi.log"
+          grep -Fq "ArchiaOS AArch64: physical page allocator initialized" "$RUNNER_TEMP/archiaos-aarch64-uefi.log"
+          grep -Fq "ArchiaOS AArch64: PMM allocation/free self-test passed" "$RUNNER_TEMP/archiaos-aarch64-uefi.log"
