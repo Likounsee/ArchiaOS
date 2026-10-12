@@ -1,7 +1,10 @@
 ENTRY(_start)
 
 KERNEL_VMA = 0xffffffff80000000;
-KERNEL_LMA = 0x00100000;
+/* Avoid the first MiB above 1 MiB, which some UEFI firmwares do not make
+ * available for AllocateAddress even when the remaining RAM is conventional.
+ * Keep the image 2 MiB-aligned for predictable page-table mapping. */
+KERNEL_LMA = 0x00200000;
 
 PHDRS
 {
