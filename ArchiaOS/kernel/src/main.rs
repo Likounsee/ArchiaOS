@@ -92,6 +92,31 @@ fn halt_forever() -> ! {
     loop { unsafe { asm!("cli; hlt", options(nomem, nostack)) }; }
 }
 
+// Temporary bring-up display: until the text renderer is ready, paint a
+// dark background and a bright cyan band so a successful kernel handoff is
+// visible on the physical monitor (kernel diagnostics continue on COM1).
+fn show_framebuffer_boot_status(info: &archiaos_bootloader::bootinfo::BootInfo) {
+    const MAX_PHYSICAL_ADDRESS: u64 = 1u64 << 32;
+    if info.framebuffer_base == 0 || info.framebuffer_size < 4 {
+        return;
+    }
+    let Some(end) = info.framebuffer_base.checked_add(info.framebuffer_size) else {
+        return;
+    };
+    if end > MAX_PHYSICAL_ADDRESS || info.framebuffer_base % 4 != 0 {
+        return;
+    }
+    let pixels = (info.framebuffer_size / 4) as usize;
+    let framebuffer = info.framebuffer_base as *mut u32;
+    let band_pixels = pixels.min(32_768);
+    for index in 0..pixels {
+        // GOP pixel modes use 32-bit pixels. These colors remain visible in
+        // both common RGB/BGR channel orderings.
+        let color = if index < band_pixels { 0x00_50_D8_F0 } else { 0x00_10_18_28 };
+        unsafe { ptr::write_volatile(framebuffer.add(index), color) };
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn rust_kernel_main(
     boot_info: *const archiaos_bootloader::bootinfo::BootInfo,
@@ -154,6 +179,7 @@ pub extern "C" fn rust_kernel_main(
     } else {
         // BootInfo has already passed scalar/range validation in the PMM initializer.
         let info = unsafe { &*boot_info };
+        show_framebuffer_boot_status(info);
         if info.framebuffer_size == 0 {
             let _ = writeln!(serial, "ArchiaOS: UEFI GOP framebuffer unavailable (headless mode)");
         } else {
