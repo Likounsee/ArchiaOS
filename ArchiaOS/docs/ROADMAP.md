@@ -7,7 +7,7 @@
 | Priorité | Domaine | Avancement estimé | État / prochaine preuve attendue |
 |---|---|---:|---|
 | **P0** | Démarrage UEFI maison x86-64 par défaut | **100 % (jalon physique atteint)** | Démarrage depuis la clé USB et premier affichage framebuffer confirmés par l’utilisateur sur le PC physique. Le motif bleu prouve l’écriture dans le framebuffer après le handoff ; il ne constitue pas encore un bureau ni une pile graphique. Un redémarrage à froid n’est pas consigné. |
-| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **82 %** | CI verte sur le HEAD `00bcb8c`; couverture continue des plages UEFI testée y compris cartes triées/non triées et trous. Reste : audit des autres plages réservées spécifiques à chaque plateforme et validation matérielle étendue. |
+| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **88 %** | CI verte sur le HEAD `d218075`; validations du framebuffer GOP bornées et testées, couverture des plages UEFI et PMM renforcée. Reste : audit des autres plages réservées spécifiques à chaque plateforme et validation matérielle étendue. |
 | **P2** | Ordonnanceur et synchronisation | **0 %** | Non implémenté ; définir les primitives de tâches et le changement de contexte avant la préemption. |
 | **P3** | Espace utilisateur et ABI système | **0 %** | Non commencé ; dépend notamment des exceptions, syscalls et mécanismes mémoire isolés. |
 | **P4** | Stockage, VFS et préparation OpenFS | **0 %** | Pas de pilote bloc/VFS fonctionnel ; spécifier d'abord les interfaces. |
@@ -43,7 +43,7 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 
 **Critère de sortie :** build reproductible et tests de démarrage verts sur le HEAD courant, sans déclarer les essais QEMU comme une validation de tout matériel physique.
 
-### P1 — Fiabilité du chargeur et de la mémoire — 86 %
+### P1 — Fiabilité du chargeur et de la mémoire — 88 %
 
 **État : EN COURS.** CI verte sur le HEAD `1ab767a` : tests unitaires du chargeur, démarrage UEFI OVMF en identité et high-half, test négatif BootInfo, smoke test AAVMF/ARM64 et paquet USB. P1 continue sur l'audit des plages réservées spécifiques aux plateformes et les scénarios matériels.
 
@@ -70,6 +70,7 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 - [x] Étendre les tests de couverture mémoire aux sous-plages non alignées, aux frontières entre descripteurs de types différents et aux trous entre descripteurs ; CI verte sur `1ab767a`.
 - [x] Durcir le calcul des plages PMM réservées : écrêtage à la fenêtre gérée sous 4 Gio avant l'arrondi, sans débordement inutile pour une plage MMIO située hors fenêtre ; auto-vérifications au démarrage pour les limites, les plages non alignées et les longueurs nulles (commit `a8654bf`).
 - [x] Centraliser le calcul du chevauchement entre intervalles de frames et ajouter des auto-vérifications déterministes pour les plages libres, réservées, adjacentes, disjointes, incluses et vides ; validation de démarrage OVMF et tests négatifs BootInfo verts sur le code correspondant (commit `b22d509`).
+- [x] Valider le framebuffer GOP linéaire avant de le transmettre : rejeter les modes BltOnly, les dimensions/strides invalides, les plages débordantes et les buffers trop petits ; tests unitaires pour RGB/BGR/bitmask et cas invalides, CI x86-64/ARM64 et démarrages OVMF/AAVMF verts (commits `5526ae4`, `d218075`).
 - [x] Confirmer les contrôles de transfert, mappings et BootInfo par la CI du HEAD `00bcb8c` : compilation x86-64/ARM64, démarrage UEFI OVMF, BootInfo négatif et paquet USB tous verts.
 - [x] Réinitialiser les bitmaps PMM après la prévalidation et avant chaque tentative de population, afin qu'une tentative échouée ne laisse pas d'état périmé pour une reprise.
 - [x] Refuser l'allocation lorsque le bitmap ne contient aucune frame à la fois libre et gérée ; la simulation locale teste l'épuisement déterministe.
