@@ -15,7 +15,7 @@
 
 ## Limites actuelles
 
-Les adresses physiques chargées, les buffers de transfert et le chargeur x86-64 doivent être dans la fenêtre identité sous 4 Gio ; le fichier noyau est limité à 64 Mio et les segments cumulés à 128 Mio. Le chemin high-half testé concerne x86-64. Le prototype ARM64 utilise encore les mappings du firmware et n'a pas une MMU propre au noyau. Les tests valident des configurations QEMU, pas tout le matériel réel. Limine demeure la voie de démarrage standard jusqu'à validation élargie.
+Les adresses physiques chargées, les buffers de transfert et le chargeur x86-64 doivent être dans la fenêtre identité sous 4 Gio ; le fichier noyau est limité à 64 Mio et les segments cumulés à 128 Mio. Le chemin high-half testé concerne x86-64. Le prototype ARM64 utilise encore les mappings du firmware et n'a pas une MMU propre au noyau. Les tests valident des configurations QEMU, pas tout le matériel réel. Le chemin Limine a été retiré du démarrage opérationnel ; la CI doit encore confirmer la bascule sur le nouveau HEAD.
 
 ## Documentation
 
