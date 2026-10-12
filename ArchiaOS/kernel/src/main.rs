@@ -136,31 +136,36 @@ fn halt_forever() -> ! {
 // Temporary bring-up display: until the text renderer is ready, paint a
 // dark background and a bright cyan band so a successful kernel handoff is
 // visible on the physical monitor (kernel diagnostics continue on COM1).
-fn show_framebuffer_boot_status(info: &archiaos_bootloader::bootinfo::BootInfo) {
-    // The bootloader now installs an uncached identity mapping for GOP memory
-    // anywhere in the low canonical 512 GiB region, not just below 4 GiB.
+fn show_framebuffer_boot_status(info: &archiaos_bootloader::bootinfo::BootInfo) -> u8 {
+    // The bootloader maps GOP memory in the low canonical 512 GiB region.
     const MAX_LOW_CANONICAL_ADDRESS: u64 = 1u64 << 39;
-    if info.framebuffer_base == 0 || info.framebuffer_size < 4 {
-        return;
+    if info.framebuffer_base == 0 {
+        return 1; // UEFI did not expose a framebuffer.
+    }
+    if info.framebuffer_size < 4 {
+        return 2; // Reported range cannot contain even one 32-bit pixel.
     }
     let Some(end) = info.framebuffer_base.checked_add(info.framebuffer_size) else {
-        return;
+        return 3; // Malformed/overflowing GOP range.
     };
-    if end > MAX_LOW_CANONICAL_ADDRESS || info.framebuffer_base % 4 != 0 {
-        return;
+    if end > MAX_LOW_CANONICAL_ADDRESS {
+        return 4; // Cannot be reached through the current low-canonical identity map.
+    }
+    if info.framebuffer_base % 4 != 0 {
+        return 5; // GOP framebuffer should be at least 32-bit aligned.
     }
     let pixels = match usize::try_from(info.framebuffer_size / 4) {
         Ok(value) => value,
-        Err(_) => return,
+        Err(_) => return 6,
     };
     let framebuffer = info.framebuffer_base as *mut u32;
     let band_pixels = pixels.min(32_768);
-    // Deliberately fill the reported GOP range: this is an early, allocation-free
-    // probe and the UEFI framebuffer is already mapped uncached by the loader.
+    // Fill the reported GOP range with a high-contrast probe pattern.
     for index in 0..pixels {
         let color = if index < band_pixels { 0x00_50_D8_F0 } else { 0x00_10_18_28 };
         unsafe { ptr::write_volatile(framebuffer.add(index), color) };
     }
+    0 // Probe written.
 }
 
 #[no_mangle]
@@ -194,7 +199,16 @@ pub extern "C" fn rust_kernel_main(
         info.framebuffer_base,
         info.framebuffer_size
     );
-    show_framebuffer_boot_status(info);
+    let framebuffer_probe = show_framebuffer_boot_status(info);
+    match framebuffer_probe {
+        0 => { let _ = writeln!(serial, "ArchiaOS: framebuffer probe=written"); }
+        1 => { let _ = writeln!(serial, "ArchiaOS: framebuffer probe=unavailable (GOP base is zero)"); }
+        2 => { let _ = writeln!(serial, "ArchiaOS: framebuffer probe=rejected (range too small)"); }
+        3 => { let _ = writeln!(serial, "ArchiaOS: framebuffer probe=rejected (range overflow)"); }
+        4 => { let _ = writeln!(serial, "ArchiaOS: framebuffer probe=rejected (above low-canonical 512 GiB)"); }
+        5 => { let _ = writeln!(serial, "ArchiaOS: framebuffer probe=rejected (unaligned base)"); }
+        _ => { let _ = writeln!(serial, "ArchiaOS: framebuffer probe=rejected (size conversion failed)"); }
+    }
     let _ = writeln!(serial, "ArchiaOS: boot-stage=early-framebuffer-probe-complete");
 
     // Read-only CPU inventory is the first hardware-telemetry primitive. Keep
