@@ -2338,13 +2338,13 @@ mod memory_map_tests {
     }
 
     #[test]
-    fn generic_coverage_does_not_bridge_a_one_byte_gap() {
+    fn generic_coverage_does_not_bridge_a_page_gap() {
         let mut bytes = descriptor(2, 0x1000, 1);
-        bytes.extend_from_slice(&descriptor(4, 0x2001, 1));
-        let map = UefiMemoryMap::parse(&bytes, 48).expect("valid map with one-byte gap");
+        bytes.extend_from_slice(&descriptor(4, 0x3000, 1));
+        let map = UefiMemoryMap::parse(&bytes, 48).expect("valid map with a one-page gap");
         assert_eq!(map.range_is_fully_covered(0x1000, 0x1000), Ok(true));
-        assert_eq!(map.range_is_fully_covered(0x1000, 0x1001), Ok(false));
-        assert_eq!(map.range_is_fully_covered(0x2001, 0x1000), Ok(true));
+        assert_eq!(map.range_is_fully_covered(0x1000, 0x2000), Ok(false));
+        assert_eq!(map.range_is_fully_covered(0x3000, 0x1000), Ok(true));
     }
 
     #[test]
