@@ -82,7 +82,12 @@ fn frame_range(base: u64, length: u64) -> Option<(u64, u64)> {
     if base % PAGE_SIZE != 0 {
         first = first.checked_add(1)?;
     }
-    Some((first.min(MAX_FRAMES), (end / PAGE_SIZE).min(MAX_FRAMES)))
+    let first = first.min(MAX_FRAMES);
+    let last = (end / PAGE_SIZE).min(MAX_FRAMES);
+    // Short or unaligned descriptors can contain no complete pages, in which
+    // case ceil(base / PAGE_SIZE) is greater than floor(end / PAGE_SIZE).
+    // Normalize that empty range instead of allowing last - first to wrap.
+    Some((first.min(last), last))
 }
 
 /// Return every allocator frame touched by a reserved byte range, including
@@ -179,7 +184,7 @@ pub unsafe fn initialize_from_bootinfo<W: Write>(
             let (fb_first, fb_last) = reserved_frame_range(info.framebuffer_base, info.framebuffer_size)
                 .ok_or(MemoryError::InvalidMemoryRange)?;
             let framebuffer_overlap = last.min(fb_last).saturating_sub(first.max(fb_first));
-            let usable_pages = (last - first).saturating_sub(framebuffer_overlap);
+            let usable_pages = last.saturating_sub(first).saturating_sub(framebuffer_overlap);
             if usable_pages != 0 {
                 usable_ranges = usable_ranges.checked_add(1)
                     .ok_or(MemoryError::UsableRangeCountOverflow)?;
