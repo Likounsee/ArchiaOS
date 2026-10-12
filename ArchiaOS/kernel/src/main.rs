@@ -2,6 +2,7 @@
 #![no_main]
 
 mod memory;
+mod cpu;
 
 use core::arch::{asm, global_asm};
 use core::fmt::{self, Write};
@@ -98,6 +99,39 @@ pub extern "C" fn rust_kernel_main(
     serial.init();
     let _ = writeln!(serial, "ArchiaOS: custom UEFI bootloader entered production kernel");
     let _ = writeln!(serial, "ArchiaOS: validating ARCHIABI BootInfo and UEFI memory map");
+
+    // Read-only CPU inventory is the first hardware-telemetry primitive. Keep
+    // it allocation-free and independent of sensor or device-driver support.
+    let cpu_info = cpu::detect();
+    let vendor = cpu::printable_field(&cpu_info.vendor);
+    let brand = cpu::printable_field(&cpu_info.brand);
+    let _ = writeln!(serial, "ArchiaOS: CPU vendor: {}", vendor);
+    if !brand.is_empty() {
+        let _ = writeln!(serial, "ArchiaOS: CPU brand: {}", brand);
+    }
+    let _ = writeln!(
+        serial,
+        "ArchiaOS: CPU family {:04x}, model {:04x}, stepping {}",
+        cpu_info.family,
+        cpu_info.model,
+        cpu_info.stepping
+    );
+    let _ = writeln!(
+        serial,
+        "ArchiaOS: CPU features TSC={} SSE2={} AES={} XSAVE={} AVX={} AVX2={} (hardware flags only)",
+        cpu_info.has_tsc as u8,
+        cpu_info.has_sse2 as u8,
+        cpu_info.has_aesni as u8,
+        cpu_info.has_xsave as u8,
+        cpu_info.has_avx as u8,
+        cpu_info.has_avx2 as u8
+    );
+    let _ = writeln!(
+        serial,
+        "ArchiaOS: CPUID maximum basic={:#x}, extended={:#x}",
+        cpu_info.max_basic_leaf,
+        cpu_info.max_extended_leaf
+    );
 
     // The custom loader maps the handoff allocation and provides this pointer in
     // RDI. The initializer verifies alignment, version, structure size, bounds,
