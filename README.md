@@ -1,6 +1,6 @@
 # ArchiaOS
 
-**ArchiaOS est un système d'exploitation expérimental en cours de construction.** Le firmware UEFI standard de la machine reste utilisé ; le bootloader est désormais développé par ArchiaOS. Le noyau de production x86-64 conserve Limine comme chemin de démarrage standard, mais une compilation UEFI optionnelle du noyau de production démarre maintenant de bout en bout avec le chargeur maison sous OVMF/QEMU.
+**ArchiaOS est un système d'exploitation expérimental en cours de construction.** Le firmware UEFI standard de la machine reste utilisé ; le bootloader est désormais développé par ArchiaOS. Le chemin de démarrage par défaut du noyau x86-64 utilise maintenant le bootloader UEFI développé par ArchiaOS. Le noyau principal reçoit le contrat BootInfo maison et initialise son allocateur physique depuis la carte mémoire UEFI.
 
 ## État confirmé par la CI
 
