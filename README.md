@@ -21,4 +21,4 @@ Cela ne signifie pas encore que le noyau de production high-half peut démarrer 
 - [Prototype UEFI](ArchiaOS/bootloader/README.md)
 - [Prototype noyau AArch64](ArchiaOS/kernel/aarch64/README.md)
 
-Le développement se fait exclusivement sur la branche **`ArchiaOS`** ; `main` ne doit pas être modifiée.
+Le développement se fait exclusivement sur la branche **`ArchiaOS`**.
