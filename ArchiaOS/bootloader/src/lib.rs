@@ -27,6 +27,96 @@ pub mod bootinfo {
     }
 }
 
+/// Bounded RSDP validation for ACPI platform metadata.
+pub mod acpi {
+    pub const RSDP_SIGNATURE: &[u8; 8] = b"RSD PTR ";
+    pub const RSDP_V1_SIZE: usize = 20;
+    pub const RSDP_V2_MIN_SIZE: usize = 36;
+    pub const MAX_RSDP_SIZE: usize = 4096;
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum RsdpError {
+        Truncated,
+        InvalidSignature,
+        InvalidChecksum,
+        InvalidLength,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub struct RsdpInfo {
+        pub revision: u8,
+        pub length: usize,
+        pub rsdt_address: u32,
+        pub xsdt_address: u64,
+    }
+
+    fn checksum_valid(bytes: &[u8]) -> bool {
+        bytes.iter().fold(0u8, |sum, byte| sum.wrapping_add(*byte)) == 0
+    }
+
+    fn le_u32(bytes: &[u8], offset: usize) -> Result<u32, RsdpError> {
+        let end = offset.checked_add(4).ok_or(RsdpError::InvalidLength)?;
+        let value = bytes.get(offset..end).ok_or(RsdpError::Truncated)?;
+        Ok(u32::from_le_bytes([value[0], value[1], value[2], value[3]]))
+    }
+
+    fn le_u64(bytes: &[u8], offset: usize) -> Result<u64, RsdpError> {
+        let end = offset.checked_add(8).ok_or(RsdpError::InvalidLength)?;
+        let value = bytes.get(offset..end).ok_or(RsdpError::Truncated)?;
+        Ok(u64::from_le_bytes([
+            value[0], value[1], value[2], value[3],
+            value[4], value[5], value[6], value[7],
+        ]))
+    }
+
+    /// Validate a complete RSDP image. For revision 2 and later, the byte slice
+    /// must contain the advertised extended length; both legacy and extended
+    /// checksums are verified before the pointer is put into BootInfo.
+    pub fn parse_rsdp(image: &[u8]) -> Result<RsdpInfo, RsdpError> {
+        if image.len() < RSDP_V1_SIZE {
+            return Err(RsdpError::Truncated);
+        }
+        if image.get(0..8) != Some(&RSDP_SIGNATURE[..]) {
+            return Err(RsdpError::InvalidSignature);
+        }
+        if !checksum_valid(&image[..RSDP_V1_SIZE]) {
+            return Err(RsdpError::InvalidChecksum);
+        }
+
+        let revision = image[15];
+        let rsdt_address = le_u32(image, 16)?;
+        if revision < 2 {
+            return Ok(RsdpInfo {
+                revision,
+                length: RSDP_V1_SIZE,
+                rsdt_address,
+                xsdt_address: 0,
+            });
+        }
+
+        if image.len() < RSDP_V2_MIN_SIZE {
+            return Err(RsdpError::Truncated);
+        }
+        let length = le_u32(image, 20)? as usize;
+        if length < RSDP_V2_MIN_SIZE
+            || length > MAX_RSDP_SIZE
+            || length > image.len()
+        {
+            return Err(RsdpError::InvalidLength);
+        }
+        if !checksum_valid(&image[..length]) {
+            return Err(RsdpError::InvalidChecksum);
+        }
+
+        Ok(RsdpInfo {
+            revision,
+            length,
+            rsdt_address,
+            xsdt_address: le_u64(image, 24)?,
+        })
+    }
+}
+
 /// Minimal, allocation-free parser for the flattened Device Tree (FDT) header.
 pub mod device_tree {
     pub const FDT_MAGIC: u32 = 0xd00d_feed;
@@ -663,3 +753,102 @@ mod device_tree_tests {
     }
 }
 
+#[cfg(test)]
+mod acpi_tests {
+    use std::vec;
+    use std::vec::Vec;
+
+    use super::acpi::{parse_rsdp, RsdpError};
+
+    fn put_le32(image: &mut [u8], offset: usize, value: u32) {
+        image[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+    }
+
+    fn put_le64(image: &mut [u8], offset: usize, value: u64) {
+        image[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
+    }
+
+    fn set_checksum(image: &mut [u8], checksum_offset: usize, range_end: usize) {
+        image[checksum_offset] = 0;
+        let sum = image[..range_end]
+            .iter()
+            .fold(0u8, |sum, byte| sum.wrapping_add(*byte));
+        image[checksum_offset] = 0u8.wrapping_sub(sum);
+    }
+
+    fn valid_v1() -> Vec<u8> {
+        let mut image = vec![0u8; 20];
+        image[0..8].copy_from_slice(b"RSD PTR ");
+        image[9..15].copy_from_slice(b"ARCHIA");
+        image[15] = 0;
+        put_le32(&mut image, 16, 0x1234_5000);
+        set_checksum(&mut image, 8, 20);
+        image
+    }
+
+    fn valid_v2() -> Vec<u8> {
+        let mut image = vec![0u8; 36];
+        image[0..8].copy_from_slice(b"RSD PTR ");
+        image[9..15].copy_from_slice(b"ARCHIA");
+        image[15] = 2;
+        put_le32(&mut image, 16, 0x1234_5000);
+        put_le32(&mut image, 20, 36);
+        put_le64(&mut image, 24, 0x0000_0001_2345_6000);
+        set_checksum(&mut image, 8, 20);
+        set_checksum(&mut image, 32, 36);
+        image
+    }
+
+    #[test]
+    fn accepts_legacy_rsdp() {
+        let parsed = parse_rsdp(&valid_v1()).expect("valid revision-0 RSDP");
+        assert_eq!(parsed.revision, 0);
+        assert_eq!(parsed.length, 20);
+        assert_eq!(parsed.rsdt_address, 0x1234_5000);
+        assert_eq!(parsed.xsdt_address, 0);
+    }
+
+    #[test]
+    fn accepts_extended_rsdp() {
+        let parsed = parse_rsdp(&valid_v2()).expect("valid revision-2 RSDP");
+        assert_eq!(parsed.revision, 2);
+        assert_eq!(parsed.length, 36);
+        assert_eq!(parsed.xsdt_address, 0x0000_0001_2345_6000);
+    }
+
+    #[test]
+    fn rejects_bad_signature() {
+        let mut image = valid_v1();
+        image[0] = b'X';
+        assert_eq!(parse_rsdp(&image), Err(RsdpError::InvalidSignature));
+    }
+
+    #[test]
+    fn rejects_legacy_checksum() {
+        let mut image = valid_v1();
+        image[10] ^= 1;
+        assert_eq!(parse_rsdp(&image), Err(RsdpError::InvalidChecksum));
+    }
+
+    #[test]
+    fn rejects_bad_extended_checksum() {
+        let mut image = valid_v2();
+        image[35] ^= 1;
+        assert_eq!(parse_rsdp(&image), Err(RsdpError::InvalidChecksum));
+    }
+
+    #[test]
+    fn rejects_extended_length_beyond_image() {
+        let mut image = valid_v2();
+        put_le32(&mut image, 20, 37);
+        // Keep the legacy checksum valid so the error specifically covers length.
+        assert_eq!(parse_rsdp(&image), Err(RsdpError::InvalidLength));
+    }
+
+    #[test]
+    fn rejects_truncated_extended_revision() {
+        let mut image = valid_v2();
+        image.truncate(24);
+        assert_eq!(parse_rsdp(&image), Err(RsdpError::Truncated));
+    }
+}
