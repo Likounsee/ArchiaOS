@@ -40,8 +40,10 @@ pub extern "C" fn rust_kernel_main(info:*const BootInfo)->!{
   _=>{let _=writeln!(serial,"ArchiaOS UEFI test kernel: UEFI memory map rejected");halt();}
  };
  if memory_map.is_empty(){let _=writeln!(serial,"ArchiaOS UEFI test kernel: memory map is empty");halt();}
+ let conventional_pages=match memory_map.conventional_page_count(){Ok(pages) if pages>0=>pages,_=>{let _=writeln!(serial,"ArchiaOS UEFI test kernel: conventional memory validation failed");halt();}};
  let _=writeln!(serial,"ArchiaOS UEFI test kernel: BootInfo validated");
  let _=writeln!(serial,"ArchiaOS UEFI test kernel: memory map descriptors validated: {}",memory_map.len());
+ let _=writeln!(serial,"ArchiaOS UEFI test kernel: conventional memory pages: {}",conventional_pages);
  let _=writeln!(serial,"ArchiaOS UEFI test kernel: identity-mapped handoff passed");
  halt()
 }
