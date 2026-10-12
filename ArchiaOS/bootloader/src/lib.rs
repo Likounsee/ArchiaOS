@@ -740,26 +740,20 @@ pub mod device_tree {
                     let data_end = offset.checked_add(length).ok_or(FdtError::InvalidStructure)?;
                     let value = block.get(offset..data_end).ok_or(FdtError::InvalidStructure)?;
                     let index = depth - 1;
-                    match name {
-                        b"#address-cells" => {
-                            if value.len() != 4 {
-                                return Err(FdtError::InvalidStructure);
-                            }
-                            address_cells[index] = be32(value, 0)?;
+                    if name == &b"#address-cells"[..] {
+                        if value.len() != 4 {
+                            return Err(FdtError::InvalidStructure);
                         }
-                        b"#size-cells" => {
-                            if value.len() != 4 {
-                                return Err(FdtError::InvalidStructure);
-                            }
-                            size_cells[index] = be32(value, 0)?;
+                        address_cells[index] = be32(value, 0)?;
+                    } else if name == &b"#size-cells"[..] {
+                        if value.len() != 4 {
+                            return Err(FdtError::InvalidStructure);
                         }
-                        b"compatible" => {
-                            compatible_match[index] |= compatible_list_contains(value, compatible)?;
-                        }
-                        b"reg" => {
-                            reg_values[index] = Some(value);
-                        }
-                        _ => {}
+                        size_cells[index] = be32(value, 0)?;
+                    } else if name == &b"compatible"[..] {
+                        compatible_match[index] |= compatible_list_contains(value, compatible)?;
+                    } else if name == &b"reg"[..] {
+                        reg_values[index] = Some(value);
                     }
                     offset = align4(data_end)?;
                     if offset > block.len() {
