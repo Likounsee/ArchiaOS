@@ -33,6 +33,7 @@ pub mod memory_map {
     pub const MIN_DESCRIPTOR_SIZE: usize = 40;
     pub const MAX_DESCRIPTOR_SIZE: usize = 4096;
     pub const MAX_DESCRIPTOR_COUNT: usize = 65_536;
+    pub const MAX_UNSORTED_DESCRIPTOR_COUNT: usize = 4096;
     pub const EFI_CONVENTIONAL_MEMORY: u32 = 7;
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -41,6 +42,8 @@ pub mod memory_map {
         InvalidDescriptorSize,
         SizeNotMultipleOfStride,
         TooManyDescriptors,
+        UnsupportedOrdering,
+        OverlappingRanges,
         EntryOutOfBounds,
         TruncatedEntry,
         UnalignedPhysicalAddress,
@@ -119,6 +122,44 @@ pub mod memory_map {
             let map = Self { bytes, descriptor_size, count };
             for index in 0..count {
                 map.entry(index)?;
+            }
+
+            // Fast path for the common sorted map: validate each pair of adjacent
+            // ranges. GetMemoryMap ordering is not assumed for other implementations,
+            // so bounded-size unsorted maps receive a complete pairwise check instead.
+            let mut previous: Option<MemoryDescriptor> = None;
+            let mut sorted = true;
+            for index in 0..count {
+                let current = map.entry(index)?;
+                if let Some(prior) = previous {
+                    if current.physical_start < prior.physical_start {
+                        sorted = false;
+                        break;
+                    }
+                    if current.physical_start < prior.physical_end()? {
+                        return Err(MemoryMapError::OverlappingRanges);
+                    }
+                }
+                previous = Some(current);
+            }
+
+            if !sorted {
+                if count > MAX_UNSORTED_DESCRIPTOR_COUNT {
+                    return Err(MemoryMapError::UnsupportedOrdering);
+                }
+                for left_index in 0..count {
+                    let left = map.entry(left_index)?;
+                    let left_end = left.physical_end()?;
+                    for right_index in (left_index + 1)..count {
+                        let right = map.entry(right_index)?;
+                        let right_end = right.physical_end()?;
+                        if left.physical_start < right_end
+                            && right.physical_start < left_end
+                        {
+                            return Err(MemoryMapError::OverlappingRanges);
+                        }
+                    }
+                }
             }
             Ok(map)
         }
@@ -1586,15 +1627,21 @@ mod memory_map_tests {
     }
 
     #[test]
-    fn rejects_conventional_page_count_overflow() {
-        let pages = u64::MAX / 4096 - 1;
-        let entry = descriptor(EFI_CONVENTIONAL_MEMORY, 0x1000, pages);
-        let mut bytes = Vec::new();
-        for _ in 0..4097 {
-            bytes.extend_from_slice(&entry);
-        }
-        let map = UefiMemoryMap::parse(&bytes, 48).expect("each individual range is valid");
-        assert_eq!(map.conventional_page_count(), Err(MemoryMapError::RangeOverflow));
+    fn rejects_overlapping_memory_ranges() {
+        let mut bytes = descriptor(EFI_CONVENTIONAL_MEMORY, 0x1000, 8);
+        bytes.extend_from_slice(&descriptor(EFI_CONVENTIONAL_MEMORY, 0x5000, 2));
+        assert_eq!(
+            UefiMemoryMap::parse(&bytes, 48).err(),
+            Some(MemoryMapError::OverlappingRanges)
+        );
+    }
+
+    #[test]
+    fn accepts_unsorted_non_overlapping_memory_ranges() {
+        let mut bytes = descriptor(EFI_CONVENTIONAL_MEMORY, 0x9000, 3);
+        bytes.extend_from_slice(&descriptor(EFI_CONVENTIONAL_MEMORY, 0x1000, 8));
+        let map = UefiMemoryMap::parse(&bytes, 48).expect("valid unsorted map");
+        assert_eq!(map.conventional_page_count(), Ok(11));
     }
 
     #[test]
