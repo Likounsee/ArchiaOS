@@ -47,9 +47,9 @@ Ce prototype cible la machine `virt` de QEMU et sa console PL011. Il n'est pas e
 
 ## Documentation
 
-- [Roadmap P0–P7](ArchiaOS/docs/ROADMAP.md)
-- [Architecture du bootloader et préparation ARM64](ArchiaOS/docs/BOOT_AND_ARCHITECTURES.md)
-- [Prototype UEFI](ArchiaOS/bootloader/README.md)
-- [Prototype noyau AArch64](ArchiaOS/kernel/aarch64/README.md)
+- [Roadmap P0–P7](docs/ROADMAP.md)
+- [Architecture du bootloader et préparation ARM64](docs/BOOT_AND_ARCHITECTURES.md)
+- [Prototype UEFI](bootloader/README.md)
+- [Prototype noyau AArch64](kernel/aarch64/README.md)
 
 Le développement se fait exclusivement sur la branche **`ArchiaOS`** ; `main` ne doit pas être modifiée.
