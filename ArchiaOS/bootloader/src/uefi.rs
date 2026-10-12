@@ -1292,12 +1292,12 @@ unsafe fn jump_to_kernel(entry: u64, info: *const BootInfo, page_table_root: u64
             "mov rax, r8",
             "2:",
             "jmp rax",
-            inout("rax") entry => _,
+            in("rax") entry,
             in("rdi") info,
-            inout("rdx") page_table_root => _,
-            out("rcx") _,
-            out("r8") _,
-            out("r9") _,
+            in("rdx") page_table_root,
+            // This assembly never returns to Rust. The register clobbers are
+            // therefore immaterial to Rust's caller, while RAX/RDX inputs are
+            // explicitly copied to R8/R9 before RDMSR overwrites them.
             options(noreturn)
         )
     }
