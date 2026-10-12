@@ -1,22 +1,44 @@
-# ArchiaOS — documentation technique
+# ArchiaOS
+
+**ArchiaOS est un système d'exploitation expérimental en cours de construction.** Le noyau x86-64 Rust `no_std` démarre actuellement avec Limine et est testé sous QEMU par GitHub Actions. Le remplacement par un bootloader UEFI développé par ArchiaOS a commencé, mais n'est pas encore le chemin de démarrage par défaut.
 
 ## État actuel
 
-Le noyau x86-64 expérimental est chargé au format ELF64 par Limine. Il valide la carte mémoire puis initialise un allocateur bitmap physique pour les frames sous 4 Gio. Un bitmap marque les frames gérées, un second les frames libres, ce qui empêche de libérer une adresse réservée arbitraire. Le smoke test QEMU vérifie 130 allocations distinctes sur plusieurs mots bitmap, l’alignement, le compteur libre, la libération, les adresses invalides et le double-free.
+- **Démarrage x86-64 existant :** l'ISO Limine BIOS/UEFI se construit et le noyau atteint son entrée Rust en mode long x86-64 ; la sortie COM1 est vérifiée par le smoke test QEMU.
+- **Bootloader ArchiaOS :** premier crate Rust `no_std` sans dépendance externe, avec entrée UEFI et diagnostic sur la console du firmware. Il ne charge pas encore le noyau et ne remplace pas Limine.
+- **Préparation ARM64 :** la CI compile l'application UEFI du bootloader pour `x86_64-unknown-uefi` et `aarch64-unknown-uefi`. Cela ne signifie pas encore que le noyau est compatible ARM64.
+- **Carte mémoire :** la réponse Limine est contrôlée pour les pointeurs, le nombre d'entrées, les longueurs nulles et les débordements.
+- **Mémoire physique :** allocateur bitmap expérimental pour les pages sous 4 Gio. Le test QEMU confirme l'allocation de 130 pages distinctes, traversant plusieurs mots bitmap, l'alignement, la baisse puis le rétablissement du compteur, le rejet des libérations invalides et le rejet du double-free.
+- **Langages :** Rust pour le noyau et le bootloader ; un petit stub assembleur aligne la pile à l'entrée x86-64. C/C++ ne sont pas ajoutés sans besoin démontré.
+- **Build :** Cargo, linker ELF avec segments virtuels hauts, génération d'ISO Limine, vérification des segments ELF et CI de démarrage.
 
-## Prérequis et commandes
+Le noyau ne fournit pas encore d'IDT, de gestionnaire d'exceptions, d'ordonnanceur, de processus isolés, d'appels système, de stockage, de système de fichiers, de réseau ni d'interface graphique. L'allocateur est limité à 4 Gio, initialisé une seule fois et non synchronisé pour SMP ; il reste expérimental. Le noyau actuel est spécifique à x86-64 et n'est pas encore démarrable sur ARM64.
 
-Prérequis : Rust stable, cible `x86_64-unknown-none`, `curl`, `sha256sum`, `make`, `xorriso` et QEMU x86-64.
+## Compilation du noyau x86-64 existant
+
+Prérequis : Rust stable, cible `x86_64-unknown-none`, `curl`, `make`, `xorriso` et QEMU x86-64. Depuis le dossier `ArchiaOS` :
 
 ```sh
-rustup target add x86_64-unknown-none
 cargo build --release
 scripts/make-iso.sh
 qemu-system-x86_64 -cdrom build/archiaos.iso -boot d -serial stdio -display none -no-reboot -no-shutdown
 ```
 
-La CI vérifie les adresses virtuelles ELF, crée l’ISO et démarre QEMU. Elle exige les messages d’entrée noyau, de validation de carte mémoire et de réussite de l’auto-test PMM.
+## Compilation du prototype de bootloader UEFI
 
-## Limites
+Depuis le dossier `ArchiaOS` :
 
-L’allocateur est limité aux 4 premiers Gio, initialisé une seule fois et non synchronisé pour SMP. Les plages du noyau et du bootloader sont exclues via la carte mémoire Limine, mais les réservations doivent encore être auditées avant un usage général. Aucun IDT, gestionnaire d’exceptions, ordonnanceur, processus, syscall, stockage ou interface graphique n’est encore implémenté.
+```sh
+cargo build --manifest-path bootloader/Cargo.toml --release --target x86_64-unknown-uefi
+cargo build --manifest-path bootloader/Cargo.toml --release --target aarch64-unknown-uefi
+```
+
+Le prototype affiche un diagnostic puis rend la main au firmware. Il ne doit pas être utilisé comme chargeur du noyau tant que la lecture du noyau, la validation ELF, le transfert mémoire et les tests de démarrage ne sont pas implémentés.
+
+## Documentation
+
+- [Roadmap P0–P7](ArchiaOS/docs/ROADMAP.md)
+- [Architecture du bootloader et préparation ARM64](ArchiaOS/docs/BOOT_AND_ARCHITECTURES.md)
+- [Prototype UEFI](ArchiaOS/bootloader/README.md)
+
+Le développement se fait exclusivement sur la branche **`ArchiaOS`** ; `main` ne doit pas être modifiée.
