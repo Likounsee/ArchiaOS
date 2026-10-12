@@ -5,7 +5,7 @@
 ## État actuel
 
 - **Démarrage x86-64 existant :** l'ISO Limine BIOS/UEFI se construit et le noyau atteint son entrée Rust en mode long x86-64 ; la sortie COM1 est vérifiée par le smoke test QEMU.
-- **Bootloader ArchiaOS :** premier crate Rust `no_std` sans dépendance externe, avec entrée UEFI et diagnostic sur la console du firmware. Il ne charge pas encore le noyau et ne remplace pas Limine.
+- **Bootloader ArchiaOS :** crate Rust `no_std` sans dépendance externe ; entrée UEFI, diagnostics et lecture de `\\EFI\\ArchiaOS\\kernel.elf` via les protocoles UEFI. Le parseur ELF64 valide maintenant le fichier, mais les segments ne sont pas encore chargés en mémoire et le noyau n'est pas encore lancé par ce bootloader.
 - **Préparation ARM64 :** la CI compile l'application UEFI du bootloader pour `x86_64-unknown-uefi` et `aarch64-unknown-uefi`, et compile un prototype noyau AArch64 distinct. Le noyau principal n'est pas encore compatible ARM64.
 - **Carte mémoire :** la réponse Limine est contrôlée pour les pointeurs, le nombre d'entrées, les longueurs nulles et les débordements.
 - **Mémoire physique :** allocateur bitmap expérimental pour les pages sous 4 Gio. Le test QEMU confirme l'allocation de 130 pages distinctes, traversant plusieurs mots bitmap, l'alignement, la baisse puis le rétablissement du compteur, le rejet des libérations invalides et le rejet du double-free.
@@ -33,7 +33,7 @@ cargo build --manifest-path bootloader/Cargo.toml --release --target x86_64-unkn
 cargo build --manifest-path bootloader/Cargo.toml --release --target aarch64-unknown-uefi
 ```
 
-Le prototype affiche un diagnostic puis rend la main au firmware. Il ne doit pas être utilisé comme chargeur du noyau tant que la lecture du noyau, la validation ELF, le transfert mémoire et les tests de démarrage ne sont pas implémentés.
+Le prototype lit et valide le fichier du noyau puis rend la main au firmware. Le chargement des segments ELF, les tables de pages, `ExitBootServices` et le transfert de contrôle ne sont pas encore implémentés ; Limine reste le chemin de démarrage normal.
 
 ## Compilation du prototype noyau AArch64
 
