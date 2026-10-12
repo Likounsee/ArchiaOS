@@ -135,6 +135,8 @@ jobs:
           readelf -h "$image"
           readelf -lW "$image"
           readelf -lW "$image" | awk '$1 == "LOAD" && $3 ~ /^0xffffffff/ { high = 1 } END { exit !high }'
+      - name: Build production kernel with custom UEFI entry
+        run: cargo build --manifest-path Cargo.toml --release --features uefi-boot --target x86_64-unknown-none --target-dir target/production-kernel-uefi
       - name: Build first-party UEFI loader
         run: cargo build --manifest-path bootloader/Cargo.toml --release --target x86_64-unknown-uefi --target-dir target
       - name: Prepare identity and high-half UEFI FAT disk images
@@ -144,9 +146,11 @@ jobs:
           loader="target/x86_64-unknown-uefi/release/archiaos-bootloader.efi"
           identity_kernel="target/boot-test-x86_64/x86_64-unknown-none/release/archiaos-boot-handoff-test"
           highhalf_kernel="target/boot-test-highhalf-x86_64/x86_64-unknown-none/release/archiaos-boot-highhalf-test"
+          production_kernel="target/production-kernel-uefi/x86_64-unknown-none/release/archiaos-kernel"
           test -s "$loader"
           test -s "$identity_kernel"
           test -s "$highhalf_kernel"
+          test -s "$production_kernel"
           make_efi_image() {
             image="$1"
             kernel="$2"
@@ -161,7 +165,8 @@ jobs:
           }
           make_efi_image "$RUNNER_TEMP/archiaos-uefi.img" "$identity_kernel"
           make_efi_image "$RUNNER_TEMP/archiaos-highhalf-uefi.img" "$highhalf_kernel"
-          echo "UEFI images prepared for identity and high-half kernels"
+          make_efi_image "$RUNNER_TEMP/archiaos-production-uefi.img" "$production_kernel"
+          echo "UEFI images prepared for identity, high-half, and production kernels"
       - name: Boot custom loader with OVMF
         shell: bash
         run: |
@@ -221,6 +226,25 @@ jobs:
           grep -Fq "ArchiaOS high-half test kernel: entry reached" "$RUNNER_TEMP/archiaos-highhalf-uefi.log"
           grep -Fq "ArchiaOS high-half test kernel: executing at" "$RUNNER_TEMP/archiaos-highhalf-uefi.log"
           grep -Fq "ArchiaOS high-half test kernel: high-half page-table handoff passed" "$RUNNER_TEMP/archiaos-highhalf-uefi.log"
+
+          # Finally boot the actual kernel crate through the custom loader. This
+          # build uses the versioned BootInfo ABI instead of the Limine response.
+          cp "$firmware_vars" "$RUNNER_TEMP/OVMF_VARS_PRODUCTION.fd"
+          set +e
+          timeout 25s qemu-system-x86_64 -machine q35 -m 512M -drive "if=pflash,format=raw,readonly=on,file=$firmware_code" -drive "if=pflash,format=raw,file=$RUNNER_TEMP/OVMF_VARS_PRODUCTION.fd" -drive "file=$RUNNER_TEMP/archiaos-production-uefi.img,format=raw,if=ide" -boot order=c -display none -serial stdio -monitor none -no-reboot -no-shutdown > "$RUNNER_TEMP/archiaos-production-uefi.log" 2>&1
+          production_qemu_status=$?
+          set -e
+          cat "$RUNNER_TEMP/archiaos-production-uefi.log"
+          if [[ "$production_qemu_status" -ne 0 && "$production_qemu_status" -ne 124 ]]; then
+            echo "QEMU production-kernel UEFI exited unexpectedly with status $production_qemu_status"
+            exit 1
+          fi
+          grep -Fq "ArchiaOS Bootloader: loading high-half ELF segments" "$RUNNER_TEMP/archiaos-production-uefi.log"
+          grep -Fq "ArchiaOS Bootloader: exiting UEFI boot services" "$RUNNER_TEMP/archiaos-production-uefi.log"
+          grep -Fq "ArchiaOS: custom UEFI bootloader entered production kernel" "$RUNNER_TEMP/archiaos-production-uefi.log"
+          grep -Fq "ArchiaOS: UEFI BootInfo validated" "$RUNNER_TEMP/archiaos-production-uefi.log"
+          grep -Fq "ArchiaOS: UEFI PMM allocation/free self-test passed" "$RUNNER_TEMP/archiaos-production-uefi.log"
+          grep -Fq "ArchiaOS: Limine-independent kernel entry validated" "$RUNNER_TEMP/archiaos-production-uefi.log"
 
   bootloader-aarch64-uefi-smoke:
     name: Boot custom UEFI loader and AArch64 kernel under AAVMF
