@@ -287,6 +287,29 @@ fn physical_page_end(s:&archiaos_bootloader::elf::LoadSegment)->Result<u64,Statu
     let pages=s.memory_size.checked_add(PAGE_SIZE-1).ok_or(EFI_BAD_BUFFER_SIZE)?/PAGE_SIZE;
     s.physical_address.checked_add(pages.checked_mul(PAGE_SIZE).ok_or(EFI_BAD_BUFFER_SIZE)?).ok_or(EFI_BAD_BUFFER_SIZE)
 }
+
+#[cfg(target_arch="aarch64")]
+unsafe fn synchronize_instruction_cache(start:u64,size:u64) {
+    use core::arch::asm;
+    if size==0 { return; }
+    let end=match start.checked_add(size) {Some(v)=>v,None=>return};
+    let ctr:u64;
+    unsafe { asm!("mrs {value}, ctr_el0",value=out(reg) ctr,options(nomem,nostack,preserves_flags)); }
+    let dcache_line=4u64<<((ctr>>16)&0xf);
+    let icache_line=4u64<<(ctr&0xf);
+    let mut address=start&!(dcache_line-1);
+    while address<end {
+        unsafe { asm!("dc cvau, {address}",address=in(reg) address,options(nostack)); }
+        address=match address.checked_add(dcache_line) {Some(v)=>v,None=>break};
+    }
+    unsafe { asm!("dsb ish",options(nostack,preserves_flags)); }
+    address=start&!(icache_line-1);
+    while address<end {
+        unsafe { asm!("ic ivau, {address}",address=in(reg) address,options(nostack)); }
+        address=match address.checked_add(icache_line) {Some(v)=>v,None=>break};
+    }
+    unsafe { asm!("dsb ish", "isb", options(nostack,preserves_flags)); }
+}
 unsafe fn load_identity_segments(image:&[u8],elf:&ElfFile,bs:*mut BootServices)->Result<u64,Status> {
     let mut load_count=0usize; let mut total=0u64;
     // Validate every segment address and overlap before any destination write.
@@ -332,6 +355,12 @@ unsafe fn load_identity_segments(image:&[u8],elf:&ElfFile,bs:*mut BootServices)-
         unsafe {
             ptr::copy_nonoverlapping(image.as_ptr().add(fo),base as *mut u8,fs);
             if ms>fs {ptr::write_bytes((base as *mut u8).add(fs),0,ms-fs);}
+        }
+        #[cfg(target_arch="aarch64")]
+        if s.flags&ELF_PF_X!=0 {
+            // The AArch64 I-cache is not guaranteed coherent with writes through
+            // the D-cache, so synchronize executable segments before branching.
+            unsafe { synchronize_instruction_cache(base,s.memory_size); }
         }
     }
     Ok(elf.entry())
