@@ -966,7 +966,7 @@ mod device_tree_tests {
         put_be32(&mut image, 76, 0x1234_5678);
         put_be32(&mut image, 80, 2); // FDT_END_NODE
         put_be32(&mut image, 84, 9); // FDT_END
-        image[88..93].copy_from_slice(b"test\\0");
+        image[88..93].copy_from_slice(b"test\0");
         image
     }
 
