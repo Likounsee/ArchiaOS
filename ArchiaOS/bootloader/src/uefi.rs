@@ -1632,7 +1632,7 @@ fn audit_platform_table_ranges(
         }
         if let Some((rsdp_start, rsdp_length)) = validated_rsdp_range {
             if physical_ranges_overlap(device_tree, length, rsdp_start, rsdp_length) {
-                return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI RSDP overlaps the Device Tree blob.\\r\\n\\0"));
+                return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI RSDP overlaps the Device Tree blob.\r\n\0"));
             }
         }
         #[cfg(target_arch = "x86_64")]
