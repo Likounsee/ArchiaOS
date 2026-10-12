@@ -1,22 +1,22 @@
 # ArchiaOS
 
-**ArchiaOS est un système d'exploitation expérimental en cours de construction.** Le noyau x86-64 Rust `no_std` démarre actuellement avec Limine et est testé sous QEMU. Le développement d'un bootloader UEFI maison et la préparation d'ARM64 ont commencé sur la branche `ArchiaOS`.
+**ArchiaOS est un système d'exploitation expérimental en cours de construction.** Le noyau x86-64 de production démarre encore avec Limine. Le projet développe son propre bootloader UEFI et prépare l'exécution ARM64 dans le même dépôt, sur la branche `ArchiaOS`.
 
-## État du projet
+## État du développement
 
-- Noyau x86-64 : entrée, sortie série, validation de la carte mémoire et allocateur bitmap physique expérimental testés en QEMU.
-- Bootloader maison : prototype Rust UEFI sans dépendance externe, qui affiche un diagnostic. Il ne charge pas encore le noyau et ne remplace pas Limine.
-- ARM64 : prototype de noyau AArch64 distinct avec entrée assembleur et console PL011 pour QEMU virt ; la CI vérifie sa compilation, mais le démarrage en exécution reste à valider.
-- CI : tests de démarrage x86-64 existants et compilations des cibles UEFI x86-64/AArch64 et du prototype noyau AArch64.
+- **Bootloader maison :** lecture du noyau depuis la partition EFI, validation ELF64, allocation et chargement de segments identité sous 4 Gio, initialisation du BSS, contrat BootInfo versionné, collecte de la carte mémoire finale et sortie des services UEFI.
+- **Test x86-64 :** une image de test indépendante démarre sous OVMF/QEMU et vérifie le handoff. Le noyau de production, lié en high-half et dépendant de Limine, n'est pas encore basculé vers ce chargeur.
+- **ARM64/AArch64 :** prototype du noyau avec pile dédiée, diagnostic PL011, validation BootInfo et lecture des descripteurs mémoire. Le chargeur effectue désormais le chargement identité, la maintenance I-cache et le transfert d'exécution pour la cible AArch64 ; un test AAVMF/QEMU complet est ajouté à la CI et reste à confirmer.
+- **Firmware :** le firmware UEFI standard de la machine reste utilisé. Aucun firmware ou bootloader tiers n'est prévu dans la chaîne finale ArchiaOS.
 
-Le firmware UEFI standard de la machine reste utilisé. La compilation du prototype ARM64 ne signifie pas encore que l'ensemble du noyau ArchiaOS est compatible avec ARM64. Le bootloader maison ne deviendra le chemin par défaut qu'après un chargement de noyau validé de bout en bout.
+La compilation de l'application UEFI AArch64 ou du noyau ne suffit pas à démontrer la compatibilité de l'ensemble de l'OS. Il faut encore valider le démarrage complet en CI, puis ajouter les exceptions, la MMU, les timers, les interruptions et les pilotes ARM64. Le stockage, la VFS et l'intégration OpenFS sont des étapes ultérieures.
 
 ## Documentation
 
 - [Documentation technique et commandes de build](ArchiaOS/README.md)
-- [Roadmap et critères](ArchiaOS/docs/ROADMAP.md)
-- [Architecture bootloader et ARM64](ArchiaOS/docs/BOOT_AND_ARCHITECTURES.md)
-- [Prototype de bootloader UEFI](ArchiaOS/bootloader/README.md)
+- [Roadmap et critères d'acceptation](ArchiaOS/docs/ROADMAP.md)
+- [Architecture du bootloader et ARM64](ArchiaOS/docs/BOOT_AND_ARCHITECTURES.md)
+- [Prototype UEFI](ArchiaOS/bootloader/README.md)
 - [Prototype noyau AArch64](ArchiaOS/kernel/aarch64/README.md)
 
 Le développement se fait exclusivement sur la branche **`ArchiaOS`** ; `main` ne doit pas être modifiée.
