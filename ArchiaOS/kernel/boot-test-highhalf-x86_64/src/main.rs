@@ -10,7 +10,6 @@ use core::panic::PanicInfo;
 const COM1: u16 = 0x3f8;
 const MIN_DESC: u64 = 40;
 const HIGH_HALF_BASE: u64 = 0xffff_ffff_8000_0000;
-const KERNEL_PHYSICAL_BASE: u64 = 0x0020_0000;
 const PAGE_PRESENT: u64 = 1;
 const PAGE_WRITABLE: u64 = 1 << 1;
 const PAGE_LARGE: u64 = 1 << 7;
@@ -221,10 +220,11 @@ pub extern "C" fn rust_kernel_main(info: *const BootInfo) -> ! {
         halt();
     }
 
+    // The test linker defines p_paddr = p_vaddr - HIGH_HALF_BASE, so the
+    // identity alias uses the same high-half offset as the linked virtual image.
     let text_physical = current_rip
         .checked_sub(HIGH_HALF_BASE)
-        .and_then(|offset| offset.checked_add(KERNEL_PHYSICAL_BASE))
-        .expect("linker physical address calculation overflow");
+        .expect("linker physical address calculation underflow");
     let identity_pte = match lookup_leaf_pte(text_physical) {
         Some(entry) => entry,
         None => {
