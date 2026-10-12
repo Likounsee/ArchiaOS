@@ -3,7 +3,7 @@ QEMU ?= qemu-system-x86_64
 KERNEL := target/x86_64-unknown-none/release/archiaos-kernel
 ISO := build/archiaos.iso
 
-.PHONY: build iso run boot-local clean
+.PHONY: build iso run boot-local uefi-files clean
 build:
 	$(CARGO) build --release
 
@@ -15,6 +15,10 @@ boot-local:
 	./scripts/boot-local-uefi.sh
 
 run: boot-local
+
+# Produce EFI/BOOT/BOOTX64.EFI and the required ArchiaOS kernel as files.
+uefi-files:
+	./scripts/build-uefi-files.sh
 
 clean:
 	$(CARGO) clean
