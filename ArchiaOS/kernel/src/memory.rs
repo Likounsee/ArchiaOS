@@ -243,15 +243,22 @@ fn first_free_frame(
     frame_limit: u64,
 ) -> Option<u64> {
     let limit = frame_limit.min((free.len().min(managed.len()) as u64).saturating_mul(64));
-    let mut frame = first_frame;
-    while frame < limit {
-        let word_index = (frame / 64) as usize;
-        let bit = 1u64 << (frame % 64);
-        let available = free[word_index] & managed[word_index] & bit;
-        if available != 0 {
-            return Some(frame);
+    if first_frame >= limit {
+        return None;
+    }
+    let first_word = (first_frame / 64) as usize;
+    let last_word = ((limit - 1) / 64) as usize;
+    for word_index in first_word..=last_word {
+        let mut available = free[word_index] & managed[word_index];
+        if word_index == first_word {
+            available &= u64::MAX << (first_frame % 64);
         }
-        frame += 1;
+        if word_index == last_word && limit % 64 != 0 {
+            available &= (1u64 << (limit % 64)) - 1;
+        }
+        if available != 0 {
+            return Some((word_index as u64) * 64 + available.trailing_zeros() as u64);
+        }
     }
     None
 }
