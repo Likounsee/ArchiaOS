@@ -1246,6 +1246,27 @@ pub unsafe fn transfer_to_kernel(
     let info_address = info_allocation.pointer.cast::<BootInfo>();
     let map_address = map_allocation.pointer;
     #[cfg(target_arch = "x86_64")]
+    if image_uses_highhalf(_elf) {
+        let info_start = info_address as u64;
+        let info_end = info_start
+            .checked_add(core::mem::size_of::<BootInfo>() as u64)
+            .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: BootInfo physical range overflow.\r\n\0"))?;
+        let map_start = map_address as u64;
+        let map_end = map_start
+            .checked_add(MAX_MEMORY_MAP_SIZE as u64)
+            .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: memory-map buffer physical range overflow.\r\n\0"))?;
+        // The current x86-64 high-half page tables deliberately identity-map
+        // RAM only below 4 GiB. Fail explicitly instead of transferring pointers
+        // that the production kernel could not dereference after the CR3 switch.
+        if info_start < MIN_KERNEL_PHYSICAL_ADDRESS
+            || info_end > MAX_KERNEL_PHYSICAL_ADDRESS
+            || map_start < MIN_KERNEL_PHYSICAL_ADDRESS
+            || map_end > MAX_KERNEL_PHYSICAL_ADDRESS
+        {
+            return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: BootInfo or final memory-map buffer lies outside the identity-mapped 1 MiB..4 GiB window.\r\n\0"));
+        }
+    }
+    #[cfg(target_arch = "x86_64")]
     let loader_image_range = if image_uses_highhalf(_elf) {
         Some(unsafe { loaded_image_physical_range(image_handle, system_table)? })
     } else {
