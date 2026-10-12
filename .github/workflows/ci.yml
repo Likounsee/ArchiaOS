@@ -300,4 +300,4 @@ jobs:
           grep -Fq "ArchiaOS AArch64: kernel entry reached" "$RUNNER_TEMP/archiaos-aarch64-uefi.log"
           grep -Fq "ArchiaOS AArch64: BootInfo validated" "$RUNNER_TEMP/archiaos-aarch64-uefi.log"
           grep -Fq "ArchiaOS AArch64: Device Tree header validated" "$RUNNER_TEMP/archiaos-aarch64-uefi.log"
-          grep -Fq "ArchiaOS AArch64: UEFI memory-map descriptors readable" "$RUNNER_TEMP/archiaos-aarch64-uefi.log"
+          grep -Fq "ArchiaOS AArch64: UEFI memory-map descriptors validated" "$RUNNER_TEMP/archiaos-aarch64-uefi.log"
