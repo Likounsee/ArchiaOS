@@ -137,22 +137,27 @@ fn halt_forever() -> ! {
 // dark background and a bright cyan band so a successful kernel handoff is
 // visible on the physical monitor (kernel diagnostics continue on COM1).
 fn show_framebuffer_boot_status(info: &archiaos_bootloader::bootinfo::BootInfo) {
-    const MAX_PHYSICAL_ADDRESS: u64 = 1u64 << 32;
+    // The bootloader now installs an uncached identity mapping for GOP memory
+    // anywhere in the low canonical 512 GiB region, not just below 4 GiB.
+    const MAX_LOW_CANONICAL_ADDRESS: u64 = 1u64 << 39;
     if info.framebuffer_base == 0 || info.framebuffer_size < 4 {
         return;
     }
     let Some(end) = info.framebuffer_base.checked_add(info.framebuffer_size) else {
         return;
     };
-    if end > MAX_PHYSICAL_ADDRESS || info.framebuffer_base % 4 != 0 {
+    if end > MAX_LOW_CANONICAL_ADDRESS || info.framebuffer_base % 4 != 0 {
         return;
     }
-    let pixels = (info.framebuffer_size / 4) as usize;
+    let pixels = match usize::try_from(info.framebuffer_size / 4) {
+        Ok(value) => value,
+        Err(_) => return,
+    };
     let framebuffer = info.framebuffer_base as *mut u32;
     let band_pixels = pixels.min(32_768);
+    // Deliberately fill the reported GOP range: this is an early, allocation-free
+    // probe and the UEFI framebuffer is already mapped uncached by the loader.
     for index in 0..pixels {
-        // GOP pixel modes use 32-bit pixels. These colors remain visible in
-        // both common RGB/BGR channel orderings.
         let color = if index < band_pixels { 0x00_50_D8_F0 } else { 0x00_10_18_28 };
         unsafe { ptr::write_volatile(framebuffer.add(index), color) };
     }
