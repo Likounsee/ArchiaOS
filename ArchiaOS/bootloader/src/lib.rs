@@ -3,6 +3,30 @@
 #[cfg(test)]
 extern crate std;
 
+/// Versioned x86-64/AArch64 boot contract passed in the first argument register.
+/// The memory map remains owned by the bootloader allocation and is not copied.
+pub mod bootinfo {
+    pub const BOOT_INFO_MAGIC: u64 = 0x4942_4149_4843_5241; // "ARCHIABI"
+    pub const BOOT_INFO_VERSION: u32 = 1;
+
+    #[repr(C)]
+    pub struct BootInfo {
+        pub magic: u64,
+        pub version: u32,
+        pub struct_size: u32,
+        pub kernel_entry: u64,
+        pub memory_map: *const u8,
+        pub memory_map_size: u64,
+        pub memory_map_descriptor_size: u64,
+        pub memory_map_descriptor_version: u32,
+        pub flags: u32,
+        pub acpi_rsdp: u64,
+        pub device_tree: u64,
+        pub framebuffer_base: u64,
+        pub framebuffer_size: u64,
+    }
+}
+
 // Defensive, allocation-free ELF64 validation for the first-party loader.
 // Parsing is separate from firmware I/O so malformed-image cases can be tested
 // on the host before any physical memory is allocated.
@@ -57,6 +81,7 @@ pub mod elf {
         pub flags: u32,
         pub file_offset: u64,
         pub virtual_address: u64,
+        pub physical_address: u64,
         pub file_size: u64,
         pub memory_size: u64,
         pub alignment: u64,
@@ -68,6 +93,7 @@ pub mod elf {
         flags: u32,
         offset: u64,
         virtual_address: u64,
+        physical_address: u64,
         file_size: u64,
         memory_size: u64,
         alignment: u64,
@@ -108,7 +134,7 @@ pub mod elf {
             flags: u32_at(image, offset.checked_add(4).ok_or(ElfError::IntegerOverflow)?)?,
             offset: u64_at(image, offset.checked_add(8).ok_or(ElfError::IntegerOverflow)?)?,
             virtual_address: u64_at(image, offset.checked_add(16).ok_or(ElfError::IntegerOverflow)?)?,
-            // p_paddr at +24 is intentionally ignored: the loader chooses physical pages.
+            physical_address: u64_at(image, offset.checked_add(24).ok_or(ElfError::IntegerOverflow)?)?,
             file_size: u64_at(image, offset.checked_add(32).ok_or(ElfError::IntegerOverflow)?)?,
             memory_size: u64_at(image, offset.checked_add(40).ok_or(ElfError::IntegerOverflow)?)?,
             alignment: u64_at(image, offset.checked_add(48).ok_or(ElfError::IntegerOverflow)?)?,
@@ -139,6 +165,7 @@ pub mod elf {
             flags: header.flags,
             file_offset: header.offset,
             virtual_address: header.virtual_address,
+            physical_address: header.physical_address,
             file_size: header.file_size,
             memory_size: header.memory_size,
             alignment: header.alignment,
@@ -316,12 +343,18 @@ mod tests {
     }
 
     #[test]
+    fn boot_info_layout_is_stable() {
+        assert_eq!(core::mem::size_of::<super::super::bootinfo::BootInfo>(), 88);
+    }
+
+    #[test]
     fn accepts_valid_x86_64_image() {
         let image = valid_elf(X86_64);
         let parsed = parse_elf64(&image, X86_64).expect("valid ELF should parse");
         assert_eq!(parsed.entry(), 0x4008_0100);
         let segment = load_segment(&image, &parsed, 0).expect("PT_LOAD should be exposed");
         assert_eq!(segment.file_size, 4);
+        assert_eq!(segment.physical_address, 0x4008_0100);
         assert_eq!(segment.memory_size, 16);
         assert_eq!(segment.flags & 1, 1);
     }
