@@ -143,7 +143,7 @@ global_asm!(
     "and rcx, 0x1f",
     "cmp rcx, 0x3",
     "jne .Larchiaos_write_fault_bad_code",
-    "mov qword ptr [rip + ARCHIAOS_WRITE_FAULT_SEEN], 1",
+    "inc qword ptr [rip + ARCHIAOS_WRITE_FAULT_SEEN]",
     "jmp .Larchiaos_write_fault_resume",
     ".Larchiaos_write_fault_bad_code:",
     "mov qword ptr [rip + ARCHIAOS_PAGE_FAULT_TEST_FAILURE], 1",
@@ -471,14 +471,28 @@ pub extern "C" fn rust_kernel_main(info: *const BootInfo) -> ! {
     }
 
     // Trigger real CPU faults, not just page-table inspection. The handler only
-    // recovers the two expected faults; any other #PF halts the VM for CI.
+    // recovers the expected write-to-code and execute-from-data faults; every
+    // unexpected #PF halts the VM so the CI smoke test fails closed.
+    let marker_virtual = archiaos_test_protected_text_marker as usize as u64;
+    let marker_physical = match marker_virtual.checked_sub(HIGH_HALF_BASE) {
+        Some(address) if address >= 0x10_0000 && address < 0x1_0000_0000 => address,
+        _ => {
+            let _ = writeln!(serial, "ArchiaOS high-half test kernel: protected code physical alias is invalid");
+            halt();
+        }
+    };
     unsafe {
-        archiaos_test_write_readonly(archiaos_test_protected_text_marker as usize as *mut u8);
+        // First access the high-half alias, then the physical identity alias of
+        // the same RX/NX code page. Both writes must raise #PF with P=1 and W=1.
+        archiaos_test_write_readonly(marker_virtual as *mut u8);
+        archiaos_test_write_readonly(marker_physical as *mut u8);
     }
     let write_fault_seen = unsafe {
         core::ptr::read_volatile(core::ptr::addr_of!(ARCHIAOS_WRITE_FAULT_SEEN))
     };
     unsafe {
+        // A write to the RW/NX data page must succeed; instruction fetch from it
+        // must then raise #PF with the instruction-fetch bit set.
         core::ptr::write_volatile(
             core::ptr::addr_of_mut!(PAGE_PERMISSION_TEST_DATA).cast::<u8>(),
             0xc3,
@@ -491,17 +505,18 @@ pub extern "C" fn rust_kernel_main(info: *const BootInfo) -> ! {
     let page_fault_failure = unsafe {
         core::ptr::read_volatile(core::ptr::addr_of!(ARCHIAOS_PAGE_FAULT_TEST_FAILURE))
     };
-    if write_fault_seen != 1 || nx_fault_seen != 1 || page_fault_failure != 0 {
+    if write_fault_seen != 2 || nx_fault_seen != 1 || page_fault_failure != 0 {
         let _ = writeln!(
             serial,
-            "ArchiaOS high-half test kernel: W^X/NX hardware fault test failed (write={}, nx={}, error={})",
+            "ArchiaOS high-half test kernel: W^X/NX hardware fault test failed (writes={}, nx={}, error={})",
             write_fault_seen,
             nx_fault_seen,
             page_fault_failure
         );
         halt();
     }
-    let _ = writeln!(serial, "ArchiaOS high-half test kernel: read-only write fault trapped");
+    let _ = writeln!(serial, "ArchiaOS high-half test kernel: high-half write to code fault trapped");
+    let _ = writeln!(serial, "ArchiaOS high-half test kernel: identity-alias write to code fault trapped");
     let _ = writeln!(serial, "ArchiaOS high-half test kernel: NX instruction-fetch fault trapped");
     let _ = writeln!(serial, "ArchiaOS high-half test kernel: hardware W^X/NX enforcement passed");
     let _ = writeln!(serial, "ArchiaOS high-half test kernel: executing at {:#018x}", current_rip);
