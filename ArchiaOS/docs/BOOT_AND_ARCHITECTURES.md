@@ -45,7 +45,7 @@ Cette structure est une cible de migration, pas une description des dossiers dé
 6. Découverte des régions mémoire et des interruptions/timers, gestion des propriétés `ranges` pour les bus non identitaires et abstractions de plateforme : à implémenter.
 7. Partage progressif du cœur portable et tests de non-régression x86-64/AArch64 : à faire.
 
-La prise en charge ARM64 ne sera annoncée comme validée qu'après un test UEFI AAVMF/QEMU de bout en bout qui confirme l'entrée du noyau, le transfert BootInfo et le Device Tree. La compilation seule ne suffit pas.
+Le transfert UEFI vers un noyau de test ARM64 est désormais validé sous AAVMF/QEMU, avec ACPI SPCR sur cette configuration. Cela confirme le chemin testé, pas la compatibilité de tout le matériel ARM64 : pilotes, MMU, timers, interruptions et variantes de firmware restent à traiter.
 
 ## Conditions d’intégration d’OpenFS
 
