@@ -186,7 +186,7 @@ unsafe fn discover_pl011_base(address: u64) -> Option<usize> {
 
 fn install_exception_vectors() -> bool {
     // The vector table contains sixteen 128-byte slots and must be 2 KiB aligned.
-    let base = unsafe { core::ptr::addr_of!(__exception_vectors) as u64 };
+    let base = core::ptr::addr_of!(__exception_vectors) as u64;
     if base & 0x7ff != 0 {
         return false;
     }
