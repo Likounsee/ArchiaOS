@@ -1,20 +1,17 @@
 #![no_std]
 #![no_main]
 
-// First-party UEFI loader. It opens a kernel image from the EFI System
-// Partition, validates the ELF64 image, and reports its entry point. The next
-// milestone is allocating/loading PT_LOAD segments and performing the handoff.
+// First-party UEFI loader. x86-64 currently supports identity-mapped ELF images
+// below 4 GiB. The production high-half kernel remains on Limine until its page
+// tables and independent memory-bootstrap contract are implemented.
 use core::ffi::c_void;
 use core::panic::PanicInfo;
-use core::ptr::{read_unaligned, read_volatile};
-
-use archiaos_bootloader::elf::parse_elf64;
+use core::ptr::{self, read_unaligned, read_volatile, write_volatile};
+use archiaos_bootloader::bootinfo::{BootInfo, BOOT_INFO_MAGIC, BOOT_INFO_VERSION};
+use archiaos_bootloader::elf::{load_segment, parse_elf64, ElfError, ElfFile};
 
 type Status = usize;
 type Handle = *mut c_void;
-
-// UEFI errors set the high bit of EFI_STATUS on 64-bit targets. These values
-// must not be compared with the small warning/success codes.
 const EFI_SUCCESS: Status = 0;
 const EFI_ERROR_BIT: Status = 1usize << (usize::BITS - 1);
 const EFI_LOAD_ERROR: Status = EFI_ERROR_BIT | 1;
@@ -23,557 +20,375 @@ const EFI_UNSUPPORTED: Status = EFI_ERROR_BIT | 3;
 const EFI_BAD_BUFFER_SIZE: Status = EFI_ERROR_BIT | 4;
 const EFI_BUFFER_TOO_SMALL: Status = EFI_ERROR_BIT | 5;
 const EFI_NOT_FOUND: Status = EFI_ERROR_BIT | 14;
+const EFI_LOADER_CODE: u32 = 1;
 const EFI_LOADER_DATA: u32 = 2;
+const EFI_ALLOCATE_ADDRESS: u32 = 2;
 const EFI_FILE_MODE_READ: u64 = 1;
 const MAX_KERNEL_IMAGE_SIZE: u64 = 64 * 1024 * 1024;
-const EXPECTED_ELF_MACHINE: u16 = if cfg!(target_arch = "x86_64") { 62 } else { 183 };
+const MAX_KERNEL_MEMORY_SIZE: u64 = 128 * 1024 * 1024;
+const MAX_MEMORY_MAP_SIZE: usize = 1024 * 1024;
+const MAX_ELF_PROGRAM_HEADERS: usize = 1024;
+const PAGE_SIZE: u64 = 4096;
+const LOWEST_KERNEL_ADDRESS: u64 = 1024 * 1024;
+const IDENTITY_LIMIT: u64 = 1u64 << 32;
+const EFI_MEMORY_DESCRIPTOR_MIN_SIZE: usize = 40;
+const ELF_PF_X: u32 = 1;
+const ELF_MACHINE: u16 = if cfg!(target_arch = "x86_64") { 62 } else { 183 };
 
 #[repr(C)]
-struct TableHeader {
-    signature: u64,
-    revision: u32,
-    header_size: u32,
-    crc32: u32,
-    reserved: u32,
-}
-
+struct TableHeader { signature: u64, revision: u32, header_size: u32, crc32: u32, reserved: u32 }
 #[repr(C)]
-struct Guid {
-    data1: u32,
-    data2: u16,
-    data3: u16,
-    data4: [u8; 8],
-}
-
-const LOADED_IMAGE_GUID: Guid = Guid {
-    data1: 0x5b1b31a1,
-    data2: 0x9562,
-    data3: 0x11d2,
-    data4: [0x8e, 0x3f, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b],
-};
-
-const SIMPLE_FILE_SYSTEM_GUID: Guid = Guid {
-    data1: 0x964e5b22,
-    data2: 0x6459,
-    data3: 0x11d2,
-    data4: [0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b],
-};
-
-const FILE_INFO_GUID: Guid = Guid {
-    data1: 0x09576e92,
-    data2: 0x6d3f,
-    data3: 0x11d2,
-    data4: [0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b],
-};
+struct Guid { data1: u32, data2: u16, data3: u16, data4: [u8; 8] }
+const LOADED_IMAGE_GUID: Guid = Guid { data1:0x5b1b31a1, data2:0x9562, data3:0x11d2, data4:[0x8e,0x3f,0x00,0xa0,0xc9,0x69,0x72,0x3b] };
+const SIMPLE_FILE_SYSTEM_GUID: Guid = Guid { data1:0x964e5b22, data2:0x6459, data3:0x11d2, data4:[0x8e,0x39,0x00,0xa0,0xc9,0x69,0x72,0x3b] };
+const FILE_INFO_GUID: Guid = Guid { data1:0x09576e92, data2:0x6d3f, data3:0x11d2, data4:[0x8e,0x39,0x00,0xa0,0xc9,0x69,0x72,0x3b] };
 
 #[repr(C)]
 struct SimpleTextOutputProtocol {
     reset: usize,
-    output_string: Option<
-        unsafe extern "efiapi" fn(
-            this: *mut SimpleTextOutputProtocol,
-            string: *const u16,
-        ) -> Status,
-    >,
-    test_string: usize,
-    query_mode: usize,
-    set_mode: usize,
-    set_attribute: usize,
-    clear_screen: usize,
-    set_cursor_position: usize,
-    enable_cursor: usize,
-    mode: *mut c_void,
+    output_string: Option<unsafe extern "efiapi" fn(*mut SimpleTextOutputProtocol, *const u16) -> Status>,
+    test_string: usize, query_mode: usize, set_mode: usize, set_attribute: usize,
+    clear_screen: usize, set_cursor_position: usize, enable_cursor: usize, mode: *mut c_void,
 }
-
-type HandleProtocolFn = unsafe extern "efiapi" fn(
-    handle: Handle,
-    protocol: *const Guid,
-    interface: *mut *mut c_void,
-) -> Status;
-
-type AllocatePoolFn = unsafe extern "efiapi" fn(
-    pool_type: u32,
-    size: usize,
-    buffer: *mut *mut c_void,
-) -> Status;
-
-type FreePoolFn = unsafe extern "efiapi" fn(buffer: *mut c_void) -> Status;
+type HandleProtocolFn = unsafe extern "efiapi" fn(Handle, *const Guid, *mut *mut c_void) -> Status;
+type AllocatePoolFn = unsafe extern "efiapi" fn(u32, usize, *mut *mut c_void) -> Status;
+type FreePoolFn = unsafe extern "efiapi" fn(*mut c_void) -> Status;
+type AllocatePagesFn = unsafe extern "efiapi" fn(u32, u32, usize, *mut u64) -> Status;
+type FreePagesFn = unsafe extern "efiapi" fn(u64, usize) -> Status;
+type GetMemoryMapFn = unsafe extern "efiapi" fn(*mut usize, *mut c_void, *mut usize, *mut usize, *mut u32) -> Status;
+type ExitBootServicesFn = unsafe extern "efiapi" fn(Handle, usize) -> Status;
 
 #[repr(C)]
 struct BootServices {
     header: TableHeader,
-    raise_tpl: usize,
-    restore_tpl: usize,
-    allocate_pages: usize,
-    free_pages: usize,
-    get_memory_map: usize,
+    raise_tpl: usize, restore_tpl: usize,
+    allocate_pages: Option<AllocatePagesFn>,
+    free_pages: Option<FreePagesFn>,
+    get_memory_map: Option<GetMemoryMapFn>,
     allocate_pool: Option<AllocatePoolFn>,
     free_pool: Option<FreePoolFn>,
-    create_event: usize,
-    set_timer: usize,
-    wait_for_event: usize,
-    signal_event: usize,
-    close_event: usize,
-    check_event: usize,
-    install_protocol_interface: usize,
-    reinstall_protocol_interface: usize,
-    uninstall_protocol_interface: usize,
+    create_event: usize, set_timer: usize, wait_for_event: usize, signal_event: usize,
+    close_event: usize, check_event: usize, install_protocol_interface: usize,
+    reinstall_protocol_interface: usize, uninstall_protocol_interface: usize,
     handle_protocol: Option<HandleProtocolFn>,
-    reserved: usize,
-    register_protocol_notify: usize,
-    locate_handle: usize,
-    locate_device_path: usize,
-    install_configuration_table: usize,
-    load_image: usize,
-    start_image: usize,
-    exit: usize,
-    unload_image: usize,
-    exit_boot_services: usize,
-    get_next_monotonic_count: usize,
-    stall: usize,
-    set_watchdog_timer: usize,
-    connect_controller: usize,
-    disconnect_controller: usize,
-    open_protocol: usize,
-    close_protocol: usize,
-    open_protocol_information: usize,
-    protocols_per_handle: usize,
-    locate_handle_buffer: usize,
-    locate_protocol: usize,
-    install_multiple_protocol_interfaces: usize,
-    uninstall_multiple_protocol_interfaces: usize,
-    calculate_crc32: usize,
-    copy_mem: usize,
-    set_mem: usize,
-    create_event_ex: usize,
+    reserved: usize, register_protocol_notify: usize, locate_handle: usize,
+    locate_device_path: usize, install_configuration_table: usize, load_image: usize,
+    start_image: usize, exit: usize, unload_image: usize,
+    exit_boot_services: Option<ExitBootServicesFn>,
+    get_next_monotonic_count: usize, stall: usize, set_watchdog_timer: usize,
+    connect_controller: usize, disconnect_controller: usize, open_protocol: usize,
+    close_protocol: usize, open_protocol_information: usize, protocols_per_handle: usize,
+    locate_handle_buffer: usize, locate_protocol: usize,
+    install_multiple_protocol_interfaces: usize, uninstall_multiple_protocol_interfaces: usize,
+    calculate_crc32: usize, copy_mem: usize, set_mem: usize, create_event_ex: usize,
 }
-
 #[repr(C)]
 struct SystemTable {
-    header: TableHeader,
-    firmware_vendor: *mut u16,
-    firmware_revision: u32,
-    _padding: u32,
-    console_in_handle: Handle,
-    con_in: *mut c_void,
-    console_out_handle: Handle,
-    con_out: *mut SimpleTextOutputProtocol,
-    standard_error_handle: Handle,
-    std_err: *mut SimpleTextOutputProtocol,
-    runtime_services: *mut c_void,
-    boot_services: *mut BootServices,
-    number_of_table_entries: usize,
-    configuration_table: *mut c_void,
+    header: TableHeader, firmware_vendor: *mut u16, firmware_revision: u32, _padding: u32,
+    console_in_handle: Handle, con_in: *mut c_void,
+    console_out_handle: Handle, con_out: *mut SimpleTextOutputProtocol,
+    standard_error_handle: Handle, std_err: *mut SimpleTextOutputProtocol,
+    runtime_services: *mut c_void, boot_services: *mut BootServices,
+    number_of_table_entries: usize, configuration_table: *mut c_void,
 }
-
 #[repr(C)]
 struct LoadedImageProtocol {
-    revision: u32,
-    _padding: u32,
-    parent_handle: Handle,
-    system_table: *mut SystemTable,
-    device_handle: Handle,
-    file_path: *mut c_void,
-    reserved: *mut c_void,
-    load_options_size: u32,
-    _padding2: u32,
-    load_options: *mut c_void,
-    image_base: *mut c_void,
-    image_size: u64,
-    image_code_type: u32,
-    image_data_type: u32,
-    unload: usize,
+    revision: u32, _padding: u32, parent_handle: Handle, system_table: *mut SystemTable,
+    device_handle: Handle, file_path: *mut c_void, reserved: *mut c_void,
+    load_options_size: u32, _padding2: u32, load_options: *mut c_void,
+    image_base: *mut c_void, image_size: u64, image_code_type: u32,
+    image_data_type: u32, unload: usize,
 }
-
 #[repr(C)]
 struct SimpleFileSystemProtocol {
     revision: u64,
-    open_volume: Option<
-        unsafe extern "efiapi" fn(
-            this: *mut SimpleFileSystemProtocol,
-            root: *mut *mut FileProtocol,
-        ) -> Status,
-    >,
+    open_volume: Option<unsafe extern "efiapi" fn(*mut SimpleFileSystemProtocol, *mut *mut FileProtocol) -> Status>,
 }
-
 #[repr(C)]
 struct FileProtocol {
     revision: u64,
-    open: Option<
-        unsafe extern "efiapi" fn(
-            this: *mut FileProtocol,
-            new_handle: *mut *mut FileProtocol,
-            file_name: *const u16,
-            open_mode: u64,
-            attributes: u64,
-        ) -> Status,
-    >,
-    close: Option<unsafe extern "efiapi" fn(this: *mut FileProtocol) -> Status>,
+    open: Option<unsafe extern "efiapi" fn(*mut FileProtocol, *mut *mut FileProtocol, *const u16, u64, u64) -> Status>,
+    close: Option<unsafe extern "efiapi" fn(*mut FileProtocol) -> Status>,
     delete: usize,
-    read: Option<
-        unsafe extern "efiapi" fn(
-            this: *mut FileProtocol,
-            buffer_size: *mut usize,
-            buffer: *mut c_void,
-        ) -> Status,
-    >,
-    write: usize,
-    get_position: usize,
-    set_position: usize,
-    get_info: Option<
-        unsafe extern "efiapi" fn(
-            this: *mut FileProtocol,
-            information_type: *const Guid,
-            buffer_size: *mut usize,
-            buffer: *mut c_void,
-        ) -> Status,
-    >,
-    set_info: usize,
-    flush: usize,
+    read: Option<unsafe extern "efiapi" fn(*mut FileProtocol, *mut usize, *mut c_void) -> Status>,
+    write: usize, get_position: usize, set_position: usize,
+    get_info: Option<unsafe extern "efiapi" fn(*mut FileProtocol, *const Guid, *mut usize, *mut c_void) -> Status>,
+    set_info: usize, flush: usize,
 }
 
 const fn ascii_to_utf16<const N: usize>(bytes: &[u8; N]) -> [u16; N] {
-    let mut result = [0u16; N];
-    let mut i = 0;
-    while i < N {
-        result[i] = bytes[i] as u16;
-        i += 1;
-    }
-    result
+    let mut out = [0u16; N]; let mut i = 0;
+    while i < N { out[i] = bytes[i] as u16; i += 1; }
+    out
 }
+static BANNER: [u16; 42] = ascii_to_utf16(b"ArchiaOS Bootloader: UEFI entry reached\r\n\0");
+static STAGE_FS: [u16; 48] = ascii_to_utf16(b"ArchiaOS Bootloader: opening EFI kernel image\r\n\0");
+static STAGE_ELF: [u16; 47] = ascii_to_utf16(b"ArchiaOS Bootloader: validating ELF64 kernel\r\n\0");
+static STAGE_LOADING: [u16; 60] = ascii_to_utf16(b"ArchiaOS Bootloader: loading identity-mapped ELF segments\r\n\0");
+static STAGE_EXIT: [u16; 50] = ascii_to_utf16(b"ArchiaOS Bootloader: exiting UEFI boot services\r\n\0");
+static FAIL_SERVICES: [u16; 58] = ascii_to_utf16(b"ArchiaOS Bootloader: required UEFI boot service missing\r\n\0");
+static FAIL_FS: [u16; 53] = ascii_to_utf16(b"ArchiaOS Bootloader: cannot open EFI system volume\r\n\0");
+static FAIL_FILE: [u16; 59] = ascii_to_utf16(b"ArchiaOS Bootloader: cannot read EFI/ArchiaOS/kernel.elf\r\n\0");
+static FAIL_SIZE: [u16; 50] = ascii_to_utf16(b"ArchiaOS Bootloader: kernel image size rejected\r\n\0");
+static FAIL_ELF: [u16; 50] = ascii_to_utf16(b"ArchiaOS Bootloader: invalid ELF64 kernel image\r\n\0");
+static FAIL_HANDOFF: [u16; 63] = ascii_to_utf16(b"ArchiaOS Bootloader: image needs unsupported virtual mapping\r\n\0");
+static FAIL_SEGMENT: [u16; 63] = ascii_to_utf16(b"ArchiaOS Bootloader: could not load identity-mapped segments\r\n\0");
+static FAIL_EXIT: [u16; 47] = ascii_to_utf16(b"ArchiaOS Bootloader: ExitBootServices failed\r\n\0");
+static KERNEL_PATH: [u16; 25] = ascii_to_utf16(b"\\EFI\\ArchiaOS\\kernel.elf\0");
 
-static BANNER: [u16; 42] =
-    ascii_to_utf16(b"ArchiaOS Bootloader: UEFI entry reached\r\n\0");
-static STAGE_FS: [u16; 48] =
-    ascii_to_utf16(b"ArchiaOS Bootloader: opening EFI kernel image\r\n\0");
-static STAGE_ELF: [u16; 47] =
-    ascii_to_utf16(b"ArchiaOS Bootloader: validating ELF64 kernel\r\n\0");
-static SUCCESS: [u16; 61] =
-    ascii_to_utf16(b"ArchiaOS Bootloader: kernel ELF validated; handoff pending\r\n\0");
-static FAIL_SERVICES: [u16; 58] =
-    ascii_to_utf16(b"ArchiaOS Bootloader: required UEFI boot service missing\r\n\0");
-static FAIL_FS: [u16; 53] =
-    ascii_to_utf16(b"ArchiaOS Bootloader: cannot open EFI system volume\r\n\0");
-static FAIL_FILE: [u16; 59] =
-    ascii_to_utf16(b"ArchiaOS Bootloader: cannot read EFI/ArchiaOS/kernel.elf\r\n\0");
-static FAIL_SIZE: [u16; 50] =
-    ascii_to_utf16(b"ArchiaOS Bootloader: kernel image size rejected\r\n\0");
-static FAIL_ELF: [u16; 50] =
-    ascii_to_utf16(b"ArchiaOS Bootloader: invalid ELF64 kernel image\r\n\0");
-
-static KERNEL_PATH: [u16; 25] =
-    ascii_to_utf16(b"\\EFI\\ArchiaOS\\kernel.elf\0");
-
-struct Serial {
-    output: *mut SimpleTextOutputProtocol,
-}
-
+struct Serial { output: *mut SimpleTextOutputProtocol }
 impl Serial {
     unsafe fn print(&mut self, message: *const u16) -> Result<(), Status> {
-        // Mirror diagnostics to COM1 on x86-64 so headless QEMU/CI can observe
-        // loader progress even when the firmware's graphical console is hidden.
         #[cfg(target_arch = "x86_64")]
+        unsafe { mirror_to_com1(message); }
+        if self.output.is_null() { return Err(EFI_INVALID_PARAMETER); }
+        let f = unsafe { (*self.output).output_string }.ok_or(EFI_UNSUPPORTED)?;
+        let s = unsafe { f(self.output, message) };
+        if s == EFI_SUCCESS { Ok(()) } else { Err(s) }
+    }
+}
+#[cfg(target_arch = "x86_64")]
+unsafe fn port_out(p:u16,v:u8) { use core::arch::asm; unsafe { asm!("out dx, al",in("dx") p,in("al") v,options(nomem,nostack,preserves_flags)); } }
+#[cfg(target_arch = "x86_64")]
+unsafe fn port_in(p:u16)->u8 { use core::arch::asm; let v:u8; unsafe { asm!("in al, dx",in("dx") p,out("al") v,options(nomem,nostack,preserves_flags)); } v }
+#[cfg(target_arch = "x86_64")]
+unsafe fn mirror_to_com1(msg:*const u16) {
+    const C:u16=0x3f8;
+    unsafe { port_out(C+1,0);port_out(C+3,0x80);port_out(C,3);port_out(C+1,0);port_out(C+3,3);port_out(C+2,0xc7);port_out(C+4,0x0b); }
+    for i in 0..256usize {
+        let w=unsafe { read_volatile(msg.add(i)) }; if w==0 { break; }
+        let b=if w<=0x7f { w as u8 } else { b'?' };
+        for _ in 0..100_000 { if unsafe { port_in(C+5) } & 0x20 != 0 { break; } core::hint::spin_loop(); }
+        unsafe { port_out(C,b); }
+    }
+}
+
+unsafe fn protocol<T>(bs:*mut BootServices,h:Handle,g:*const Guid)->Result<*mut T,Status> {
+    if bs.is_null()||h.is_null() { return Err(EFI_INVALID_PARAMETER); }
+    let f=unsafe { (*bs).handle_protocol }.ok_or(EFI_UNSUPPORTED)?;
+    let mut out:*mut c_void=ptr::null_mut();
+    let s=unsafe { f(h,g,&mut out) }; if s!=EFI_SUCCESS { return Err(s); }
+    if out.is_null() { return Err(EFI_UNSUPPORTED); } Ok(out.cast())
+}
+unsafe fn allocate_pool(bs:*mut BootServices,n:usize)->Result<*mut c_void,Status> {
+    let f=unsafe { (*bs).allocate_pool }.ok_or(EFI_UNSUPPORTED)?;
+    let mut out:*mut c_void=ptr::null_mut();
+    let s=unsafe { f(EFI_LOADER_DATA,n,&mut out) }; if s!=EFI_SUCCESS { return Err(s); }
+    if out.is_null() { return Err(EFI_LOAD_ERROR); } Ok(out)
+}
+unsafe fn free_pool(bs:*mut BootServices,p:*mut c_void) {
+    if !p.is_null() { if let Some(f)=unsafe { (*bs).free_pool } { let _=unsafe { f(p) }; } }
+}
+unsafe fn close_file(p:*mut FileProtocol) {
+    if !p.is_null() { if let Some(f)=unsafe { (*p).close } { let _=unsafe { f(p) }; } }
+}
+unsafe fn read_kernel_image(handle:Handle,st:*mut SystemTable)->Result<(*mut u8,usize),Status> {
+    if st.is_null() { return Err(EFI_INVALID_PARAMETER); }
+    let bs=unsafe { (*st).boot_services }; if bs.is_null() { return Err(EFI_UNSUPPORTED); }
+    let loaded=unsafe { protocol::<LoadedImageProtocol>(bs,handle,&LOADED_IMAGE_GUID)? };
+    let device=unsafe { read_volatile(ptr::addr_of!((*loaded).device_handle)) };
+    let fs=unsafe { protocol::<SimpleFileSystemProtocol>(bs,device,&SIMPLE_FILE_SYSTEM_GUID)? };
+    let open_volume=unsafe { (*fs).open_volume }.ok_or(EFI_UNSUPPORTED)?;
+    let mut root:*mut FileProtocol=ptr::null_mut();
+    let s=unsafe { open_volume(fs,&mut root) };
+    if s!=EFI_SUCCESS||root.is_null() { unsafe { close_file(root); } return Err(if s==EFI_SUCCESS { EFI_UNSUPPORTED } else { s }); }
+    let open=match unsafe { (*root).open } { Some(f)=>f,None=>{unsafe{close_file(root);}return Err(EFI_UNSUPPORTED)} };
+    let mut file:*mut FileProtocol=ptr::null_mut();
+    let s=unsafe { open(root,&mut file,KERNEL_PATH.as_ptr(),EFI_FILE_MODE_READ,0) };
+    if s!=EFI_SUCCESS||file.is_null() { unsafe { close_file(file);close_file(root); } return Err(if s==EFI_SUCCESS {EFI_UNSUPPORTED}else{s}); }
+    let info_fn=match unsafe { (*file).get_info } { Some(f)=>f,None=>{unsafe{close_file(file);close_file(root);}return Err(EFI_UNSUPPORTED)} };
+    let mut info_size=0usize;
+    let s=unsafe { info_fn(file,&FILE_INFO_GUID,&mut info_size,ptr::null_mut()) };
+    if s!=EFI_BUFFER_TOO_SMALL||info_size<16||info_size>4096 {
+        unsafe { close_file(file);close_file(root); }
+        return Err(if s==EFI_SUCCESS||s==EFI_BUFFER_TOO_SMALL {EFI_BAD_BUFFER_SIZE}else{s});
+    }
+    let info=match unsafe { allocate_pool(bs,info_size) } {
+        Ok(p)=>p,Err(e)=>{unsafe{close_file(file);close_file(root);}return Err(e)}
+    };
+    let cap=info_size;
+    let s=unsafe { info_fn(file,&FILE_INFO_GUID,&mut info_size,info) };
+    if s!=EFI_SUCCESS||info_size<16||info_size>cap {
+        unsafe { free_pool(bs,info);close_file(file);close_file(root); }
+        return Err(if s==EFI_SUCCESS {EFI_BAD_BUFFER_SIZE}else{s});
+    }
+    let file_size=unsafe { read_unaligned((info as *const u8).add(8).cast::<u64>()) };
+    unsafe { free_pool(bs,info); }
+    if file_size<64||file_size>MAX_KERNEL_IMAGE_SIZE||file_size>usize::MAX as u64 {
+        unsafe { close_file(file);close_file(root); } return Err(EFI_BAD_BUFFER_SIZE);
+    }
+    let buffer=match unsafe { allocate_pool(bs,file_size as usize) } {
+        Ok(p)=>p.cast::<u8>(),Err(e)=>{unsafe{close_file(file);close_file(root);}return Err(e)}
+    };
+    let read=match unsafe { (*file).read } {
+        Some(f)=>f,None=>{unsafe{free_pool(bs,buffer.cast());close_file(file);close_file(root);}return Err(EFI_UNSUPPORTED)}
+    };
+    let mut actual=file_size as usize;
+    let s=unsafe { read(file,&mut actual,buffer.cast()) };
+    unsafe { close_file(file);close_file(root); }
+    if s!=EFI_SUCCESS||actual!=file_size as usize { unsafe { free_pool(bs,buffer.cast()); } return Err(if s==EFI_SUCCESS {EFI_BAD_BUFFER_SIZE}else{s}); }
+    Ok((buffer,actual))
+}
+
+#[cfg(target_arch="x86_64")]
+static mut ALLOC_BASES:[u64;MAX_ELF_PROGRAM_HEADERS]=[0;MAX_ELF_PROGRAM_HEADERS];
+#[cfg(target_arch="x86_64")]
+static mut ALLOC_COUNTS:[usize;MAX_ELF_PROGRAM_HEADERS]=[0;MAX_ELF_PROGRAM_HEADERS];
+#[cfg(target_arch="x86_64")]
+static mut ALLOC_COUNT:usize=0;
+
+#[cfg(target_arch="x86_64")]
+unsafe fn cleanup_segments(bs:*mut BootServices) {
+    let free=match unsafe { (*bs).free_pages } {Some(f)=>f,None=>return};
+    let count=unsafe { read_volatile(ptr::addr_of!(ALLOC_COUNT)) };
+    let bases=ptr::addr_of!(ALLOC_BASES).cast::<u64>();
+    let pages=ptr::addr_of!(ALLOC_COUNTS).cast::<usize>();
+    for i in (0..count).rev() {
+        let b=unsafe { read_volatile(bases.add(i)) }; let n=unsafe { read_volatile(pages.add(i)) };
+        let _=unsafe { free(b,n) };
+    }
+    unsafe { write_volatile(ptr::addr_of_mut!(ALLOC_COUNT),0); }
+}
+#[cfg(target_arch="x86_64")]
+fn physical_page_end(s:&archiaos_bootloader::elf::LoadSegment)->Result<u64,Status> {
+    let pages=s.memory_size.checked_add(PAGE_SIZE-1).ok_or(EFI_BAD_BUFFER_SIZE)?/PAGE_SIZE;
+    s.physical_address.checked_add(pages.checked_mul(PAGE_SIZE).ok_or(EFI_BAD_BUFFER_SIZE)?).ok_or(EFI_BAD_BUFFER_SIZE)
+}
+#[cfg(target_arch="x86_64")]
+unsafe fn load_identity_segments(image:&[u8],elf:&ElfFile,bs:*mut BootServices)->Result<u64,Status> {
+    let mut load_count=0usize; let mut total=0u64;
+    // Validate every segment address and overlap before any destination write.
+    for i in 0..elf.program_header_count() {
+        let s=match load_segment(image,elf,i) {Ok(s)=>s,Err(ElfError::NotLoadableSegment)=>continue,Err(_)=>return Err(EFI_LOAD_ERROR)};
+        if s.virtual_address!=s.physical_address {return Err(EFI_UNSUPPORTED);}
+        if s.physical_address<LOWEST_KERNEL_ADDRESS||s.physical_address%PAGE_SIZE!=0||s.memory_size==0 {return Err(EFI_BAD_BUFFER_SIZE);}
+        let end=s.physical_address.checked_add(s.memory_size).ok_or(EFI_BAD_BUFFER_SIZE)?;
+        let rounded_end=physical_page_end(&s)?;
+        if end>IDENTITY_LIMIT||rounded_end>IDENTITY_LIMIT {return Err(EFI_UNSUPPORTED);}
+        total=total.checked_add(s.memory_size).ok_or(EFI_BAD_BUFFER_SIZE)?;
+        if total>MAX_KERNEL_MEMORY_SIZE {return Err(EFI_BAD_BUFFER_SIZE);}
+        for j in 0..i {
+            let other=match load_segment(image,elf,j) {Ok(s)=>s,Err(ElfError::NotLoadableSegment)=>continue,Err(_)=>return Err(EFI_LOAD_ERROR)};
+            if s.physical_address<physical_page_end(&other)?&&other.physical_address<rounded_end {return Err(EFI_UNSUPPORTED);}
+        }
+        load_count+=1;
+    }
+    if load_count==0||elf.entry()<LOWEST_KERNEL_ADDRESS||elf.entry()>=IDENTITY_LIMIT {return Err(EFI_UNSUPPORTED);}
+    let allocate=unsafe { (*bs).allocate_pages }.ok_or(EFI_UNSUPPORTED)?;
+    unsafe { write_volatile(ptr::addr_of_mut!(ALLOC_COUNT),0); }
+    for i in 0..elf.program_header_count() {
+        let s=match load_segment(image,elf,i) {Ok(s)=>s,Err(ElfError::NotLoadableSegment)=>continue,Err(_)=>{unsafe{cleanup_segments(bs);}return Err(EFI_LOAD_ERROR)}};
+        let n=((s.memory_size+PAGE_SIZE-1)/PAGE_SIZE) as usize;
+        let mut base=s.physical_address;
+        let kind=if s.flags&ELF_PF_X!=0 {EFI_LOADER_CODE}else{EFI_LOADER_DATA};
+        let status=unsafe { allocate(EFI_ALLOCATE_ADDRESS,kind,n,&mut base) };
+        if status!=EFI_SUCCESS||base!=s.physical_address {
+            if status==EFI_SUCCESS {if let Some(f)=unsafe{(*bs).free_pages}{let _=unsafe{f(base,n)};}}
+            unsafe{cleanup_segments(bs);}
+            return Err(if status==EFI_SUCCESS {EFI_LOAD_ERROR}else{status});
+        }
+        let count=unsafe { read_volatile(ptr::addr_of!(ALLOC_COUNT)) };
+        if count>=MAX_ELF_PROGRAM_HEADERS {
+            if let Some(f)=unsafe{(*bs).free_pages}{let _=unsafe{f(base,n)};}
+            unsafe{cleanup_segments(bs);}
+            return Err(EFI_BAD_BUFFER_SIZE);
+        }
+        let bases=ptr::addr_of_mut!(ALLOC_BASES).cast::<u64>();
+        let pages=ptr::addr_of_mut!(ALLOC_COUNTS).cast::<usize>();
+        unsafe {write_volatile(bases.add(count),base);write_volatile(pages.add(count),n);write_volatile(ptr::addr_of_mut!(ALLOC_COUNT),count+1);}
+        let fo=s.file_offset as usize;let fs=s.file_size as usize;let ms=s.memory_size as usize;
         unsafe {
-            mirror_to_com1(message);
-        }
-
-        if self.output.is_null() {
-            return Err(EFI_INVALID_PARAMETER);
-        }
-        let write = unsafe { (*self.output).output_string }.ok_or(EFI_UNSUPPORTED)?;
-        let status = unsafe { write(self.output, message) };
-        if status == EFI_SUCCESS {
-            Ok(())
-        } else {
-            Err(status)
+            ptr::copy_nonoverlapping(image.as_ptr().add(fo),base as *mut u8,fs);
+            if ms>fs {ptr::write_bytes((base as *mut u8).add(fs),0,ms-fs);}
         }
     }
+    Ok(elf.entry())
 }
 
-#[cfg(target_arch = "x86_64")]
-unsafe fn port_out(port: u16, value: u8) {
+#[cfg(target_arch="x86_64")]
+unsafe fn get_boot_info_and_exit(handle:Handle,st:*mut SystemTable,entry:u64)->Result<*mut BootInfo,Status> {
+    let bs=unsafe{(*st).boot_services};if bs.is_null(){return Err(EFI_UNSUPPORTED);}
+    let get_map=unsafe{(*bs).get_memory_map}.ok_or(EFI_UNSUPPORTED)?;
+    let exit=unsafe{(*bs).exit_boot_services}.ok_or(EFI_UNSUPPORTED)?;
+    let info_mem=unsafe{allocate_pool(bs,core::mem::size_of::<BootInfo>())}?;
+    let map_mem=match unsafe{allocate_pool(bs,MAX_MEMORY_MAP_SIZE)}{Ok(p)=>p,Err(e)=>{unsafe{free_pool(bs,info_mem);}return Err(e)}};
+    let info=info_mem.cast::<BootInfo>();
+    for _ in 0..8 {
+        let mut size=MAX_MEMORY_MAP_SIZE;let mut key=0usize;let mut desc_size=0usize;let mut desc_version=0u32;
+        let status=unsafe{get_map(&mut size,map_mem,&mut key,&mut desc_size,&mut desc_version)};
+        if status!=EFI_SUCCESS {unsafe{free_pool(bs,map_mem);free_pool(bs,info_mem);}return Err(status);}
+        if size==0||size>MAX_MEMORY_MAP_SIZE||desc_size<EFI_MEMORY_DESCRIPTOR_MIN_SIZE||size%desc_size!=0 {
+            unsafe{free_pool(bs,map_mem);free_pool(bs,info_mem);}return Err(EFI_BAD_BUFFER_SIZE);
+        }
+        unsafe{ptr::write(info,BootInfo{
+            magic:BOOT_INFO_MAGIC,version:BOOT_INFO_VERSION,struct_size:core::mem::size_of::<BootInfo>() as u32,
+            kernel_entry:entry,memory_map:map_mem.cast::<u8>(),memory_map_size:size as u64,
+            memory_map_descriptor_size:desc_size as u64,memory_map_descriptor_version:desc_version,
+            flags:0,acpi_rsdp:0,device_tree:0,framebuffer_base:0,framebuffer_size:0,
+        });}
+        // No allocation/service call may intervene between GetMemoryMap and this exit attempt.
+        let status=unsafe{exit(handle,key)};
+        if status==EFI_SUCCESS{return Ok(info);}
+        if status!=EFI_INVALID_PARAMETER {unsafe{free_pool(bs,map_mem);free_pool(bs,info_mem);}return Err(status);}
+    }
+    unsafe{free_pool(bs,map_mem);free_pool(bs,info_mem);}
+    Err(EFI_INVALID_PARAMETER)
+}
+#[cfg(target_arch="x86_64")]
+unsafe fn jump_to_kernel(entry:u64,info:*const BootInfo)->! {
     use core::arch::asm;
-    unsafe {
-        asm!(
-            "out dx, al",
-            in("dx") port,
-            in("al") value,
-            options(nomem, nostack, preserves_flags)
-        );
-    }
+    unsafe{asm!("jmp rax",in("rax")entry as usize,in("rdi")info as usize,options(noreturn));}
 }
-
-#[cfg(target_arch = "x86_64")]
-unsafe fn port_in(port: u16) -> u8 {
-    use core::arch::asm;
-    let value: u8;
-    unsafe {
-        asm!(
-            "in al, dx",
-            in("dx") port,
-            out("al") value,
-            options(nomem, nostack, preserves_flags)
-        );
-    }
-    value
-}
-
-#[cfg(target_arch = "x86_64")]
-unsafe fn mirror_to_com1(message: *const u16) {
-    const COM1: u16 = 0x3f8;
-    // Configure the QEMU-compatible 16550 UART. This path is diagnostic only;
-    // UEFI Text Output remains the normal, architecture-neutral console API.
-    unsafe {
-        port_out(COM1 + 1, 0x00);
-        port_out(COM1 + 3, 0x80);
-        port_out(COM1, 0x03);
-        port_out(COM1 + 1, 0x00);
-        port_out(COM1 + 3, 0x03);
-        port_out(COM1 + 2, 0xc7);
-        port_out(COM1 + 4, 0x0b);
-    }
-
-    for index in 0..256usize {
-        let unit = unsafe { read_volatile(message.add(index)) };
-        if unit == 0 {
-            break;
-        }
-        let byte = if unit <= 0x7f { unit as u8 } else { b'?' };
-        for _ in 0..100_000 {
-            if unsafe { port_in(COM1 + 5) } & 0x20 != 0 {
-                break;
-            }
-            core::hint::spin_loop();
-        }
-        unsafe { port_out(COM1, byte) };
-    }
-}
-
-unsafe fn protocol<T>(
-    boot_services: *mut BootServices,
-    handle: Handle,
-    guid: *const Guid,
-) -> Result<*mut T, Status> {
-    if boot_services.is_null() || handle.is_null() {
-        return Err(EFI_INVALID_PARAMETER);
-    }
-    let handle_protocol = unsafe { (*boot_services).handle_protocol }.ok_or(EFI_UNSUPPORTED)?;
-    let mut interface: *mut c_void = core::ptr::null_mut();
-    let status = unsafe { handle_protocol(handle, guid, &mut interface) };
-    if status != EFI_SUCCESS {
-        return Err(status);
-    }
-    if interface.is_null() {
-        return Err(EFI_UNSUPPORTED);
-    }
-    Ok(interface.cast::<T>())
-}
-
-unsafe fn allocate_pool(
-    boot_services: *mut BootServices,
-    size: usize,
-) -> Result<*mut c_void, Status> {
-    let allocate = unsafe { (*boot_services).allocate_pool }.ok_or(EFI_UNSUPPORTED)?;
-    let mut buffer = core::ptr::null_mut();
-    let status = unsafe { allocate(EFI_LOADER_DATA, size, &mut buffer) };
-    if status != EFI_SUCCESS {
-        return Err(status);
-    }
-    if buffer.is_null() {
-        return Err(EFI_LOAD_ERROR);
-    }
-    Ok(buffer)
-}
-
-unsafe fn free_pool(boot_services: *mut BootServices, buffer: *mut c_void) {
-    if !buffer.is_null() {
-        if let Some(free) = unsafe { (*boot_services).free_pool } {
-            let _ = unsafe { free(buffer) };
-        }
-    }
-}
-
-unsafe fn close_file(file: *mut FileProtocol) {
-    if !file.is_null() {
-        if let Some(close) = unsafe { (*file).close } {
-            let _ = unsafe { close(file) };
-        }
-    }
-}
-
-unsafe fn read_kernel_image(
-    image_handle: Handle,
-    system_table: *mut SystemTable,
-) -> Result<(*mut u8, usize), Status> {
-    if system_table.is_null() {
-        return Err(EFI_INVALID_PARAMETER);
-    }
-    let boot_services = unsafe { (*system_table).boot_services };
-    if boot_services.is_null() {
-        return Err(EFI_UNSUPPORTED);
-    }
-
-    let loaded_image = unsafe {
-        protocol::<LoadedImageProtocol>(
-            boot_services,
-            image_handle,
-            &LOADED_IMAGE_GUID,
-        )?
-    };
-    let device_handle = unsafe { read_volatile(core::ptr::addr_of!((*loaded_image).device_handle)) };
-    let file_system = unsafe {
-        protocol::<SimpleFileSystemProtocol>(
-            boot_services,
-            device_handle,
-            &SIMPLE_FILE_SYSTEM_GUID,
-        )?
-    };
-    let open_volume = unsafe { (*file_system).open_volume }.ok_or(EFI_UNSUPPORTED)?;
-    let mut root: *mut FileProtocol = core::ptr::null_mut();
-    let status = unsafe { open_volume(file_system, &mut root) };
-    if status != EFI_SUCCESS || root.is_null() {
-        return Err(if status == EFI_SUCCESS { EFI_UNSUPPORTED } else { status });
-    }
-
-    let open = unsafe { (*root).open }.ok_or(EFI_UNSUPPORTED)?;
-    let mut file: *mut FileProtocol = core::ptr::null_mut();
-    let status = unsafe {
-        open(root, &mut file, KERNEL_PATH.as_ptr(), EFI_FILE_MODE_READ, 0)
-    };
-    if status != EFI_SUCCESS || file.is_null() {
-        unsafe { close_file(root) };
-        return Err(if status == EFI_SUCCESS { EFI_UNSUPPORTED } else { status });
-    }
-
-    let get_info = match unsafe { (*file).get_info } {
-        Some(function) => function,
-        None => {
-            unsafe { close_file(file); close_file(root); }
-            return Err(EFI_UNSUPPORTED);
-        }
-    };
-
-    let mut info_size: usize = 0;
-    let status = unsafe {
-        get_info(file, &FILE_INFO_GUID, &mut info_size, core::ptr::null_mut())
-    };
-    if status != EFI_BUFFER_TOO_SMALL || info_size < 16 || info_size > 4096 {
-        unsafe { close_file(file); close_file(root); }
-        return Err(if status == EFI_SUCCESS || status == EFI_BUFFER_TOO_SMALL {
-            EFI_BAD_BUFFER_SIZE
-        } else {
-            status
-        });
-    }
-
-    let info = match unsafe { allocate_pool(boot_services, info_size) } {
-        Ok(buffer) => buffer,
-        Err(status) => {
-            unsafe { close_file(file); close_file(root); }
-            return Err(status);
-        }
-    };
-    let status = unsafe {
-        get_info(file, &FILE_INFO_GUID, &mut info_size, info)
-    };
-    if status != EFI_SUCCESS || info_size < 16 {
-        unsafe { free_pool(boot_services, info); close_file(file); close_file(root); }
-        return Err(if status == EFI_SUCCESS { EFI_BAD_BUFFER_SIZE } else { status });
-    }
-
-    // EFI_FILE_INFO.FileSize is the second u64 field (offset 8).
-    let file_size = unsafe { read_unaligned((info as *const u8).add(8).cast::<u64>()) };
-    unsafe { free_pool(boot_services, info) };
-    if file_size < 64 || file_size > MAX_KERNEL_IMAGE_SIZE || file_size > usize::MAX as u64 {
-        unsafe { close_file(file); close_file(root); }
-        return Err(EFI_BAD_BUFFER_SIZE);
-    }
-
-    let image_buffer = match unsafe { allocate_pool(boot_services, file_size as usize) } {
-        Ok(buffer) => buffer.cast::<u8>(),
-        Err(status) => {
-            unsafe { close_file(file); close_file(root); }
-            return Err(status);
-        }
-    };
-    let read = match unsafe { (*file).read } {
-        Some(function) => function,
-        None => {
-            unsafe {
-                free_pool(boot_services, image_buffer.cast::<c_void>());
-                close_file(file);
-                close_file(root);
-            }
-            return Err(EFI_UNSUPPORTED);
-        }
-    };
-    let mut actual_size = file_size as usize;
-    let status = unsafe {
-        read(file, &mut actual_size, image_buffer.cast::<c_void>())
-    };
-    unsafe { close_file(file); close_file(root); }
-
-    if status != EFI_SUCCESS || actual_size != file_size as usize {
-        unsafe { free_pool(boot_services, image_buffer.cast::<c_void>()) };
-        return Err(if status == EFI_SUCCESS { EFI_BAD_BUFFER_SIZE } else { status });
-    }
-    Ok((image_buffer, actual_size))
-}
+#[cfg(target_arch="x86_64")]
+fn halt_forever()->! { use core::arch::asm;loop{unsafe{asm!("cli; hlt",options(nomem,nostack));}} }
 
 #[no_mangle]
-pub extern "efiapi" fn efi_main(image_handle: Handle, system_table: *mut SystemTable) -> Status {
-    if system_table.is_null() {
-        return EFI_INVALID_PARAMETER;
-    }
-    let mut serial = Serial {
-        // SAFETY: system_table was checked for null and is provided by UEFI.
-        output: unsafe { (*system_table).con_out },
-    };
-    if unsafe { serial.print(BANNER.as_ptr()) }.is_err() {
-        return EFI_INVALID_PARAMETER;
-    }
-
-    if unsafe { serial.print(STAGE_FS.as_ptr()) }.is_err() {
-        return EFI_UNSUPPORTED;
-    }
-    let (image, image_size) = match unsafe { read_kernel_image(image_handle, system_table) } {
-        Ok(image) => image,
-        Err(status) => {
-            let message = match status {
-                EFI_BAD_BUFFER_SIZE => FAIL_SIZE.as_ptr(),
-                EFI_NOT_FOUND => FAIL_FILE.as_ptr(),
-                EFI_UNSUPPORTED => FAIL_SERVICES.as_ptr(),
-                _ => FAIL_FS.as_ptr(),
-            };
-            let _ = unsafe { serial.print(message) };
-            return EFI_LOAD_ERROR;
+pub extern "efiapi" fn efi_main(handle:Handle,st:*mut SystemTable)->Status {
+    if st.is_null(){return EFI_INVALID_PARAMETER;}
+    let mut serial=Serial{output:unsafe{(*st).con_out}};
+    if unsafe{serial.print(BANNER.as_ptr())}.is_err(){return EFI_UNSUPPORTED;}
+    if unsafe{serial.print(STAGE_FS.as_ptr())}.is_err(){return EFI_UNSUPPORTED;}
+    let (image,image_size)=match unsafe{read_kernel_image(handle,st)} {
+        Ok(v)=>v,
+        Err(status)=>{
+            let msg=match status{EFI_BAD_BUFFER_SIZE=>FAIL_SIZE.as_ptr(),EFI_NOT_FOUND=>FAIL_FILE.as_ptr(),EFI_UNSUPPORTED=>FAIL_SERVICES.as_ptr(),_=>FAIL_FS.as_ptr()};
+            let _=unsafe{serial.print(msg)};return EFI_LOAD_ERROR;
         }
     };
-
-    let _ = unsafe { serial.print(STAGE_ELF.as_ptr()) };
-    // SAFETY: UEFI returned a pool allocation of image_size bytes; it remains
-    // allocated until FreePool is called below.
-    let bytes = unsafe { core::slice::from_raw_parts(image, image_size) };
-    let parsed = parse_elf64(bytes, EXPECTED_ELF_MACHINE);
-    let valid = parsed.is_ok();
-    let boot_services = unsafe { (*system_table).boot_services };
-    unsafe { free_pool(boot_services, image.cast::<c_void>()) };
-
-    if !valid {
-        let _ = unsafe { serial.print(FAIL_ELF.as_ptr()) };
-        return EFI_LOAD_ERROR;
+    let parsed={
+        // SAFETY: image is a live UEFI pool allocation of image_size readable bytes.
+        let bytes=unsafe{core::slice::from_raw_parts(image,image_size)};
+        parse_elf64(bytes,ELF_MACHINE)
+    };
+    let elf=match parsed {
+        Ok(e)=>e,
+        Err(_)=>{let bs=unsafe{(*st).boot_services};unsafe{free_pool(bs,image.cast());}let _=unsafe{serial.print(FAIL_ELF.as_ptr())};return EFI_LOAD_ERROR;}
+    };
+    let _=unsafe{serial.print(STAGE_ELF.as_ptr())};
+    #[cfg(target_arch="x86_64")]
+    {
+        let _=unsafe{serial.print(STAGE_LOADING.as_ptr())};
+        let bs=unsafe{(*st).boot_services};
+        let result={let bytes=unsafe{core::slice::from_raw_parts(image,image_size)};unsafe{load_identity_segments(bytes,&elf,bs)}};
+        unsafe{free_pool(bs,image.cast());}
+        let entry=match result{
+            Ok(e)=>e,
+            Err(status)=>{unsafe{cleanup_segments(bs);}let msg=if status==EFI_UNSUPPORTED{FAIL_HANDOFF.as_ptr()}else{FAIL_SEGMENT.as_ptr()};let _=unsafe{serial.print(msg)};return status;}
+        };
+        let _=unsafe{serial.print(STAGE_EXIT.as_ptr())};
+        let info=match unsafe{get_boot_info_and_exit(handle,st,entry)}{
+            Ok(p)=>p,
+            Err(status)=>{unsafe{cleanup_segments(bs);}let msg=if status==EFI_UNSUPPORTED{FAIL_SERVICES.as_ptr()}else{FAIL_EXIT.as_ptr()};let _=unsafe{serial.print(msg)};return status;}
+        };
+        // No firmware service is called after ExitBootServices succeeds.
+        unsafe{jump_to_kernel(entry,info)}
     }
-
-    // This milestone only reads and validates the kernel. It does not jump to
-    // the ELF entry: x86-64 currently needs its own high-half page tables and
-    // both architectures need an explicit, versioned handoff contract.
-    let _ = unsafe { serial.print(SUCCESS.as_ptr()) };
-    EFI_SUCCESS
+    #[cfg(target_arch="aarch64")]
+    {
+        let bs=unsafe{(*st).boot_services};unsafe{free_pool(bs,image.cast());}
+        let _=unsafe{serial.print(STAGE_ELF.as_ptr())};
+        EFI_SUCCESS
+    }
 }
-
 #[panic_handler]
-fn panic(_info: &PanicInfo<'_>) -> ! {
-    loop {
-        core::hint::spin_loop();
-    }
-}
+fn panic(_info:&PanicInfo<'_>)->!{loop{core::hint::spin_loop();}}

@@ -1,55 +1,31 @@
-# ArchiaOS
+# ArchiaOS — documentation technique
 
-**ArchiaOS est un système d'exploitation expérimental en cours de construction.** Le noyau x86-64 Rust `no_std` démarre actuellement avec Limine et est testé sous QEMU par GitHub Actions. Le remplacement par un bootloader UEFI développé par ArchiaOS a commencé, mais n'est pas encore le chemin de démarrage par défaut.
+ArchiaOS est un OS expérimental en Rust `no_std`. Le noyau principal x86-64 démarre encore avec Limine. Une chaîne de démarrage UEFI maison est en cours de construction.
 
-## État actuel
+## État
 
-- **Démarrage x86-64 existant :** l'ISO Limine BIOS/UEFI se construit et le noyau atteint son entrée Rust en mode long x86-64 ; la sortie COM1 est vérifiée par le smoke test QEMU.
-- **Bootloader ArchiaOS :** crate Rust `no_std` sans dépendance externe ; entrée UEFI, diagnostics et lecture de `\\EFI\\ArchiaOS\\kernel.elf` via les protocoles UEFI. Le parseur ELF64 valide maintenant le fichier, mais les segments ne sont pas encore chargés en mémoire et le noyau n'est pas encore lancé par ce bootloader.
-- **Préparation ARM64 :** la CI compile l'application UEFI du bootloader pour `x86_64-unknown-uefi` et `aarch64-unknown-uefi`, et compile un prototype noyau AArch64 distinct. Le noyau principal n'est pas encore compatible ARM64.
-- **Carte mémoire :** la réponse Limine est contrôlée pour les pointeurs, le nombre d'entrées, les longueurs nulles et les débordements.
-- **Mémoire physique :** allocateur bitmap expérimental pour les pages sous 4 Gio. Le test QEMU confirme l'allocation de 130 pages distinctes, traversant plusieurs mots bitmap, l'alignement, la baisse puis le rétablissement du compteur, le rejet des libérations invalides et le rejet du double-free.
-- **Langages :** Rust pour le noyau et le bootloader ; un petit stub assembleur aligne la pile à l'entrée x86-64. C/C++ ne sont pas ajoutés sans besoin démontré.
-- **Build :** Cargo, linker ELF avec segments virtuels hauts, génération d'ISO Limine, vérification des segments ELF et CI de démarrage.
+- **Noyau principal x86-64 :** entrée série, validation de la carte mémoire Limine et test PMM de 130 pages sous QEMU.
+- **Bootloader maison :** lit `\\EFI\\ArchiaOS\\kernel.elf`, valide ELF64 et peut charger les segments x86-64 identité sous 4 Gio, construire un `BootInfo`, quitter les Boot Services et passer le contrôle à un noyau de test isolé.
+- **Noyau principal inchangé :** le noyau de production est high-half lié et attend les réponses Limine. Il ne peut pas encore être démarré par le nouveau loader.
+- **ARM64 :** un prototype de noyau AArch64 démarre sous QEMU avec diagnostics PL011. Le transfert UEFI vers ce noyau reste à implémenter.
 
-Le noyau principal ne fournit pas encore d'IDT, de gestionnaire d'exceptions, d'ordonnanceur, de processus isolés, d'appels système, de stockage, de système de fichiers, de réseau ni d'interface graphique. L'allocateur est limité à 4 Gio, initialisé une seule fois et non synchronisé pour SMP ; il reste expérimental. Le prototype AArch64 séparé est uniquement une base de compilation et de bring-up, pas encore un démarrage testé.
+Le test de transfert est vérifié séparément dans la CI. Il ne constitue pas encore un démarrage end-to-end du noyau de production ni une prise en charge ARM64 complète.
 
-## Compilation du noyau x86-64 existant
-
-Prérequis : Rust stable, cible `x86_64-unknown-none`, `curl`, `make`, `xorriso` et QEMU x86-64. Depuis le dossier `ArchiaOS` :
+## Compilation du noyau principal
 
 ```sh
 cargo build --release
 scripts/make-iso.sh
-qemu-system-x86_64 -cdrom build/archiaos.iso -boot d -serial stdio -display none -no-reboot -no-shutdown
 ```
 
 ## Compilation du bootloader UEFI
 
-Depuis le dossier `ArchiaOS` :
-
 ```sh
+cargo test --manifest-path bootloader/Cargo.toml --lib --target x86_64-unknown-linux-gnu
 cargo build --manifest-path bootloader/Cargo.toml --release --target x86_64-unknown-uefi
 cargo build --manifest-path bootloader/Cargo.toml --release --target aarch64-unknown-uefi
 ```
 
-Le prototype lit et valide le fichier du noyau puis rend la main au firmware. Le chargement des segments ELF, les tables de pages, `ExitBootServices` et le transfert de contrôle ne sont pas encore implémentés ; Limine reste le chemin de démarrage normal.
+Voir [la roadmap](docs/ROADMAP.md), [le plan boot/ARM64](docs/BOOT_AND_ARCHITECTURES.md) et [le test de transfert UEFI](kernel/boot-test-x86_64/README.md).
 
-## Compilation du prototype noyau AArch64
-
-Depuis le dossier `ArchiaOS/kernel/aarch64` :
-
-```sh
-cargo build --release --target aarch64-unknown-none
-```
-
-Ce prototype cible la machine `virt` de QEMU et sa console PL011. Il n'est pas encore connecté au bootloader et n'a pas encore été validé en exécution.
-
-## Documentation
-
-- [Roadmap P0–P7](docs/ROADMAP.md)
-- [Architecture du bootloader et préparation ARM64](docs/BOOT_AND_ARCHITECTURES.md)
-- [Prototype UEFI](bootloader/README.md)
-- [Prototype noyau AArch64](kernel/aarch64/README.md)
-
-Le développement se fait exclusivement sur la branche **`ArchiaOS`** ; `main` ne doit pas être modifiée.
+Le développement se fait exclusivement sur la branche `ArchiaOS`; `main` ne doit pas être modifiée.

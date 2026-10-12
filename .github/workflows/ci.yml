@@ -115,8 +115,11 @@ jobs:
         run: rustup target add x86_64-unknown-none x86_64-unknown-uefi
       - name: Install OVMF and FAT image tools
         run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 ovmf dosfstools mtools
-      - name: Build x86_64 kernel ELF
-        run: cargo build --release --target x86_64-unknown-none
+      - name: Build identity-mapped handoff test kernel
+        shell: bash
+        run: |
+          cd kernel/boot-test-x86_64
+          RUSTFLAGS="-C link-arg=-Tlinker.ld -C relocation-model=static -C code-model=small -C no-redzone=yes" cargo build --release --target x86_64-unknown-none --target-dir ../../target/boot-test-x86_64
       - name: Build first-party UEFI loader
         run: cargo build --manifest-path bootloader/Cargo.toml --release --target x86_64-unknown-uefi
       - name: Prepare UEFI FAT disk image
@@ -125,7 +128,7 @@ jobs:
           set -euo pipefail
           image="$RUNNER_TEMP/archiaos-uefi.img"
           loader="target/x86_64-unknown-uefi/release/archiaos-bootloader.efi"
-          kernel="target/x86_64-unknown-none/release/archiaos-kernel"
+          kernel="target/boot-test-x86_64/x86_64-unknown-none/release/archiaos-boot-handoff-test"
           test -s "$loader"
           test -s "$kernel"
           truncate -s 64M "$image"
@@ -140,12 +143,13 @@ jobs:
         shell: bash
         run: |
           set +e
-          firmware="$(find /usr/share/OVMF /usr/share/ovmf -type f -iname 'OVMF_CODE*.fd' -print -quit 2>/dev/null)"
-          if [[ -z "$firmware" ]]; then
-            echo "OVMF firmware image was not found"
-            exit 1
-          fi
-          timeout 20s qemu-system-x86_64 -machine pc -m 512M -bios "$firmware" -drive "file=$RUNNER_TEMP/archiaos-uefi.img,format=raw,if=ide" -boot order=c -display none -serial stdio -monitor none -no-reboot -no-shutdown > "$RUNNER_TEMP/archiaos-uefi.log" 2>&1
+          firmware_code="$(find /usr/share/OVMF /usr/share/ovmf -type f -iname 'OVMF_CODE*.fd' -print -quit 2>/dev/null)"
+          if [[ -z "$firmware_code" ]]; then echo "OVMF code image not found"; exit 1; fi
+          firmware_vars="${firmware_code/CODE/VARS}"
+          if [[ ! -f "$firmware_vars" ]]; then firmware_vars="$(find /usr/share/OVMF /usr/share/ovmf -type f -iname 'OVMF_VARS*.fd' -print -quit 2>/dev/null)"; fi
+          if [[ -z "$firmware_vars" || ! -f "$firmware_vars" ]]; then echo "OVMF variables image not found"; exit 1; fi
+          cp "$firmware_vars" "$RUNNER_TEMP/OVMF_VARS.fd"
+          timeout 20s qemu-system-x86_64 -machine q35 -m 512M -drive "if=pflash,format=raw,readonly=on,file=$firmware_code" -drive "if=pflash,format=raw,file=$RUNNER_TEMP/OVMF_VARS.fd" -drive "file=$RUNNER_TEMP/archiaos-uefi.img,format=raw,if=ide" -boot order=c -display none -serial stdio -monitor none -no-reboot -no-shutdown > "$RUNNER_TEMP/archiaos-uefi.log" 2>&1
           qemu_status=$?
           set -e
           cat "$RUNNER_TEMP/archiaos-uefi.log"
@@ -155,4 +159,8 @@ jobs:
           fi
           grep -Fq "ArchiaOS Bootloader: opening EFI kernel image" "$RUNNER_TEMP/archiaos-uefi.log"
           grep -Fq "ArchiaOS Bootloader: validating ELF64 kernel" "$RUNNER_TEMP/archiaos-uefi.log"
-          grep -Fq "ArchiaOS Bootloader: kernel ELF validated; handoff pending" "$RUNNER_TEMP/archiaos-uefi.log"
+          grep -Fq "ArchiaOS Bootloader: loading identity-mapped ELF segments" "$RUNNER_TEMP/archiaos-uefi.log"
+          grep -Fq "ArchiaOS Bootloader: exiting UEFI boot services" "$RUNNER_TEMP/archiaos-uefi.log"
+          grep -Fq "ArchiaOS UEFI test kernel: handoff received" "$RUNNER_TEMP/archiaos-uefi.log"
+          grep -Fq "ArchiaOS UEFI test kernel: BootInfo validated" "$RUNNER_TEMP/archiaos-uefi.log"
+          grep -Fq "ArchiaOS UEFI test kernel: identity-mapped handoff passed" "$RUNNER_TEMP/archiaos-uefi.log"

@@ -344,7 +344,7 @@ mod tests {
 
     #[test]
     fn boot_info_layout_is_stable() {
-        assert_eq!(core::mem::size_of::<super::super::bootinfo::BootInfo>(), 88);
+        assert_eq!(core::mem::size_of::<super::bootinfo::BootInfo>(), 88);
     }
 
     #[test]
