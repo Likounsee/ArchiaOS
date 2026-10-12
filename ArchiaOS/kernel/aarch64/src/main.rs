@@ -226,10 +226,20 @@ fn validate_boot_info(info: *const BootInfo, serial: &mut Serial) {
         serial.write_str("ArchiaOS AArch64: UEFI memory map is empty\\n");
         halt_forever();
     }
+    let conventional_pages = match memory_map.conventional_page_count() {
+        Ok(pages) if pages > 0 => pages,
+        _ => {
+            serial.write_str("ArchiaOS AArch64: conventional memory validation failed\\n");
+            halt_forever();
+        }
+    };
 
     serial.write_str("ArchiaOS AArch64: BootInfo validated\\n");
     serial.write_str("ArchiaOS AArch64: Device Tree header validated\\n");
     serial.write_str("ArchiaOS AArch64: UEFI memory-map descriptors validated\\n");
+    if conventional_pages > 0 {
+        serial.write_str("ArchiaOS AArch64: conventional memory pages validated\\n");
+    }
 }
 
 #[no_mangle]
