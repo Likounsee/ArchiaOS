@@ -1,5 +1,9 @@
+use core::convert::Infallible;
 use core::ffi::c_void;
 use core::ptr;
+
+use archiaos_bootloader::bootinfo::{BootInfo, BOOT_INFO_MAGIC, BOOT_INFO_VERSION};
+use archiaos_bootloader::memory_map::UefiMemoryMap;
 
 pub type Status = usize;
 pub type Handle = *mut c_void;
@@ -9,14 +13,21 @@ pub const EFI_SUCCESS: Status = 0;
 pub const EFI_INVALID_PARAMETER: Status = EFI_ERROR_BIT | 2;
 pub const EFI_LOAD_ERROR: Status = EFI_ERROR_BIT | 1;
 pub const EFI_UNSUPPORTED: Status = EFI_ERROR_BIT | 3;
-pub const EFI_BUFFER_TOO_SMALL: Status = EFI_ERROR_BIT | 5;
+const EFI_NOT_FOUND: Status = EFI_ERROR_BIT | 14;
+const EFI_LOADER_CODE: u32 = 1;
 const EFI_LOADER_DATA: u32 = 2;
+const EFI_ALLOCATE_ADDRESS: u32 = 2;
 const EFI_FILE_MODE_READ: u64 = 1;
+const EFI_PAGE_SIZE: u64 = 4096;
 const FILE_INFO_BUFFER_SIZE: usize = 1024;
 const MAX_KERNEL_IMAGE_SIZE: usize = 64 * 1024 * 1024;
+const MAX_MEMORY_MAP_SIZE: usize = 1024 * 1024;
+const MAX_LOAD_SEGMENTS: usize = 1024;
+const MAX_EXIT_BOOT_SERVICES_ATTEMPTS: usize = 3;
+const PF_X: u32 = 1;
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Guid {
     data1: u32,
     data2: u16,
@@ -41,6 +52,24 @@ const FILE_INFO_GUID: Guid = Guid {
     data2: 0x6d3f,
     data3: 0x11d2,
     data4: [0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b],
+};
+const ACPI_20_TABLE_GUID: Guid = Guid {
+    data1: 0x8868_e871,
+    data2: 0xe4f1,
+    data3: 0x11d3,
+    data4: [0xbc, 0x22, 0x00, 0x80, 0xc7, 0x3c, 0x88, 0x81],
+};
+const ACPI_10_TABLE_GUID: Guid = Guid {
+    data1: 0xeb9d_2d30,
+    data2: 0x2d88,
+    data3: 0x11d3,
+    data4: [0x9a, 0x16, 0x00, 0x90, 0x27, 0x3f, 0xc1, 0x4d],
+};
+const EFI_DTB_TABLE_GUID: Guid = Guid {
+    data1: 0xb1b6_21d5,
+    data2: 0xf19c,
+    data3: 0x41a5,
+    data4: [0x83, 0x0b, 0xd9, 0x15, 0x2c, 0x69, 0xaa, 0xe0],
 };
 
 #[repr(C)]
@@ -86,7 +115,14 @@ pub struct SystemTable {
     runtime_services: *mut c_void,
     pub boot_services: *mut BootServices,
     number_of_table_entries: usize,
-    configuration_table: *mut c_void,
+    configuration_table: *mut ConfigurationTable,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct ConfigurationTable {
+    vendor_guid: Guid,
+    vendor_table: *mut c_void,
 }
 
 type HandleProtocolFn = unsafe extern "efiapi" fn(
@@ -100,15 +136,30 @@ type AllocatePoolFn = unsafe extern "efiapi" fn(
     buffer: *mut *mut c_void,
 ) -> Status;
 type FreePoolFn = unsafe extern "efiapi" fn(buffer: *mut c_void) -> Status;
+type AllocatePagesFn = unsafe extern "efiapi" fn(
+    allocation_type: u32,
+    memory_type: u32,
+    pages: usize,
+    memory: *mut u64,
+) -> Status;
+type FreePagesFn = unsafe extern "efiapi" fn(memory: u64, pages: usize) -> Status;
+type GetMemoryMapFn = unsafe extern "efiapi" fn(
+    memory_map_size: *mut usize,
+    memory_map: *mut c_void,
+    map_key: *mut usize,
+    descriptor_size: *mut usize,
+    descriptor_version: *mut u32,
+) -> Status;
+type ExitBootServicesFn = unsafe extern "efiapi" fn(image_handle: Handle, map_key: usize) -> Status;
 
 #[repr(C)]
 pub struct BootServices {
     header: TableHeader,
     raise_tpl: usize,
     restore_tpl: usize,
-    allocate_pages: usize,
-    free_pages: usize,
-    get_memory_map: usize,
+    allocate_pages: Option<AllocatePagesFn>,
+    free_pages: Option<FreePagesFn>,
+    get_memory_map: Option<GetMemoryMapFn>,
     allocate_pool: Option<AllocatePoolFn>,
     free_pool: Option<FreePoolFn>,
     create_event: usize,
@@ -130,7 +181,7 @@ pub struct BootServices {
     start_image: usize,
     exit: usize,
     unload_image: usize,
-    exit_boot_services: usize,
+    exit_boot_services: Option<ExitBootServicesFn>,
     get_next_monotonic_count: usize,
     stall: usize,
     set_watchdog_timer: usize,
@@ -151,7 +202,7 @@ pub struct BootServices {
 }
 
 #[repr(C)]
-pub struct LoadedImageProtocol {
+struct LoadedImageProtocol {
     revision: u32,
     _padding0: u32,
     parent_handle: Handle,
@@ -175,7 +226,7 @@ type OpenVolumeFn = unsafe extern "efiapi" fn(
 ) -> Status;
 
 #[repr(C)]
-pub struct SimpleFileSystemProtocol {
+struct SimpleFileSystemProtocol {
     revision: u64,
     open_volume: Option<OpenVolumeFn>,
 }
@@ -201,7 +252,7 @@ type FileGetInfoFn = unsafe extern "efiapi" fn(
 ) -> Status;
 
 #[repr(C)]
-pub struct FileProtocol {
+struct FileProtocol {
     revision: u64,
     open: Option<FileOpenFn>,
     close: Option<FileCloseFn>,
@@ -225,6 +276,10 @@ pub struct BootError {
     pub message: &'static [u8],
 }
 
+fn error(status: Status, message: &'static [u8]) -> BootError {
+    BootError { status, message }
+}
+
 struct PoolAllocation {
     pointer: *mut c_void,
     boot_services: *mut BootServices,
@@ -238,11 +293,11 @@ impl PoolAllocation {
         if boot_services.is_null() || size == 0 {
             return Err(error(EFI_INVALID_PARAMETER, b"ArchiaOS: invalid pool allocation request.\r\n\0"));
         }
-        // SAFETY: caller passes the firmware Boot Services table while boot services are active.
+        // SAFETY: caller passes the active firmware Boot Services table.
         let allocate = unsafe { (*boot_services).allocate_pool }
             .ok_or_else(|| error(EFI_UNSUPPORTED, b"ArchiaOS: AllocatePool is unavailable.\r\n\0"))?;
         let mut pointer = ptr::null_mut();
-        // SAFETY: output pointer is valid and the allocation size has been bounded by the caller.
+        // SAFETY: output pointer is valid and request size is bounded by the caller.
         let status = unsafe { allocate(EFI_LOADER_DATA, size, &mut pointer) };
         if status != EFI_SUCCESS {
             return Err(error(status, b"ArchiaOS: firmware pool allocation failed.\r\n\0"));
@@ -253,8 +308,10 @@ impl PoolAllocation {
         Ok(Self { pointer, boot_services })
     }
 
-    fn as_mut_ptr<T>(&mut self) -> *mut T {
-        self.pointer.cast::<T>()
+    fn into_raw(mut self) -> *mut c_void {
+        let pointer = self.pointer;
+        self.pointer = ptr::null_mut();
+        pointer
     }
 }
 
@@ -263,7 +320,7 @@ impl Drop for PoolAllocation {
         if self.pointer.is_null() || self.boot_services.is_null() {
             return;
         }
-        // SAFETY: this pointer was returned by AllocatePool and is released before ExitBootServices.
+        // SAFETY: the pool was returned by AllocatePool and is freed before EBS.
         if let Some(free) = unsafe { (*self.boot_services).free_pool } {
             let _ = unsafe { free(self.pointer) };
         }
@@ -278,7 +335,7 @@ impl Drop for FileGuard {
         if self.0.is_null() {
             return;
         }
-        // SAFETY: the file handle is valid until Close is called, and Drop only runs before EBS.
+        // SAFETY: this is an open EFI file handle; Drop only runs before EBS.
         if let Some(close) = unsafe { (*self.0).close } {
             let _ = unsafe { close(self.0) };
         }
@@ -286,9 +343,25 @@ impl Drop for FileGuard {
     }
 }
 
-fn error(status: Status, message: &'static [u8]) -> BootError {
-    BootError { status, message }
+pub struct KernelImage {
+    buffer: PoolAllocation,
+    size: usize,
 }
+
+impl KernelImage {
+    pub fn as_slice(&self) -> &[u8] {
+        // SAFETY: allocation contains the exact number of bytes read from the file.
+        unsafe { core::slice::from_raw_parts(self.buffer.pointer.cast::<u8>(), self.size) }
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+pub const EXPECTED_ELF_MACHINE: u16 = 62;
+#[cfg(target_arch = "aarch64")]
+pub const EXPECTED_ELF_MACHINE: u16 = 183;
+
+const KERNEL_PATH: [u16; b"\\EFI\\ArchiaOS\\kernel.elf\0".len()] =
+    ascii_to_utf16(b"\\EFI\\ArchiaOS\\kernel.elf\0");
 
 const fn ascii_to_utf16<const N: usize>(bytes: &[u8; N]) -> [u16; N] {
     let mut result = [0u16; N];
@@ -300,36 +373,27 @@ const fn ascii_to_utf16<const N: usize>(bytes: &[u8; N]) -> [u16; N] {
     result
 }
 
-static KERNEL_PATH: [u16; b"\\EFI\\BOOT\\ARCHIAOS.ELF\0".len()] =
-    ascii_to_utf16(b"\\EFI\\BOOT\\ARCHIAOS.ELF\0");
-
-#[cfg(target_arch = "x86_64")]
-const EXPECTED_ELF_MACHINE: u16 = 62;
-#[cfg(target_arch = "aarch64")]
-const EXPECTED_ELF_MACHINE: u16 = 183;
-
-pub unsafe fn inspect_kernel(
+/// Read the kernel from the same filesystem volume from which this EFI application was loaded.
+pub unsafe fn read_kernel_image(
     image_handle: Handle,
     system_table: *mut SystemTable,
-) -> Result<u64, BootError> {
+) -> Result<KernelImage, BootError> {
     if image_handle.is_null() || system_table.is_null() {
         return Err(error(EFI_INVALID_PARAMETER, b"ArchiaOS: invalid UEFI entry arguments.\r\n\0"));
     }
 
-    // SAFETY: UEFI passes a valid system table to an EFI application.
+    // SAFETY: UEFI passes a valid system table to the EFI application.
     let boot_services = unsafe { (*system_table).boot_services };
     if boot_services.is_null() {
         return Err(error(EFI_INVALID_PARAMETER, b"ArchiaOS: firmware Boot Services unavailable.\r\n\0"));
     }
-    // SAFETY: we call HandleProtocol while this EFI application is running in boot services.
+    // SAFETY: HandleProtocol is called while boot services are active.
     let handle_protocol = unsafe { (*boot_services).handle_protocol }
         .ok_or_else(|| error(EFI_UNSUPPORTED, b"ArchiaOS: HandleProtocol is unavailable.\r\n\0"))?;
 
     let mut loaded_image_raw = ptr::null_mut();
-    // SAFETY: output pointer is writable and the GUID identifies the loaded-image protocol.
-    let status = unsafe {
-        handle_protocol(image_handle, &LOADED_IMAGE_GUID, &mut loaded_image_raw)
-    };
+    // SAFETY: protocol GUID and writable output pointer are valid.
+    let status = unsafe { handle_protocol(image_handle, &LOADED_IMAGE_GUID, &mut loaded_image_raw) };
     if status != EFI_SUCCESS {
         return Err(error(status, b"ArchiaOS: cannot identify bootloader device.\r\n\0"));
     }
@@ -344,10 +408,8 @@ pub unsafe fn inspect_kernel(
     }
 
     let mut file_system_raw = ptr::null_mut();
-    // SAFETY: the device handle belongs to the loaded image; query its Simple File System protocol.
-    let status = unsafe {
-        handle_protocol(device_handle, &SIMPLE_FILE_SYSTEM_GUID, &mut file_system_raw)
-    };
+    // SAFETY: this protocol query uses the loaded image's device handle.
+    let status = unsafe { handle_protocol(device_handle, &SIMPLE_FILE_SYSTEM_GUID, &mut file_system_raw) };
     if status != EFI_SUCCESS {
         return Err(error(status, b"ArchiaOS: boot device has no Simple File System.\r\n\0"));
     }
@@ -373,57 +435,510 @@ pub unsafe fn inspect_kernel(
     let open = unsafe { (*root.0).open }
         .ok_or_else(|| error(EFI_UNSUPPORTED, b"ArchiaOS: file Open is unavailable.\r\n\0"))?;
     let mut kernel_raw = ptr::null_mut();
-    // SAFETY: the output handle is valid and the file is opened read-only.
+    // SAFETY: file-handle output is writable and the path is an absolute EFI path.
     let status = unsafe { open(root.0, &mut kernel_raw, KERNEL_PATH.as_ptr(), EFI_FILE_MODE_READ, 0) };
     if status != EFI_SUCCESS {
-        return Err(error(status, b"ArchiaOS: missing \\EFI\\BOOT\\ARCHIAOS.ELF on boot volume.\r\n\0"));
+        return Err(error(status, b"ArchiaOS: missing \\EFI\\ArchiaOS\\kernel.elf on boot volume.\r\n\0"));
     }
     if kernel_raw.is_null() {
         return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: filesystem returned a null kernel file handle.\r\n\0"));
     }
     let kernel = FileGuard(kernel_raw);
 
-    // EFI_FILE_INFO begins with Size and FileSize, both u64 fields. A fixed,
-    // bounded buffer avoids a size-query race while the file handle is open.
     let mut info = unsafe { PoolAllocation::new(boot_services, FILE_INFO_BUFFER_SIZE)? };
+    // SAFETY: GetInfo is a member of the file protocol interface.
     let get_info = unsafe { (*kernel.0).get_info }
         .ok_or_else(|| error(EFI_UNSUPPORTED, b"ArchiaOS: file GetInfo is unavailable.\r\n\0"))?;
     let mut info_size = FILE_INFO_BUFFER_SIZE;
-    // SAFETY: info is a properly allocated buffer of the size passed to firmware.
-    let status = unsafe {
-        get_info(kernel.0, &FILE_INFO_GUID, &mut info_size, info.pointer)
-    };
+    // SAFETY: info is writable and its allocated capacity is passed to firmware.
+    let status = unsafe { get_info(kernel.0, &FILE_INFO_GUID, &mut info_size, info.pointer) };
     if status != EFI_SUCCESS {
         return Err(error(status, b"ArchiaOS: cannot read kernel file metadata.\r\n\0"));
     }
-    if info_size < 16 {
-        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: truncated kernel file metadata.\r\n\0"));
+    if !(16..=FILE_INFO_BUFFER_SIZE).contains(&info_size) {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid kernel file metadata size.\r\n\0"));
     }
-    // SAFETY: EFI_FILE_INFO contains FileSize at byte offset 8; read unaligned defensively.
+    // EFI_FILE_INFO stores FileSize as u64 at byte offset 8.
+    // SAFETY: minimum metadata size was checked; use unaligned access defensively.
     let file_size_u64 = unsafe { ptr::read_unaligned(info.pointer.cast::<u8>().add(8).cast::<u64>()) };
     let file_size = usize::try_from(file_size_u64)
-        .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: kernel file is too large for this platform.\r\n\0"))?;
-    if file_size < 64 || file_size > MAX_KERNEL_IMAGE_SIZE {
-        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: kernel image size is outside the supported bounds.\r\n\0"));
+        .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: kernel file size overflows UINTN.\r\n\0"))?;
+    if !(64..=MAX_KERNEL_IMAGE_SIZE).contains(&file_size) {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: kernel image size is outside supported bounds.\r\n\0"));
     }
     drop(info);
 
     let mut image_buffer = unsafe { PoolAllocation::new(boot_services, file_size)? };
+    // SAFETY: Read is part of the file protocol interface.
     let read = unsafe { (*kernel.0).read }
         .ok_or_else(|| error(EFI_UNSUPPORTED, b"ArchiaOS: file Read is unavailable.\r\n\0"))?;
-    let mut bytes_read = file_size;
-    // SAFETY: buffer has file_size bytes and the file remains open for this call.
-    let status = unsafe { read(kernel.0, &mut bytes_read, image_buffer.pointer) };
-    if status != EFI_SUCCESS {
-        return Err(error(status, b"ArchiaOS: reading kernel image failed.\r\n\0"));
+    let mut offset = 0usize;
+    while offset < file_size {
+        let mut requested = file_size - offset;
+        // SAFETY: destination range remains inside the exact-sized allocation.
+        let status = unsafe {
+            read(
+                kernel.0,
+                &mut requested,
+                image_buffer.pointer.cast::<u8>().add(offset).cast::<c_void>(),
+            )
+        };
+        if status != EFI_SUCCESS {
+            return Err(error(status, b"ArchiaOS: reading kernel image failed.\r\n\0"));
+        }
+        if requested == 0 || requested > file_size - offset {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid or short kernel file read.\r\n\0"));
+        }
+        offset += requested;
     }
-    if bytes_read != file_size {
-        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: short read while loading kernel image.\r\n\0"));
+    drop(kernel);
+    drop(root);
+
+    Ok(KernelImage { buffer: image_buffer, size: file_size })
+}
+
+fn rollback_pages(
+    boot_services: *mut BootServices,
+    starts: &[u64; MAX_LOAD_SEGMENTS],
+    page_counts: &[usize; MAX_LOAD_SEGMENTS],
+    allocated_count: usize,
+) {
+    // SAFETY: these page addresses/counts were returned by AllocatePages in this invocation.
+    let Some(free_pages) = (unsafe { (*boot_services).free_pages }) else {
+        return;
+    };
+    for index in (0..allocated_count).rev() {
+        let _ = unsafe { free_pages(starts[index], page_counts[index]) };
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+unsafe fn flush_instruction_cache(start: u64, length: u64) {
+    if length == 0 {
+        return;
+    }
+    let ctr: u64;
+    // SAFETY: CTR_EL0 is readable at the kernel's privileged execution level.
+    unsafe { core::arch::asm!("mrs {value}, ctr_el0", value = out(reg) ctr, options(nomem, nostack, preserves_flags)) };
+    let dcache_line = 4usize << (((ctr >> 16) & 0xf) as usize);
+    let icache_line = 4usize << ((ctr & 0xf) as usize);
+    let start = start as usize;
+    let end = start.saturating_add(length as usize);
+    let mut address = start & !(dcache_line - 1);
+    while address < end {
+        // SAFETY: address lies in the physical range just written by this loader.
+        unsafe { core::arch::asm!("dc cvau, {address}", address = in(reg) address, options(nostack, preserves_flags)) };
+        address = address.saturating_add(dcache_line);
+    }
+    // SAFETY: required ordering between data clean and instruction-cache invalidation.
+    unsafe { core::arch::asm!("dsb ish", options(nostack, preserves_flags)) };
+    address = start & !(icache_line - 1);
+    while address < end {
+        // SAFETY: address lies in the executable segment just written by this loader.
+        unsafe { core::arch::asm!("ic ivau, {address}", address = in(reg) address, options(nostack, preserves_flags)) };
+        address = address.saturating_add(icache_line);
+    }
+    // SAFETY: complete cache maintenance before transferring execution.
+    unsafe { core::arch::asm!("dsb ish", "isb", options(nostack, preserves_flags)) };
+}
+
+/// Allocate and copy only identity-mapped ELF64 PT_LOAD segments. High-half
+/// images are rejected until this loader installs architecture page tables.
+pub unsafe fn load_kernel_segments(
+    boot_services: *mut BootServices,
+    image: &[u8],
+    elf: &archiaos_bootloader::elf::ElfFile,
+) -> Result<u64, BootError> {
+    if boot_services.is_null() {
+        return Err(error(EFI_INVALID_PARAMETER, b"ArchiaOS: Boot Services unavailable while loading segments.\r\n\0"));
+    }
+    // SAFETY: AllocatePages is called while boot services are active.
+    let allocate_pages = unsafe { (*boot_services).allocate_pages }
+        .ok_or_else(|| error(EFI_UNSUPPORTED, b"ArchiaOS: AllocatePages is unavailable.\r\n\0"))?;
+    // SAFETY: FreePages is used to roll back successful prior allocations on failure.
+    let free_pages = unsafe { (*boot_services).free_pages }
+        .ok_or_else(|| error(EFI_UNSUPPORTED, b"ArchiaOS: FreePages is unavailable.\r\n\0"))?;
+
+    let mut segment_indices = [0u16; MAX_LOAD_SEGMENTS];
+    let mut page_starts = [0u64; MAX_LOAD_SEGMENTS];
+    let mut page_ends = [0u64; MAX_LOAD_SEGMENTS];
+    let mut page_counts = [0usize; MAX_LOAD_SEGMENTS];
+    let mut segment_count = 0usize;
+
+    for index in 0..elf.program_header_count() {
+        let segment = match archiaos_bootloader::elf::load_segment(image, elf, index) {
+            Ok(segment) => segment,
+            Err(archiaos_bootloader::elf::ElfError::NotLoadableSegment) => continue,
+            Err(_) => return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ELF load segment.\r\n\0")),
+        };
+
+        if segment.virtual_address != segment.physical_address
+            || segment.virtual_address % EFI_PAGE_SIZE != 0
+            || segment.physical_address % EFI_PAGE_SIZE != 0
+        {
+            return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: this loader milestone requires identity-mapped, page-aligned ELF segments.\r\n\0"));
+        }
+        if segment.memory_size == 0 || segment.memory_size < segment.file_size {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ELF segment memory size.\r\n\0"));
+        }
+        if segment_count >= MAX_LOAD_SEGMENTS {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: too many ELF load segments.\r\n\0"));
+        }
+
+        let segment_end = segment.physical_address
+            .checked_add(segment.memory_size)
+            .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF segment address overflow.\r\n\0"))?;
+        let rounded_end = segment_end
+            .checked_add(EFI_PAGE_SIZE - 1)
+            .map(|value| value & !(EFI_PAGE_SIZE - 1))
+            .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF segment page-range overflow.\r\n\0"))?;
+        let rounded_length = rounded_end
+            .checked_sub(segment.physical_address)
+            .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ELF page range.\r\n\0"))?;
+        let pages = usize::try_from(rounded_length / EFI_PAGE_SIZE)
+            .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF allocation size overflows UINTN.\r\n\0"))?;
+        if pages == 0 {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: empty ELF page allocation.\r\n\0"));
+        }
+        for prior in 0..segment_count {
+            if segment.physical_address < page_ends[prior]
+                && page_starts[prior] < rounded_end
+            {
+                return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ELF segments overlap after page rounding.\r\n\0"));
+            }
+        }
+        segment_indices[segment_count] = index;
+        page_starts[segment_count] = segment.physical_address;
+        page_ends[segment_count] = rounded_end;
+        page_counts[segment_count] = pages;
+        segment_count += 1;
     }
 
-    // SAFETY: firmware supplied exactly file_size bytes into this live allocation.
-    let image = unsafe { core::slice::from_raw_parts(image_buffer.as_mut_ptr::<u8>(), file_size) };
-    let parsed = archiaos_bootloader::elf::parse_elf64(image, EXPECTED_ELF_MACHINE)
-        .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: kernel ELF validation failed.\r\n\0"))?;
-    Ok(parsed.entry())
+    if segment_count == 0 {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ELF has no loadable segments.\r\n\0"));
+    }
+
+    let mut allocated_starts = [0u64; MAX_LOAD_SEGMENTS];
+    let mut allocated_pages = [0usize; MAX_LOAD_SEGMENTS];
+    let mut allocated_count = 0usize;
+    let mut found_entry = false;
+
+    for item in 0..segment_count {
+        let segment = match archiaos_bootloader::elf::load_segment(image, elf, segment_indices[item]) {
+            Ok(segment) => segment,
+            Err(_) => {
+                rollback_pages(boot_services, &allocated_starts, &allocated_pages, allocated_count);
+                return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ELF segment changed after validation.\r\n\0"));
+            }
+        };
+        let mut address = page_starts[item];
+        let memory_type = if segment.flags & PF_X != 0 { EFI_LOADER_CODE } else { EFI_LOADER_DATA };
+        // SAFETY: address and page count were checked; AllocateAddress requests the exact physical range.
+        let status = unsafe { allocate_pages(EFI_ALLOCATE_ADDRESS, memory_type, page_counts[item], &mut address) };
+        if status != EFI_SUCCESS {
+            rollback_pages(boot_services, &allocated_starts, &allocated_pages, allocated_count);
+            return Err(error(status, b"ArchiaOS: firmware could not reserve an ELF physical range.\r\n\0"));
+        }
+        if address != page_starts[item] {
+            let _ = unsafe { free_pages(address, page_counts[item]) };
+            rollback_pages(boot_services, &allocated_starts, &allocated_pages, allocated_count);
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: firmware allocated ELF pages at an unexpected address.\r\n\0"));
+        }
+        allocated_starts[allocated_count] = address;
+        allocated_pages[allocated_count] = page_counts[item];
+        allocated_count += 1;
+
+        let allocation_length = page_counts[item]
+            .checked_mul(EFI_PAGE_SIZE as usize)
+            .ok_or_else(|| {
+                rollback_pages(boot_services, &allocated_starts, &allocated_pages, allocated_count);
+                error(EFI_LOAD_ERROR, b"ArchiaOS: segment allocation length overflow.\r\n\0")
+            })?;
+        // SAFETY: UEFI pages are addressable during boot services and the allocated range is writable.
+        let destination = address as *mut u8;
+        unsafe { ptr::write_bytes(destination, 0, allocation_length) };
+
+        let file_offset = usize::try_from(segment.file_offset)
+            .map_err(|_| {
+                rollback_pages(boot_services, &allocated_starts, &allocated_pages, allocated_count);
+                error(EFI_LOAD_ERROR, b"ArchiaOS: ELF file offset overflows UINTN.\r\n\0")
+            })?;
+        let file_size = usize::try_from(segment.file_size)
+            .map_err(|_| {
+                rollback_pages(boot_services, &allocated_starts, &allocated_pages, allocated_count);
+                error(EFI_LOAD_ERROR, b"ArchiaOS: ELF segment file size overflows UINTN.\r\n\0")
+            })?;
+        let source_end = file_offset.checked_add(file_size)
+            .ok_or_else(|| {
+                rollback_pages(boot_services, &allocated_starts, &allocated_pages, allocated_count);
+                error(EFI_LOAD_ERROR, b"ArchiaOS: ELF source range overflows.\r\n\0")
+            })?;
+        let source = image.get(file_offset..source_end).ok_or_else(|| {
+            rollback_pages(boot_services, &allocated_starts, &allocated_pages, allocated_count);
+            error(EFI_LOAD_ERROR, b"ArchiaOS: ELF segment lies outside the kernel file.\r\n\0")
+        })?;
+        // SAFETY: file range is validated; destination is a distinct newly allocated range.
+        unsafe { ptr::copy_nonoverlapping(source.as_ptr(), destination, source.len()) };
+
+        if segment.flags & PF_X != 0 {
+            let segment_end = segment.virtual_address + segment.memory_size;
+            found_entry |= elf.entry() >= segment.virtual_address && elf.entry() < segment_end;
+            #[cfg(target_arch = "aarch64")]
+            // SAFETY: executable bytes have just been copied to this allocated range.
+            unsafe { flush_instruction_cache(segment.physical_address, segment.memory_size) };
+        }
+    }
+
+    if !found_entry {
+        rollback_pages(boot_services, &allocated_starts, &allocated_pages, allocated_count);
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ELF entry is not in an executable loaded segment.\r\n\0"));
+    }
+    Ok(elf.entry())
+}
+
+fn configuration_table(system_table: *mut SystemTable, wanted: &Guid) -> *mut c_void {
+    if system_table.is_null() {
+        return ptr::null_mut();
+    }
+    // SAFETY: firmware provides the configuration-table array and count.
+    let (count, tables) = unsafe {
+        ((*system_table).number_of_table_entries, (*system_table).configuration_table)
+    };
+    if count == 0 || count > 4096 || tables.is_null() {
+        return ptr::null_mut();
+    }
+    for index in 0..count {
+        // SAFETY: index is below the table count advertised by firmware.
+        let candidate = unsafe { ptr::read(tables.add(index)) };
+        if candidate.vendor_guid == *wanted && !candidate.vendor_table.is_null() {
+            return candidate.vendor_table;
+        }
+    }
+    ptr::null_mut()
+}
+
+unsafe fn validated_rsdp(pointer: *mut c_void) -> u64 {
+    if pointer.is_null() {
+        return 0;
+    }
+    let address = pointer.cast::<u8>();
+    // SAFETY: pointer is supplied by the firmware ACPI configuration table.
+    let legacy = unsafe { core::slice::from_raw_parts(address, 20) };
+    if legacy.get(15).copied() == Some(0) {
+        return if archiaos_bootloader::acpi::parse_rsdp(legacy).is_ok() {
+            pointer as u64
+        } else {
+            0
+        };
+    }
+    // Extended RSDP structures contain at least 36 bytes including their length.
+    // SAFETY: the ACPI 2.0 firmware table entry points to an extended RSDP.
+    let fixed = unsafe { core::slice::from_raw_parts(address, 36) };
+    if fixed.get(15).copied().unwrap_or(0) < 2 {
+        return 0;
+    }
+    let length = u32::from_le_bytes([fixed[20], fixed[21], fixed[22], fixed[23]]) as usize;
+    if !(36..=archiaos_bootloader::acpi::MAX_RSDP_SIZE).contains(&length) {
+        return 0;
+    }
+    // SAFETY: advertised length is bounded and belongs to the firmware table.
+    let complete = unsafe { core::slice::from_raw_parts(address, length) };
+    if archiaos_bootloader::acpi::parse_rsdp(complete).is_ok() {
+        pointer as u64
+    } else {
+        0
+    }
+}
+
+unsafe fn validated_device_tree(pointer: *mut c_void) -> u64 {
+    if pointer.is_null() {
+        return 0;
+    }
+    let address = pointer.cast::<u8>();
+    // SAFETY: pointer is returned by EFI_DTB_TABLE_GUID in the configuration table.
+    let prefix = unsafe { core::slice::from_raw_parts(address, 8) };
+    if u32::from_be_bytes([prefix[0], prefix[1], prefix[2], prefix[3]])
+        != archiaos_bootloader::device_tree::FDT_MAGIC
+    {
+        return 0;
+    }
+    let total = u32::from_be_bytes([prefix[4], prefix[5], prefix[6], prefix[7]]) as usize;
+    if !(archiaos_bootloader::device_tree::HEADER_SIZE
+        ..=archiaos_bootloader::device_tree::MAX_TOTAL_SIZE).contains(&total)
+    {
+        return 0;
+    }
+    // SAFETY: total is bounded by the parser limit and firmware supplied the DTB address.
+    let tree = unsafe { core::slice::from_raw_parts(address, total) };
+    if archiaos_bootloader::device_tree::validate_tree(tree).is_ok() {
+        pointer as u64
+    } else {
+        0
+    }
+}
+
+fn platform_tables(system_table: *mut SystemTable) -> (u64, u64) {
+    let acpi20 = configuration_table(system_table, &ACPI_20_TABLE_GUID);
+    let acpi10 = configuration_table(system_table, &ACPI_10_TABLE_GUID);
+    // SAFETY: firmware configuration-table pointers are validated before use.
+    let rsdp20 = unsafe { validated_rsdp(acpi20) };
+    let rsdp10 = unsafe { validated_rsdp(acpi10) };
+    let rsdp = if rsdp20 != 0 { rsdp20 } else { rsdp10 };
+
+    let dtb = configuration_table(system_table, &EFI_DTB_TABLE_GUID);
+    // SAFETY: pointer comes from firmware and is fully parsed before being exposed.
+    let dtb = unsafe { validated_device_tree(dtb) };
+    (rsdp, dtb)
+}
+
+/// Capture platform metadata, validate the final firmware memory map, terminate
+/// boot services, and transfer control using the versioned BootInfo contract.
+pub unsafe fn transfer_to_kernel(
+    image_handle: Handle,
+    system_table: *mut SystemTable,
+    kernel_entry: u64,
+) -> Result<Infallible, BootError> {
+    if image_handle.is_null() || system_table.is_null() || kernel_entry == 0 {
+        return Err(error(EFI_INVALID_PARAMETER, b"ArchiaOS: invalid kernel handoff arguments.\r\n\0"));
+    }
+    // SAFETY: system table is the pointer provided by UEFI to efi_main.
+    let boot_services = unsafe { (*system_table).boot_services };
+    if boot_services.is_null() {
+        return Err(error(EFI_INVALID_PARAMETER, b"ArchiaOS: Boot Services unavailable for handoff.\r\n\0"));
+    }
+    let get_memory_map = unsafe { (*boot_services).get_memory_map }
+        .ok_or_else(|| error(EFI_UNSUPPORTED, b"ArchiaOS: GetMemoryMap is unavailable.\r\n\0"))?;
+    let exit_boot_services = unsafe { (*boot_services).exit_boot_services }
+        .ok_or_else(|| error(EFI_UNSUPPORTED, b"ArchiaOS: ExitBootServices is unavailable.\r\n\0"))?;
+
+    let (acpi_rsdp, device_tree) = platform_tables(system_table);
+    #[cfg(target_arch = "aarch64")]
+    if device_tree == 0 {
+        return Err(error(EFI_NOT_FOUND, b"ArchiaOS: no valid UEFI Device Tree table was found.\r\n\0"));
+    }
+
+    let mut info_allocation = unsafe {
+        PoolAllocation::new(boot_services, core::mem::size_of::<BootInfo>())?
+    };
+    let mut map_allocation = unsafe {
+        PoolAllocation::new(boot_services, MAX_MEMORY_MAP_SIZE)?
+    };
+    let info_address = info_allocation.pointer.cast::<BootInfo>();
+    let map_address = map_allocation.pointer;
+    let mut leaked_info = ptr::null_mut::<BootInfo>();
+    let mut leaked_map = ptr::null_mut::<u8>();
+
+    for attempt in 0..MAX_EXIT_BOOT_SERVICES_ATTEMPTS {
+        let mut map_size = MAX_MEMORY_MAP_SIZE;
+        let mut map_key = 0usize;
+        let mut descriptor_size = 0usize;
+        let mut descriptor_version = 0u32;
+        let destination = if leaked_map.is_null() {
+            map_address
+        } else {
+            leaked_map.cast::<c_void>()
+        };
+        // SAFETY: map buffer is allocated to MAX_MEMORY_MAP_SIZE bytes; all outputs are valid.
+        let status = unsafe {
+            get_memory_map(
+                &mut map_size,
+                destination,
+                &mut map_key,
+                &mut descriptor_size,
+                &mut descriptor_version,
+            )
+        };
+        if status != EFI_SUCCESS {
+            return Err(error(status, b"ArchiaOS: GetMemoryMap failed or exceeded the reserved buffer.\r\n\0"));
+        }
+        if map_size == 0 || map_size > MAX_MEMORY_MAP_SIZE || descriptor_size == 0
+            || map_size % descriptor_size != 0
+        {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: firmware returned an invalid memory map.\r\n\0"));
+        }
+
+        // This parser is allocation-free and checks every range for overflow and overlap.
+        // SAFETY: GetMemoryMap filled exactly map_size bytes in this buffer.
+        let map_bytes = unsafe { core::slice::from_raw_parts(destination.cast::<u8>(), map_size) };
+        let parsed_map = UefiMemoryMap::parse(map_bytes, descriptor_size)
+            .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: UEFI memory-map validation failed.\r\n\0"))?;
+        if parsed_map.is_empty() {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: UEFI memory map is empty.\r\n\0"));
+        }
+
+        let info_pointer = if leaked_info.is_null() { info_address } else { leaked_info };
+        // SAFETY: the structure is held in a pre-allocated pool that remains reserved after EBS.
+        unsafe {
+            ptr::write(
+                info_pointer,
+                BootInfo {
+                    magic: BOOT_INFO_MAGIC,
+                    version: BOOT_INFO_VERSION,
+                    struct_size: core::mem::size_of::<BootInfo>() as u32,
+                    kernel_entry,
+                    memory_map: destination.cast::<u8>(),
+                    memory_map_size: map_size as u64,
+                    memory_map_descriptor_size: descriptor_size as u64,
+                    memory_map_descriptor_version: descriptor_version,
+                    flags: 0,
+                    acpi_rsdp,
+                    device_tree,
+                    framebuffer_base: 0,
+                    framebuffer_size: 0,
+                },
+            );
+        }
+
+        // Stop tracking the two pool buffers before the first EBS call, so no
+        // destructor can call FreePool after boot services have been terminated.
+        if leaked_info.is_null() {
+            leaked_map = map_allocation.into_raw().cast::<u8>();
+            leaked_info = info_allocation.into_raw().cast::<BootInfo>();
+        }
+
+        // SAFETY: map_key is from the immediately preceding successful GetMemoryMap call.
+        let status = unsafe { exit_boot_services(image_handle, map_key) };
+        if status == EFI_SUCCESS {
+            // Boot services are no longer available: do not call firmware or drop guards here.
+            unsafe { jump_to_kernel(kernel_entry, leaked_info) };
+        }
+        if status != EFI_INVALID_PARAMETER {
+            return Err(error(status, b"ArchiaOS: ExitBootServices failed.\r\n\0"));
+        }
+        if attempt + 1 == MAX_EXIT_BOOT_SERVICES_ATTEMPTS {
+            return Err(error(status, b"ArchiaOS: ExitBootServices could not obtain a stable memory-map key.\r\n\0"));
+        }
+        // Retry GetMemoryMap immediately with the same buffer and no intervening service calls.
+    }
+
+    Err(error(EFI_LOAD_ERROR, b"ArchiaOS: boot handoff ended unexpectedly.\r\n\0"))
+}
+
+#[cfg(target_arch = "x86_64")]
+unsafe fn jump_to_kernel(entry: u64, info: *const BootInfo) -> ! {
+    // RDI carries the first SysV x86-64 argument expected by the kernel entry.
+    unsafe {
+        core::arch::asm!(
+            "cli",
+            "cld",
+            "jmp rax",
+            in("rax") entry,
+            in("rdi") info,
+            options(noreturn)
+        )
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+unsafe fn jump_to_kernel(entry: u64, info: *const BootInfo) -> ! {
+    // AArch64 kernel entry receives its first argument in x0 (AAPCS64).
+    unsafe {
+        core::arch::asm!(
+            "msr daifset, #0xf",
+            "br x1",
+            in("x0") info,
+            in("x1") entry,
+            options(noreturn)
+        )
+    }
 }
