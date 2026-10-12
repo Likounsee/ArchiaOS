@@ -5,7 +5,6 @@ KERNEL_LMA = 0x00100000;
 
 PHDRS
 {
-    requests PT_LOAD FLAGS(6);
     text     PT_LOAD FLAGS(5);
     rodata   PT_LOAD FLAGS(4);
     data     PT_LOAD FLAGS(6);
@@ -15,13 +14,10 @@ SECTIONS
 {
     . = KERNEL_VMA + KERNEL_LMA;
 
-    .limine_requests ALIGN(8) : AT(ADDR(.limine_requests) - KERNEL_VMA)
+    .archiaos_metadata ALIGN(8) : AT(ADDR(.archiaos_metadata) - KERNEL_VMA)
     {
-        KEEP(*(.limine_requests_start))
-        KEEP(*(.limine_requests))
         KEEP(*(.archiaos_image_marker))
-        KEEP(*(.limine_requests_end))
-    } :requests
+    } :rodata
 
     .text ALIGN(4K) : AT(ADDR(.text) - KERNEL_VMA)
     {
