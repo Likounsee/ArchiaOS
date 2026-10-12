@@ -409,6 +409,16 @@ jobs:
           grep -Fq "PMM test: double-free rejected" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "ArchiaOS: UEFI kernel entry validated" "$RUNNER_TEMP/archiaos-production-uefi.log"
 
+
+      - name: Publish production USB image
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ArchiaOS-UEFI-USB-${{ github.sha }}
+          path: ${{ runner.temp }}/archiaos-production-uefi.img
+          if-no-files-found: error
+          retention-days: 14
+
   bootloader-aarch64-uefi-smoke:
     name: Boot custom UEFI loader and AArch64 kernel under AAVMF
     runs-on: ubuntu-latest
