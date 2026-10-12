@@ -68,9 +68,9 @@ const fn ascii_to_utf16<const N: usize>(bytes: &[u8; N]) -> [u16; N] {
     result
 }
 
-static BANNER: [u16; 43] =
+static BANNER: [u16; 42] =
     ascii_to_utf16(b"ArchiaOS Bootloader: UEFI entry reached\r\n\0");
-static STATUS: [u16; 77] = ascii_to_utf16(
+static STATUS: [u16; 85] = ascii_to_utf16(
     b"ArchiaOS Bootloader: first-party prototype; kernel loading is not implemented yet.\r\n\0",
 );
 
@@ -99,8 +99,8 @@ pub extern "efiapi" fn efi_main(_image_handle: Handle, system_table: *mut System
     // SAFETY: UEFI passes a valid SystemTable pointer to an EFI application.
     let output = unsafe { (*system_table).con_out };
     // SAFETY: the protocol pointer is provided by the validated system table.
-    if unsafe { print(output, BANNER.as_ptr()) }.is_err() {
-        return EFI_INVALID_PARAMETER;
+    if let Err(status) = unsafe { print(output, BANNER.as_ptr()) } {
+        return status;
     }
     // Explicitly report the prototype's current limits; this must not be mistaken
     // for a bootloader that already loads or starts the ArchiaOS kernel.
