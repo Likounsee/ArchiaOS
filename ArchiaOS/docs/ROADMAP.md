@@ -13,16 +13,16 @@
 
 ## Piste parallèle — bootloader maison et ARM64
 
-Cette piste est lancée sans prétendre que les fonctionnalités sont terminées. Le firmware UEFI standard de la machine reste utilisé ; ArchiaOS développe son propre chargeur et son noyau.
+Le firmware UEFI standard de la machine reste utilisé ; ArchiaOS développe son propre chargeur et son noyau.
 
-1. **B0 — Entrée UEFI : prototype ajouté.** Le crate `bootloader/` Rust sans dépendance externe définit l’entrée UEFI et affiche un diagnostic. La CI tente sa compilation pour x86-64 et AArch64. Ce jalon ne charge pas encore le noyau.
+1. **B0 — Entrée UEFI : prototype ajouté.** Le crate `bootloader/` Rust sans dépendance externe définit l’entrée UEFI et affiche un diagnostic. La CI compile le prototype pour x86-64 et AArch64. Ce jalon ne charge pas encore le noyau.
 2. **B1 — Validation du prototype : à faire.** Vérifier les structures UEFI et démarrer une image EFI sous QEMU/OVMF pour chaque architecture.
 3. **B2 — Chargement du noyau : à faire.** Lire le noyau depuis la partition EFI, valider les en-têtes ELF64 et les segments, et tester les entrées malformées.
 4. **B3 — Handoff : à faire.** Définir une structure de démarrage stable et portable, collecter la carte mémoire et les informations plateforme, puis appeler `ExitBootServices` de façon robuste.
 5. **B4 — Remplacement de Limine sur x86-64 : à faire.** Retirer progressivement la dépendance du noyau aux réponses Limine ; ne changer le chemin par défaut qu'après un test bout en bout reproductible.
-6. **A0 — Préparation ARM64 : en cours.** La compilation de l'application UEFI AArch64 est visée par la CI. Le noyau lui-même reste x86-64 seulement.
-7. **A1 — Noyau AArch64 minimal : à faire.** Ajouter une entrée propre à AArch64, une console de diagnostic, un contrat de mémoire indépendant de Limine et les premiers tests QEMU.
-8. **A2 — Fondations matérielles ARM64 : à faire.** Exceptions, MMU/TLB, timer et contrôleur d'interruptions adaptés à la plateforme.
+6. **A0 — Préparation ARM64 : en cours.** Le crate UEFI AArch64 et un prototype noyau AArch64 séparé sont présents dans le dépôt. La CI compile les deux ; le prototype noyau n'a pas encore été démarré sous QEMU.
+7. **A1 — Noyau AArch64 minimal : prototype de compilation.** Une entrée assembleur, une pile dédiée et des diagnostics PL011 pour QEMU virt sont ajoutés dans `kernel/aarch64/`. Il manque encore un test de démarrage réel, les tables de pages, les vecteurs d'exceptions et le contrat de chargement avec le bootloader.
+8. **A2 — Fondations matérielles ARM64 : à faire.** Exceptions, MMU/TLB, timer, Device Tree et contrôleur d'interruptions adaptés à la plateforme.
 9. **A3 — Parité fonctionnelle : à faire.** Partager le cœur portable et tester séparément les implémentations spécifiques à chaque architecture.
 
 La compilation du bootloader pour ARM64 ne compte pas comme compatibilité ARM64 du noyau. Cette dernière ne sera annoncée qu'après compilation et démarrage du noyau AArch64 avec tests automatisés.
