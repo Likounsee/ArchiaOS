@@ -280,6 +280,59 @@ pub mod memory_map {
             Ok(false)
         }
 
+        /// Return true only when every byte of a non-empty range is covered by
+        /// UEFI descriptors, regardless of memory type. This is useful for device
+        /// ranges such as GOP framebuffers, which some firmware reports as conventional.
+        pub fn range_is_fully_covered(
+            &self,
+            physical_start: u64,
+            byte_length: u64,
+        ) -> Result<bool, MemoryMapError> {
+            if byte_length == 0 {
+                return Err(MemoryMapError::EmptyRange);
+            }
+            let target_end = physical_start
+                .checked_add(byte_length)
+                .ok_or(MemoryMapError::RangeOverflow)?;
+            let mut cursor = physical_start;
+            while cursor < target_end {
+                let mut covered_until = cursor;
+                if self.sorted {
+                    let mut low = 0usize;
+                    let mut high = self.count;
+                    while low < high {
+                        let middle = low + (high - low) / 2;
+                        if self.entry(middle)?.physical_start <= cursor {
+                            low = middle + 1;
+                        } else {
+                            high = middle;
+                        }
+                    }
+                    if low != 0 {
+                        let descriptor = self.entry(low - 1)?;
+                        let descriptor_end = descriptor.physical_end()?;
+                        if descriptor.physical_start <= cursor && cursor < descriptor_end {
+                            covered_until = descriptor_end.min(target_end);
+                        }
+                    }
+                } else {
+                    for index in 0..self.count {
+                        let descriptor = self.entry(index)?;
+                        let descriptor_end = descriptor.physical_end()?;
+                        if descriptor.physical_start <= cursor && cursor < descriptor_end {
+                            covered_until = descriptor_end.min(target_end);
+                            break;
+                        }
+                    }
+                }
+                if covered_until == cursor {
+                    return Ok(false);
+                }
+                cursor = covered_until;
+            }
+            Ok(true)
+        }
+
         /// Return true only when the entire non-empty physical range is covered
         /// continuously by descriptors that are not conventional RAM. A range that
         /// crosses an unreported gap is not considered reserved.
@@ -2252,6 +2305,30 @@ mod memory_map_tests {
         assert_eq!(map.range_is_fully_reserved(0x4000, 0x1000), Ok(false));
         assert_eq!(map.range_is_fully_reserved(0x1000, 0), Err(MemoryMapError::EmptyRange));
         assert_eq!(map.range_is_fully_reserved(u64::MAX - 3, 8), Err(MemoryMapError::RangeOverflow));
+    }
+
+    #[test]
+    fn generic_coverage_accepts_conventional_and_reserved_ranges_but_rejects_gaps() {
+        let mut bytes = descriptor(2, 0x1000, 1);
+        bytes.extend_from_slice(&descriptor(EFI_CONVENTIONAL_MEMORY, 0x2000, 2));
+        bytes.extend_from_slice(&descriptor(2, 0x4000, 1));
+        let map = UefiMemoryMap::parse(&bytes, 48).expect("valid map");
+        assert_eq!(map.range_is_fully_covered(0x1000, 0x4000), Ok(true));
+        assert_eq!(map.range_is_fully_covered(0x1800, 0x1800), Ok(true));
+        assert_eq!(map.range_is_fully_covered(0x1000, 0x5000), Ok(false));
+        assert_eq!(map.range_is_fully_covered(0x5000, 0x1000), Ok(false));
+        assert_eq!(map.range_is_fully_covered(0x1000, 0), Err(MemoryMapError::EmptyRange));
+        assert_eq!(map.range_is_fully_covered(u64::MAX - 3, 8), Err(MemoryMapError::RangeOverflow));
+    }
+
+    #[test]
+    fn generic_coverage_handles_unsorted_descriptors() {
+        let mut bytes = descriptor(2, 0x3000, 1);
+        bytes.extend_from_slice(&descriptor(EFI_CONVENTIONAL_MEMORY, 0x1000, 1));
+        bytes.extend_from_slice(&descriptor(4, 0x2000, 1));
+        let map = UefiMemoryMap::parse(&bytes, 48).expect("valid unsorted map");
+        assert_eq!(map.range_is_fully_covered(0x1000, 0x3000), Ok(true));
+        assert_eq!(map.range_is_fully_covered(0x0fff, 0x3001), Ok(false));
     }
 
     #[test]
