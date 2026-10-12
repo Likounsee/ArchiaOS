@@ -857,6 +857,7 @@ pub mod elf {
     const ET_EXEC: u16 = 2;
     const PT_LOAD: u32 = 1;
     const PF_X: u32 = 1;
+    const PF_W: u32 = 2;
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub enum ElfError {
@@ -876,6 +877,7 @@ pub mod elf {
         OverlappingSegments,
         MissingLoadSegment,
         EntryNotExecutable,
+        WritableExecutableSegment,
         NotLoadableSegment,
     }
 
@@ -967,6 +969,9 @@ pub mod elf {
         }
         if header.memory_size == 0 || header.memory_size < header.file_size {
             return Err(ElfError::SegmentSizeMismatch);
+        }
+        if header.flags & (PF_W | PF_X) == (PF_W | PF_X) {
+            return Err(ElfError::WritableExecutableSegment);
         }
         range(image, header.offset, header.file_size)?;
         header.virtual_address
@@ -1221,6 +1226,17 @@ mod tests {
         assert_eq!(
             parse_elf64(&image, X86_64),
             Err(ElfError::IntegerOverflow)
+        );
+    }
+
+    #[test]
+    fn rejects_writable_executable_load_segment() {
+        let mut image = valid_elf(X86_64);
+        // ELF64 program header p_flags sits at offset 68; PF_W | PF_X = 7.
+        put_u32(&mut image, 68, 7);
+        assert_eq!(
+            parse_elf64(&image, X86_64),
+            Err(ElfError::WritableExecutableSegment)
         );
     }
 
