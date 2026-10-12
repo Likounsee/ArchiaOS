@@ -68,3 +68,17 @@ jobs:
         run: cargo build --manifest-path bootloader/Cargo.toml --release --target x86_64-unknown-uefi
       - name: Build AArch64 UEFI application
         run: cargo build --manifest-path bootloader/Cargo.toml --release --target aarch64-unknown-uefi
+
+  kernel-aarch64-build:
+    name: Compile AArch64 kernel bring-up prototype
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ArchiaOS/kernel/aarch64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install AArch64 Rust target
+        run: rustup target add aarch64-unknown-none
+      - name: Build AArch64 kernel prototype
+        run: cargo build --release --target aarch64-unknown-none
