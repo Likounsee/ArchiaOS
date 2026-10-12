@@ -2119,7 +2119,8 @@ mod memory_map_tests {
         assert_eq!(map.range_is_fully_reserved(0x1000, 0x3000), Ok(true));
         assert_eq!(map.range_is_fully_reserved(0x1000, 0x1000), Ok(true));
         assert_eq!(map.range_is_fully_reserved(0x1000, 0x2000), Ok(false));
-        assert_eq!(map.range_is_fully_reserved(0x1800, 0x2000), Ok(false));
+        // Unaligned subranges are valid when every byte remains covered.
+        assert_eq!(map.range_is_fully_reserved(0x1800, 0x2000), Ok(true));
         assert_eq!(map.range_is_fully_reserved(0x4000, 0x1000), Ok(false));
         assert_eq!(map.range_is_fully_reserved(0x1000, 0), Err(MemoryMapError::EmptyRange));
         assert_eq!(map.range_is_fully_reserved(u64::MAX - 3, 8), Err(MemoryMapError::RangeOverflow));
