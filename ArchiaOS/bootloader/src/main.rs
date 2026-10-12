@@ -307,37 +307,78 @@ unsafe fn load_identity_segments(image:&[u8],elf:&ElfFile,bs:*mut BootServices)-
 
 #[cfg(target_arch="x86_64")]
 unsafe fn get_boot_info_and_exit(handle:Handle,st:*mut SystemTable,entry:u64)->Result<*mut BootInfo,Status> {
-    let bs=unsafe{(*st).boot_services};if bs.is_null(){return Err(EFI_UNSUPPORTED);}
+    let bs=unsafe{(*st).boot_services};
+    if bs.is_null(){return Err(EFI_UNSUPPORTED);}
     let get_map=unsafe{(*bs).get_memory_map}.ok_or(EFI_UNSUPPORTED)?;
     let exit=unsafe{(*bs).exit_boot_services}.ok_or(EFI_UNSUPPORTED)?;
     let info_mem=unsafe{allocate_pool(bs,core::mem::size_of::<BootInfo>())}?;
-    let map_mem=match unsafe{allocate_pool(bs,MAX_MEMORY_MAP_SIZE)}{Ok(p)=>p,Err(e)=>{unsafe{free_pool(bs,info_mem);}return Err(e)}};
+    let map_mem=match unsafe{allocate_pool(bs,MAX_MEMORY_MAP_SIZE)}{
+        Ok(p)=>p,
+        Err(e)=>{unsafe{free_pool(bs,info_mem);}return Err(e)}
+    };
     let info=info_mem.cast::<BootInfo>();
+    let mut exit_was_attempted=false;
+
     for _ in 0..8 {
-        let mut size=MAX_MEMORY_MAP_SIZE;let mut key=0usize;let mut desc_size=0usize;let mut desc_version=0u32;
+        let mut size=MAX_MEMORY_MAP_SIZE;
+        let mut key=0usize;
+        let mut desc_size=0usize;
+        let mut desc_version=0u32;
         let status=unsafe{get_map(&mut size,map_mem,&mut key,&mut desc_size,&mut desc_version)};
-        if status!=EFI_SUCCESS {unsafe{free_pool(bs,map_mem);free_pool(bs,info_mem);}return Err(status);}
-        if size==0||size>MAX_MEMORY_MAP_SIZE||desc_size<EFI_MEMORY_DESCRIPTOR_MIN_SIZE||size%desc_size!=0 {
-            unsafe{free_pool(bs,map_mem);free_pool(bs,info_mem);}return Err(EFI_BAD_BUFFER_SIZE);
+        if status!=EFI_SUCCESS {
+            if exit_was_attempted {
+                // After any failed ExitBootServices attempt, avoid all further
+                // services except GetMemoryMap/ExitBootServices. Do not free pools.
+                unsafe{mirror_to_com1(FAIL_EXIT.as_ptr());}
+                halt_forever();
+            }
+            unsafe{free_pool(bs,map_mem);free_pool(bs,info_mem);}
+            return Err(status);
         }
+        if size==0||size>MAX_MEMORY_MAP_SIZE||desc_size<EFI_MEMORY_DESCRIPTOR_MIN_SIZE||size%desc_size!=0 {
+            if exit_was_attempted {
+                unsafe{mirror_to_com1(FAIL_EXIT.as_ptr());}
+                halt_forever();
+            }
+            unsafe{free_pool(bs,map_mem);free_pool(bs,info_mem);}
+            return Err(EFI_BAD_BUFFER_SIZE);
+        }
+
         unsafe{ptr::write(info,BootInfo{
-            magic:BOOT_INFO_MAGIC,version:BOOT_INFO_VERSION,struct_size:core::mem::size_of::<BootInfo>() as u32,
-            kernel_entry:entry,memory_map:map_mem.cast::<u8>(),memory_map_size:size as u64,
-            memory_map_descriptor_size:desc_size as u64,memory_map_descriptor_version:desc_version,
-            flags:0,acpi_rsdp:0,device_tree:0,framebuffer_base:0,framebuffer_size:0,
+            magic:BOOT_INFO_MAGIC,
+            version:BOOT_INFO_VERSION,
+            struct_size:core::mem::size_of::<BootInfo>() as u32,
+            kernel_entry:entry,
+            memory_map:map_mem.cast::<u8>(),
+            memory_map_size:size as u64,
+            memory_map_descriptor_size:desc_size as u64,
+            memory_map_descriptor_version:desc_version,
+            flags:0,
+            acpi_rsdp:0,
+            device_tree:0,
+            framebuffer_base:0,
+            framebuffer_size:0,
         });}
-        // No allocation/service call may intervene between GetMemoryMap and this exit attempt.
+
+        // Nothing that allocates or invokes another service may intervene here.
         let status=unsafe{exit(handle,key)};
+        exit_was_attempted=true;
         if status==EFI_SUCCESS{return Ok(info);}
-        if status!=EFI_INVALID_PARAMETER {unsafe{free_pool(bs,map_mem);free_pool(bs,info_mem);}return Err(status);}
+        if status!=EFI_INVALID_PARAMETER {
+            unsafe{mirror_to_com1(FAIL_EXIT.as_ptr());}
+            halt_forever();
+        }
+        // For a stale map key, retry only GetMemoryMap followed immediately
+        // by ExitBootServices, retaining all buffer allocations.
     }
-    unsafe{free_pool(bs,map_mem);free_pool(bs,info_mem);}
-    Err(EFI_INVALID_PARAMETER)
+
+    unsafe{mirror_to_com1(FAIL_EXIT.as_ptr());}
+    halt_forever()
 }
 #[cfg(target_arch="x86_64")]
 unsafe fn jump_to_kernel(entry:u64,info:*const BootInfo)->! {
     use core::arch::asm;
-    unsafe{asm!("jmp rax",in("rax")entry as usize,in("rdi")info as usize,options(noreturn));}
+    unsafe{asm!("cli","cld","jmp rax",in("rax")entry as usize,in("rdi")info as usize,options(noreturn));}
 }
 #[cfg(target_arch="x86_64")]
 fn halt_forever()->! { use core::arch::asm;loop{unsafe{asm!("cli; hlt",options(nomem,nostack));}} }
