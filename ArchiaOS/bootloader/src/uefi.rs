@@ -1363,7 +1363,7 @@ pub unsafe fn transfer_to_kernel(
             ptr::write(
                 info_pointer,
                 BootInfo {
-                    magic: BOOT_INFO_MAGIC,
+                    // Dedicated CI-only feature corrupts the ABI magic after all normal\n                    // loader checks, so the kernel rejection path is exercised end-to-end.\n                    magic: if cfg!(feature = "test-invalid-bootinfo") { 0 } else { BOOT_INFO_MAGIC },
                     version: BOOT_INFO_VERSION,
                     struct_size: core::mem::size_of::<BootInfo>() as u32,
                     kernel_entry,
