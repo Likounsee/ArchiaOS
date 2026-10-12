@@ -127,6 +127,31 @@ pub extern "C" fn rust_kernel_main(
     let _ = writeln!(serial, "ArchiaOS: custom UEFI bootloader entered production kernel");
     let _ = writeln!(serial, "ArchiaOS: validating ARCHIABI BootInfo and UEFI memory map");
 
+    // Validate the fixed BootInfo header before touching framebuffer metadata.
+    // Paint the early status immediately after this bounded validation, before
+    // CPUID/PCI discovery and PMM setup, so a later initialization failure still
+    // leaves a visible indication on the physical monitor.
+    if boot_info.is_null()
+        || (boot_info as usize) % core::mem::align_of::<archiaos_bootloader::bootinfo::BootInfo>() != 0
+    {
+        let _ = writeln!(serial, "ArchiaOS: boot-stage=bootinfo-pointer-invalid");
+        halt_forever();
+    }
+    let info = unsafe { &*boot_info };
+    if archiaos_bootloader::bootinfo::validate_header(info).is_err() {
+        let _ = writeln!(serial, "ArchiaOS: boot-stage=bootinfo-header-invalid");
+        halt_forever();
+    }
+    let _ = writeln!(serial, "ArchiaOS: boot-stage=bootinfo-header-valid");
+    let _ = writeln!(
+        serial,
+        "ArchiaOS: framebuffer candidate base={:#x} size={} bytes",
+        info.framebuffer_base,
+        info.framebuffer_size
+    );
+    show_framebuffer_boot_status(info);
+    let _ = writeln!(serial, "ArchiaOS: boot-stage=early-framebuffer-probe-complete");
+
     // Read-only CPU inventory is the first hardware-telemetry primitive. Keep
     // it allocation-free and independent of sensor or device-driver support.
     let cpu_info = cpu::detect();
@@ -175,22 +200,16 @@ pub extern "C" fn rust_kernel_main(
         }
     };
     let _ = writeln!(serial, "ArchiaOS: UEFI BootInfo validated");
-    if boot_info.is_null() {
-        let _ = writeln!(serial, "ArchiaOS: framebuffer metadata unavailable (BootInfo pointer is null)");
+    let info = unsafe { &*boot_info };
+    if info.framebuffer_size == 0 {
+        let _ = writeln!(serial, "ArchiaOS: UEFI GOP framebuffer unavailable (headless mode)");
     } else {
-        // BootInfo has already passed scalar/range validation in the PMM initializer.
-        let info = unsafe { &*boot_info };
-        show_framebuffer_boot_status(info);
-        if info.framebuffer_size == 0 {
-            let _ = writeln!(serial, "ArchiaOS: UEFI GOP framebuffer unavailable (headless mode)");
-        } else {
-            let _ = writeln!(
-                serial,
-                "ArchiaOS: UEFI GOP framebuffer base={:#x} size={} bytes",
-                info.framebuffer_base,
-                info.framebuffer_size
-            );
-        }
+        let _ = writeln!(
+            serial,
+            "ArchiaOS: UEFI GOP framebuffer base={:#x} size={} bytes",
+            info.framebuffer_base,
+            info.framebuffer_size
+        );
     }
     let _ = writeln!(serial, "ArchiaOS: UEFI memory map entries: {}", stats.map_entries);
     let _ = writeln!(serial, "ArchiaOS: conventional memory ranges: {}, bytes: {}", stats.usable_ranges, stats.usable_bytes);
@@ -206,9 +225,9 @@ pub extern "C" fn rust_kernel_main(
 }
 
 #[panic_handler]
-fn panic(_info: &PanicInfo<'_>) -> ! {
+fn panic(info: &PanicInfo<'_>) -> ! {
     let mut serial = Serial;
     serial.init();
-    let _ = writeln!(serial, "ArchiaOS: PANIC");
+    let _ = writeln!(serial, "ArchiaOS: PANIC: {}", info);
     halt_forever();
 }
