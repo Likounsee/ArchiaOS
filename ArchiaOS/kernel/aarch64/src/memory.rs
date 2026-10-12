@@ -1,7 +1,7 @@
 use core::ptr;
 
 use archiaos_bootloader::memory_map::{
-    MemoryMapError, UefiMemoryMap, EFI_CONVENTIONAL_MEMORY, EFI_PAGE_SIZE,
+    UefiMemoryMap, EFI_CONVENTIONAL_MEMORY, EFI_PAGE_SIZE,
 };
 
 const MAX_PHYSICAL_ADDRESS: u64 = 1u64 << 32;
