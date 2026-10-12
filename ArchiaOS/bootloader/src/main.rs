@@ -250,8 +250,6 @@ static STAGE_ELF: [u16; 47] =
     ascii_to_utf16(b"ArchiaOS Bootloader: validating ELF64 kernel\r\n\0");
 static SUCCESS: [u16; 61] =
     ascii_to_utf16(b"ArchiaOS Bootloader: kernel ELF validated; handoff pending\r\n\0");
-static FAIL_SYSTEM_TABLE: [u16; 49] =
-    ascii_to_utf16(b"ArchiaOS Bootloader: invalid UEFI system table\r\n\0");
 static FAIL_SERVICES: [u16; 58] =
     ascii_to_utf16(b"ArchiaOS Bootloader: required UEFI boot service missing\r\n\0");
 static FAIL_FS: [u16; 53] =
