@@ -13,7 +13,7 @@ This crate implements a first-party UEFI loader using Rust and `core`, with no t
 - Finds ACPI 2.0/1.0 RSDP pointers and validates signature, length and checksums. It validates a Device Tree through the shared, unit-tested FDT parser when `EFI_DTB_TABLE_GUID` is provided. AArch64 handoff also accepts ACPI-only firmware; on the AAVMF/QEMU CI configuration the kernel discovers the PL011 console through the ACPI SPCR table.
 - Builds the versioned `ARCHIABI` BootInfo structure and obtains the final UEFI memory map immediately before `ExitBootServices`; retries stale map keys without making unrelated service calls after the first exit attempt. The x86 handoff test and AArch64 kernel use the same allocation-free memory-map parser, which checks descriptor stride, page alignment, non-zero page ranges and checked physical ends.
 - Passes BootInfo in `RDI` on x86-64 or `x0` on AArch64 and branches to the ELF entry point.
-- CI includes an OVMF/QEMU x86-64 handoff test and an AAVMF/QEMU AArch64 handoff test. The AArch64 job's result must pass before the full path is considered validated.
+- CI has passed end-to-end OVMF/QEMU x86-64 and AAVMF/QEMU AArch64 handoff tests. The AArch64 job validates the BootInfo contract, ACPI RSDP/SPCR path, memory map, PMM self-test and synchronous exception test.
 
 ## Build and test
 
