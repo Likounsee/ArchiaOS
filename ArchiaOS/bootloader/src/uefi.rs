@@ -1095,6 +1095,8 @@ pub unsafe fn transfer_to_kernel(
     image_handle: Handle,
     system_table: *mut SystemTable,
     kernel_entry: u64,
+    kernel_image: &[u8],
+    elf: &archiaos_bootloader::elf::ElfFile,
 ) -> Result<Infallible, BootError> {
     if image_handle.is_null() || system_table.is_null() || kernel_entry == 0 {
         return Err(error(EFI_INVALID_PARAMETER, b"ArchiaOS: invalid kernel handoff arguments.\r\n\0"));
@@ -1123,6 +1125,12 @@ pub unsafe fn transfer_to_kernel(
     };
     let info_address = info_allocation.pointer.cast::<BootInfo>();
     let map_address = map_allocation.pointer;
+    #[cfg(target_arch = "x86_64")]
+    let mut page_table_arena = if image_uses_highhalf(elf) {
+        Some(unsafe { PageTableArena::allocate(boot_services)? })
+    } else {
+        None
+    };
     let mut leaked_info = ptr::null_mut::<BootInfo>();
     let mut leaked_map = ptr::null_mut::<u8>();
 
@@ -1164,6 +1172,17 @@ pub unsafe fn transfer_to_kernel(
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: UEFI memory map is empty.\r\n\0"));
         }
 
+        #[cfg(target_arch = "x86_64")]
+        let mut kernel_page_table_root = 0u64;
+        #[cfg(target_arch = "x86_64")]
+        if let Some(arena) = page_table_arena.as_mut() {
+            // The arena and all handoff buffers were allocated before this snapshot.
+            // Building tables does not call firmware and therefore preserves the map key.
+            kernel_page_table_root = unsafe {
+                build_x86_64_page_tables(arena, &parsed_map, kernel_image, elf)?
+            };
+        }
+
         let info_pointer = if leaked_info.is_null() { info_address } else { leaked_info };
         // SAFETY: the structure is held in a pre-allocated pool that remains reserved after EBS.
         unsafe {
@@ -1194,10 +1213,19 @@ pub unsafe fn transfer_to_kernel(
             leaked_info = info_allocation.take_raw().cast::<BootInfo>();
         }
 
+        // Once EBS is attempted, never run a page-arena destructor that might call FreePages.
+        // A stale map key retries with the same preallocated arena and no other UEFI services.
+        #[cfg(target_arch = "x86_64")]
+        if let Some(arena) = page_table_arena.as_mut() {
+            arena.disarm();
+        }
         // SAFETY: map_key is from the immediately preceding successful GetMemoryMap call.
         let status = unsafe { exit_boot_services(image_handle, map_key) };
         if status == EFI_SUCCESS {
             // Boot services are no longer available: do not call firmware or drop guards here.
+            #[cfg(target_arch = "x86_64")]
+            unsafe { jump_to_kernel(kernel_entry, leaked_info, kernel_page_table_root) };
+            #[cfg(target_arch = "aarch64")]
             unsafe { jump_to_kernel(kernel_entry, leaked_info) };
         }
         if status != EFI_INVALID_PARAMETER {
@@ -1213,15 +1241,21 @@ pub unsafe fn transfer_to_kernel(
 }
 
 #[cfg(target_arch = "x86_64")]
-unsafe fn jump_to_kernel(entry: u64, info: *const BootInfo) -> ! {
-    // RDI carries the first SysV x86-64 argument expected by the kernel entry.
+unsafe fn jump_to_kernel(entry: u64, info: *const BootInfo, page_table_root: u64) -> ! {
+    // RDI carries BootInfo. High-half images receive fresh identity + kernel mappings;
+    // identity test kernels keep the firmware translation tables by passing root=0.
     unsafe {
         core::arch::asm!(
             "cli",
             "cld",
+            "test rdx, rdx",
+            "jz 2f",
+            "mov cr3, rdx",
+            "2:",
             "jmp rax",
             in("rax") entry,
             in("rdi") info,
+            in("rdx") page_table_root,
             options(noreturn)
         )
     }
