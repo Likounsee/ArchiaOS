@@ -277,6 +277,7 @@ pub mod device_tree {
         InvalidAlignment,
         BlockOutOfBounds,
         OverlappingBlocks,
+        InvalidStructure,
     }
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -305,8 +306,7 @@ pub mod device_tree {
         Ok(end)
     }
 
-    /// Validate the complete FDT image header and the bounds of all header-described blocks.
-    /// This is not a full tree parser and does not validate the reservation-map terminator.
+    /// Validate the complete FDT image header and bounds of header-described blocks.
     pub fn parse_header(image: &[u8]) -> Result<FdtHeader, FdtError> {
         if image.len() < HEADER_SIZE {
             return Err(FdtError::TruncatedHeader);
@@ -369,6 +369,125 @@ pub mod device_tree {
             strings_size,
             structure_size,
         })
+    }
+
+    fn nul_terminated(bytes: &[u8], offset: usize) -> Result<(&[u8], usize), FdtError> {
+        let suffix = bytes.get(offset..).ok_or(FdtError::InvalidStructure)?;
+        let length = suffix.iter().position(|byte| *byte == 0).ok_or(FdtError::InvalidStructure)?;
+        let next = offset.checked_add(length).and_then(|value| value.checked_add(1))
+            .ok_or(FdtError::InvalidStructure)?;
+        Ok((&suffix[..length], next))
+    }
+
+    fn align4(value: usize) -> Result<usize, FdtError> {
+        value.checked_add(3).map(|aligned| aligned & !3).ok_or(FdtError::InvalidStructure)
+    }
+
+    fn validate_structure_block(block: &[u8], strings: &[u8]) -> Result<(), FdtError> {
+        const FDT_BEGIN_NODE: u32 = 1;
+        const FDT_END_NODE: u32 = 2;
+        const FDT_PROP: u32 = 3;
+        const FDT_NOP: u32 = 4;
+        const FDT_END: u32 = 9;
+        const MAX_TREE_DEPTH: usize = 256;
+
+        let mut offset = 0usize;
+        let mut depth = 0usize;
+        let mut root_seen = false;
+        let mut root_closed = false;
+        let mut saw_end = false;
+
+        while offset < block.len() {
+            let token = be32(block, offset).map_err(|_| FdtError::InvalidStructure)?;
+            offset = offset.checked_add(4).ok_or(FdtError::InvalidStructure)?;
+            match token {
+                FDT_BEGIN_NODE => {
+                    if root_closed || saw_end || depth >= MAX_TREE_DEPTH {
+                        return Err(FdtError::InvalidStructure);
+                    }
+                    let (name, name_end) = nul_terminated(block, offset)?;
+                    if depth == 0 {
+                        if root_seen || !name.is_empty() {
+                            return Err(FdtError::InvalidStructure);
+                        }
+                        root_seen = true;
+                    }
+                    offset = align4(name_end)?;
+                    if offset > block.len() {
+                        return Err(FdtError::InvalidStructure);
+                    }
+                    depth += 1;
+                }
+                FDT_END_NODE => {
+                    if depth == 0 || saw_end {
+                        return Err(FdtError::InvalidStructure);
+                    }
+                    depth -= 1;
+                    if depth == 0 {
+                        root_closed = true;
+                    }
+                }
+                FDT_PROP => {
+                    if depth == 0 || root_closed || saw_end {
+                        return Err(FdtError::InvalidStructure);
+                    }
+                    let length = be32(block, offset).map_err(|_| FdtError::InvalidStructure)? as usize;
+                    let name_offset = be32(
+                        block,
+                        offset.checked_add(4).ok_or(FdtError::InvalidStructure)?,
+                    ).map_err(|_| FdtError::InvalidStructure)? as usize;
+                    offset = offset.checked_add(8).ok_or(FdtError::InvalidStructure)?;
+                    let (name, _) = nul_terminated(strings, name_offset)?;
+                    if name.is_empty() {
+                        return Err(FdtError::InvalidStructure);
+                    }
+                    let data_end = offset.checked_add(length).ok_or(FdtError::InvalidStructure)?;
+                    if data_end > block.len() {
+                        return Err(FdtError::InvalidStructure);
+                    }
+                    offset = align4(data_end)?;
+                    if offset > block.len() {
+                        return Err(FdtError::InvalidStructure);
+                    }
+                }
+                FDT_NOP => {}
+                FDT_END => {
+                    if !root_seen || !root_closed || depth != 0 {
+                        return Err(FdtError::InvalidStructure);
+                    }
+                    saw_end = true;
+                    // FDT_END terminates the token stream; a few producers may
+                    // leave zero padding in size_dt_struct, but no extra tokens.
+                    if block[offset..].iter().any(|byte| *byte != 0) {
+                        return Err(FdtError::InvalidStructure);
+                    }
+                    break;
+                }
+                _ => return Err(FdtError::InvalidStructure),
+            }
+        }
+        if !saw_end || !root_seen || !root_closed || depth != 0 {
+            return Err(FdtError::InvalidStructure);
+        }
+        Ok(())
+    }
+
+    /// Validate the header and the complete FDT node/property token stream.
+    /// The reservation-map entries and semantic device properties are not parsed yet.
+    pub fn validate_tree(image: &[u8]) -> Result<FdtHeader, FdtError> {
+        let header = parse_header(image)?;
+        let structure_start = header.structure_offset as usize;
+        let structure_end = structure_start
+            .checked_add(header.structure_size as usize)
+            .ok_or(FdtError::BlockOutOfBounds)?;
+        let strings_start = header.strings_offset as usize;
+        let strings_end = strings_start
+            .checked_add(header.strings_size as usize)
+            .ok_or(FdtError::BlockOutOfBounds)?;
+        let structure = image.get(structure_start..structure_end).ok_or(FdtError::BlockOutOfBounds)?;
+        let strings = image.get(strings_start..strings_end).ok_or(FdtError::BlockOutOfBounds)?;
+        validate_structure_block(structure, strings)?;
+        Ok(header)
     }
 }
 
@@ -819,34 +938,47 @@ mod device_tree_tests {
     use std::vec;
     use std::vec::Vec;
 
-    use super::device_tree::{parse_header, FdtError, FDT_MAGIC};
+    use super::device_tree::{parse_header, validate_tree, FdtError, FDT_MAGIC};
 
     fn put_be32(bytes: &mut [u8], offset: usize, value: u32) {
         bytes[offset..offset + 4].copy_from_slice(&value.to_be_bytes());
     }
 
     fn valid_fdt() -> Vec<u8> {
-        let mut image = vec![0u8; 128];
+        let mut image = vec![0u8; 96];
         put_be32(&mut image, 0, FDT_MAGIC);
-        put_be32(&mut image, 4, 128);
+        put_be32(&mut image, 4, 96);
         put_be32(&mut image, 8, 56);
-        put_be32(&mut image, 12, 96);
+        put_be32(&mut image, 12, 88);
         put_be32(&mut image, 16, 40);
         put_be32(&mut image, 20, 17);
         put_be32(&mut image, 24, 16);
         put_be32(&mut image, 28, 0);
-        put_be32(&mut image, 32, 16);
-        put_be32(&mut image, 36, 40);
+        put_be32(&mut image, 32, 8);
+        put_be32(&mut image, 36, 32);
+
+        // Root node with one 4-byte property whose name is stored in strings.
+        put_be32(&mut image, 56, 1); // FDT_BEGIN_NODE
+        image[60] = 0;               // Empty root name
+        put_be32(&mut image, 64, 3); // FDT_PROP
+        put_be32(&mut image, 68, 4); // property length
+        put_be32(&mut image, 72, 0); // name offset
+        put_be32(&mut image, 76, 0x1234_5678);
+        put_be32(&mut image, 80, 2); // FDT_END_NODE
+        put_be32(&mut image, 84, 9); // FDT_END
+        image[88..93].copy_from_slice(b"test\\0");
         image
     }
 
     #[test]
-    fn accepts_valid_fdt_header() {
-        let parsed = parse_header(&valid_fdt()).expect("valid FDT header");
-        assert_eq!(parsed.total_size, 128);
+    fn accepts_valid_fdt_header_and_tree() {
+        let image = valid_fdt();
+        let parsed = parse_header(&image).expect("valid FDT header");
+        assert_eq!(parsed.total_size, 96);
         assert_eq!(parsed.version, 17);
         assert_eq!(parsed.structure_offset, 56);
-        assert_eq!(parsed.strings_offset, 96);
+        assert_eq!(parsed.strings_offset, 88);
+        assert!(validate_tree(&image).is_ok());
     }
 
     #[test]
@@ -886,6 +1018,7 @@ mod device_tree_tests {
     fn rejects_overlapping_structure_and_strings() {
         let mut image = valid_fdt();
         put_be32(&mut image, 12, 64);
+        put_be32(&mut image, 32, 8);
         assert_eq!(parse_header(&image), Err(FdtError::OverlappingBlocks));
     }
 
@@ -894,6 +1027,34 @@ mod device_tree_tests {
         let mut image = valid_fdt();
         put_be32(&mut image, 8, 120);
         assert_eq!(parse_header(&image), Err(FdtError::BlockOutOfBounds));
+    }
+
+    #[test]
+    fn rejects_unknown_structure_token() {
+        let mut image = valid_fdt();
+        put_be32(&mut image, 80, 0xdead_beef);
+        assert_eq!(validate_tree(&image), Err(FdtError::InvalidStructure));
+    }
+
+    #[test]
+    fn rejects_property_name_outside_strings_block() {
+        let mut image = valid_fdt();
+        put_be32(&mut image, 72, 100);
+        assert_eq!(validate_tree(&image), Err(FdtError::InvalidStructure));
+    }
+
+    #[test]
+    fn rejects_missing_fdt_end_token() {
+        let mut image = valid_fdt();
+        put_be32(&mut image, 84, 0);
+        assert_eq!(validate_tree(&image), Err(FdtError::InvalidStructure));
+    }
+
+    #[test]
+    fn rejects_non_empty_root_name() {
+        let mut image = valid_fdt();
+        image[60] = b'x';
+        assert_eq!(validate_tree(&image), Err(FdtError::InvalidStructure));
     }
 
     #[test]
