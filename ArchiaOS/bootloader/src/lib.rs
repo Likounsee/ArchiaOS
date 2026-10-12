@@ -306,6 +306,57 @@ pub mod device_tree {
         Ok(end)
     }
 
+    fn be64(bytes: &[u8], offset: usize) -> Result<u64, FdtError> {
+        let end = offset.checked_add(8).ok_or(FdtError::BlockOutOfBounds)?;
+        let value = bytes.get(offset..end).ok_or(FdtError::BlockOutOfBounds)?;
+        Ok(u64::from_be_bytes([
+            value[0], value[1], value[2], value[3],
+            value[4], value[5], value[6], value[7],
+        ]))
+    }
+
+    fn ranges_overlap(a_start: usize, a_end: usize, b_start: usize, b_end: usize) -> bool {
+        a_start < b_end && b_start < a_end
+    }
+
+    fn validate_reservation_map(image: &[u8], header: &FdtHeader) -> Result<(), FdtError> {
+        const MAX_RESERVATION_ENTRIES: usize = 65_536;
+        let total = header.total_size as usize;
+        let structure_start = header.structure_offset as usize;
+        let structure_end = structure_start
+            .checked_add(header.structure_size as usize)
+            .ok_or(FdtError::BlockOutOfBounds)?;
+        let strings_start = header.strings_offset as usize;
+        let strings_end = strings_start
+            .checked_add(header.strings_size as usize)
+            .ok_or(FdtError::BlockOutOfBounds)?;
+        let mut offset = header.memory_reservation_offset as usize;
+
+        for _ in 0..MAX_RESERVATION_ENTRIES {
+            let end = offset.checked_add(16).ok_or(FdtError::BlockOutOfBounds)?;
+            if end > total {
+                return Err(FdtError::BlockOutOfBounds);
+            }
+            if ranges_overlap(offset, end, structure_start, structure_end)
+                || (header.strings_size != 0
+                    && ranges_overlap(offset, end, strings_start, strings_end))
+            {
+                return Err(FdtError::OverlappingBlocks);
+            }
+
+            let address = be64(image, offset)?;
+            let size = be64(image, offset + 8)?;
+            offset = end;
+            if address == 0 && size == 0 {
+                return Ok(());
+            }
+            if size == 0 || address.checked_add(size).is_none() {
+                return Err(FdtError::InvalidStructure);
+            }
+        }
+        Err(FdtError::InvalidStructure)
+    }
+
     /// Validate the complete FDT image header and bounds of header-described blocks.
     pub fn parse_header(image: &[u8]) -> Result<FdtHeader, FdtError> {
         if image.len() < HEADER_SIZE {
@@ -472,10 +523,11 @@ pub mod device_tree {
         Ok(())
     }
 
-    /// Validate the header and the complete FDT node/property token stream.
-    /// The reservation-map entries and semantic device properties are not parsed yet.
+    /// Validate the header, reservation map, node/property tokens and property-name references.
+    /// Semantic device properties are not interpreted yet.
     pub fn validate_tree(image: &[u8]) -> Result<FdtHeader, FdtError> {
         let header = parse_header(image)?;
+        validate_reservation_map(image, &header)?;
         let structure_start = header.structure_offset as usize;
         let structure_end = structure_start
             .checked_add(header.structure_size as usize)
@@ -1055,6 +1107,22 @@ mod device_tree_tests {
         let mut image = valid_fdt();
         image[60] = b'x';
         assert_eq!(validate_tree(&image), Err(FdtError::InvalidStructure));
+    }
+
+    #[test]
+    fn rejects_reservation_range_overflow() {
+        let mut image = valid_fdt();
+        image[40..48].copy_from_slice(&(u64::MAX - 7).to_be_bytes());
+        image[48..56].copy_from_slice(&16u64.to_be_bytes());
+        assert_eq!(validate_tree(&image), Err(FdtError::InvalidStructure));
+    }
+
+    #[test]
+    fn rejects_reservation_map_without_terminator() {
+        let mut image = valid_fdt();
+        image[40..48].copy_from_slice(&0x1000u64.to_be_bytes());
+        image[48..56].copy_from_slice(&0x1000u64.to_be_bytes());
+        assert!(validate_tree(&image).is_err());
     }
 
     #[test]
