@@ -1602,6 +1602,16 @@ fn audit_platform_table_ranges(
         {
             return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: Device Tree is outside identity-mapped RAM for the high-half kernel.\r\n\0"));
         }
+        // Firmware data may have changed since initial discovery. Re-parse the
+        // entire bounded tree while its full range is still proven readable.
+        // SAFETY: length was validated, the complete range is reserved, and
+        // high-half x86-64 mapping coverage was checked above.
+        let complete_tree = unsafe {
+            core::slice::from_raw_parts(device_tree as *const u8, length as usize)
+        };
+        if archiaos_bootloader::device_tree::validate_tree(complete_tree).is_err() {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid Device Tree contents during final memory-map audit.\r\n\0"));
+        }
     }
     Ok(())
 }
