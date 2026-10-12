@@ -7,7 +7,7 @@ ArchiaOS conserve le firmware UEFI de la machine, mais développe son propre cha
 ## État réel
 
 - **Démarrage x86-64 actuel :** le noyau Rust `no_std` est lancé par Limine et consomme encore les structures Limine pour obtenir la carte mémoire.
-- **Bootloader ArchiaOS :** un premier crate UEFI sans dépendance externe affiche un diagnostic sur la console firmware. Il ne charge pas encore le noyau et n'est pas le chemin de démarrage par défaut.
+- **Bootloader ArchiaOS :** le crate UEFI sans dépendance externe ouvre `\\EFI\\ArchiaOS\\kernel.elf`, lit le contenu depuis la partition EFI et valide les en-têtes/segments ELF64 via une bibliothèque testée séparément. Il ne place pas encore les segments en mémoire et n'est pas le chemin de démarrage par défaut.
 - **ARM64 :** les cibles UEFI du bootloader peuvent être compilées dans la CI. Le noyau actuel n'est pas encore compilable/démarrable en AArch64 : son entrée assembleur, ses E/S série et sa gestion de la carte mémoire sont spécifiques à x86-64/Limine.
 - **Firmware :** UEFI standard fourni par le matériel ou par la machine virtuelle, non développé par ArchiaOS.
 
@@ -24,10 +24,10 @@ Cette structure est une cible de migration, pas une description des répertoires
 
 ## Jalons du bootloader
 
-1. Entrée UEFI et diagnostics sur x86-64 et AArch64.
-2. Tests reproductibles sous QEMU/OVMF ; génération d'une image EFI de test.
-3. Accès au système de fichiers EFI et lecture sécurisée d'un noyau.
-4. Parseur ELF64 avec tests de segments valides, tronqués, chevauchants, débordements et alignements invalides.
+1. Entrée UEFI et diagnostics sur x86-64 et AArch64 — prototype présent.
+2. Tests de compilation et tests unitaires du parseur ajoutés ; le lancement QEMU/OVMF du lecteur UEFI est maintenant prévu en CI.
+3. Accès au système de fichiers EFI et lecture bornée d'un noyau — implémenté pour `\\EFI\\ArchiaOS\\kernel.elf`.
+4. Parseur ELF64 avec tests de segments valides, tronqués, chevauchants, débordements, mauvaises tailles et alignements invalides.
 5. Contrat de handoff versionné et commun aux architectures.
 6. Carte mémoire finale, allocations et `ExitBootServices` robustes.
 7. Transfert vers le noyau x86-64, puis retrait progressif des réponses Limine.
