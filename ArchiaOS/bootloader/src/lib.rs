@@ -8,6 +8,8 @@ extern crate std;
 pub mod bootinfo {
     pub const BOOT_INFO_MAGIC: u64 = 0x4942_4149_4843_5241; // "ARCHIABI"
     pub const BOOT_INFO_VERSION: u32 = 1;
+    /// UEFI currently defines EFI_MEMORY_DESCRIPTOR_VERSION as 1.
+    pub const UEFI_MEMORY_DESCRIPTOR_VERSION: u32 = 1;
     pub const MAX_MEMORY_MAP_SIZE: u64 = 1024 * 1024;
 
     #[repr(C)]
@@ -62,7 +64,7 @@ pub mod bootinfo {
         if info.memory_map_size == 0 || info.memory_map_size > MAX_MEMORY_MAP_SIZE {
             return Err(BootInfoError::InvalidMemoryMapSize);
         }
-        if info.memory_map_descriptor_version == 0
+        if info.memory_map_descriptor_version != UEFI_MEMORY_DESCRIPTOR_VERSION
             || info.memory_map_descriptor_size < super::memory_map::MIN_DESCRIPTOR_SIZE as u64
             || info.memory_map_descriptor_size > super::memory_map::MAX_DESCRIPTOR_SIZE as u64
             || info.memory_map_descriptor_size % core::mem::align_of::<u64>() as u64 != 0
@@ -1050,6 +1052,7 @@ pub mod elf {
         SegmentSizeMismatch,
         InvalidAlignment,
         OverlappingSegments,
+        OverlappingPhysicalSegments,
         MissingLoadSegment,
         EntryNotExecutable,
         WritableExecutableSegment,
@@ -1269,6 +1272,17 @@ pub mod elf {
                 if current.virtual_address < other_end && other.virtual_address < current_end {
                     return Err(ElfError::OverlappingSegments);
                 }
+                let current_physical_end = current.physical_address
+                    .checked_add(current.memory_size)
+                    .ok_or(ElfError::IntegerOverflow)?;
+                let other_physical_end = other.physical_address
+                    .checked_add(other.memory_size)
+                    .ok_or(ElfError::IntegerOverflow)?;
+                if current.physical_address < other_physical_end
+                    && other.physical_address < current_physical_end
+                {
+                    return Err(ElfError::OverlappingPhysicalSegments);
+                }
             }
         }
 
@@ -1404,6 +1418,16 @@ mod tests {
         let mut info = valid_boot_info();
         info.memory_map = core::ptr::null();
         assert_eq!(validate_header(&info), Err(BootInfoError::MissingMemoryMap));
+    }
+
+    #[test]
+    fn boot_info_header_rejects_unsupported_descriptor_version() {
+        let mut info = valid_boot_info();
+        info.memory_map_descriptor_version = 2;
+        assert_eq!(
+            validate_header(&info),
+            Err(BootInfoError::InvalidDescriptorMetadata)
+        );
     }
 
     #[test]
@@ -1574,6 +1598,26 @@ mod tests {
         assert_eq!(
             parse_elf64(&image, X86_64),
             Err(ElfError::SegmentOutOfBounds)
+        );
+    }
+
+    #[test]
+    fn rejects_overlapping_physical_load_segments() {
+        let mut image = valid_elf(X86_64);
+        image.resize(0x1104, 0);
+        put_u16(&mut image, 56, 2);
+        // Distinct virtual ranges, but both segments would claim the same physical page.
+        put_u32(&mut image, 120, 1);
+        put_u32(&mut image, 124, 4);
+        put_u64(&mut image, 128, 0x1100);
+        put_u64(&mut image, 136, 0x4008_2000);
+        put_u64(&mut image, 144, 0x4008_0100);
+        put_u64(&mut image, 152, 4);
+        put_u64(&mut image, 160, 16);
+        put_u64(&mut image, 168, 0x1000);
+        assert_eq!(
+            parse_elf64(&image, X86_64),
+            Err(ElfError::OverlappingPhysicalSegments)
         );
     }
 
