@@ -164,10 +164,20 @@ pub unsafe fn initialize_from_bootinfo<W: Write>(
         let length = descriptor.byte_length()
             .map_err(|_| MemoryError::InvalidMemoryRange)?;
         if descriptor.is_conventional() {
-            usable_ranges = usable_ranges.checked_add(1)
-                .ok_or(MemoryError::UsableMemoryTotalOverflow)?;
-            usable_bytes = usable_bytes.checked_add(length)
-                .ok_or(MemoryError::UsableMemoryTotalOverflow)?;
+            // Report only complete pages the current bitmap can actually manage:
+            // frames below 1 MiB are reserved, and physical addresses at/above
+            // 4 GiB are outside this PMM's current supported window.
+            let (first, last) = frame_range(descriptor.physical_start, length)
+                .ok_or(MemoryError::InvalidMemoryRange)?;
+            let first = first.max(ONE_MIB / PAGE_SIZE);
+            if first < last {
+                usable_ranges = usable_ranges.checked_add(1)
+                    .ok_or(MemoryError::UsableMemoryTotalOverflow)?;
+                let managed_bytes = (last - first).checked_mul(PAGE_SIZE)
+                    .ok_or(MemoryError::UsableMemoryTotalOverflow)?;
+                usable_bytes = usable_bytes.checked_add(managed_bytes)
+                    .ok_or(MemoryError::UsableMemoryTotalOverflow)?;
+            }
         }
     }
     if usable_ranges == 0 {
