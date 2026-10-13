@@ -191,14 +191,14 @@ Dépendances structurantes : **VMM/MMU → espaces d'adressage → processus/sys
 - [x] Ajouter un démarrage négatif OVMF avec volume EFI valide mais noyau absent : diagnostic du fichier manquant attendu, sans validation ELF ni transfert au noyau.
 - [x] Ajouter un test de démarrage négatif BootInfo invalide via une feature dédiée au build CI (`test-invalid-bootinfo`) ; le chargeur normal reste inchangé sans cette feature.
 - [x] Documenter les configurations CI : x86-64 sous OVMF/QEMU (Q35, 512 MiB, firmware sans Secure Boot), ARM64 sous AAVMF/QEMU (`virt`, Cortex-A57, 512 MiB) et prototype ARM64 en démarrage direct QEMU.
-- [x] Compiler et empaqueter les fichiers de test USB x86-64 dans GitHub Actions ; workflow `ArchiaOS P0 physical USB package` réussi sur le commit `977fa0c5088f015f48f7f5a5261ffcc3c8cec7d8`, artefact `archiaos-p0-usb-x86_64` disponible.
+- [x] Jalon historique : compiler et empaqueter les fichiers USB x86-64 via GitHub Actions sur `977fa0c5088f015f48f7f5a5261ffcc3c8cec7d8` ; d'autres runs plus récents sont référencés dans le tableau de bord. Aucun package USB n'est démontré sur le HEAD documentaire courant.
 - [x] **Démarrage physique et premier affichage confirmés** : l’utilisateur a démarré depuis la clé USB et observé un fond bleu foncé avec une bande bleu clair, preuve que le noyau écrit dans le framebuffer après le handoff UEFI. Le redémarrage à froid et le retour au firmware restent non consignés ; ils ne bloquent plus le jalon P0 de premier démarrage.
 
 **Critère de sortie :** build reproductible et tests de démarrage verts sur le HEAD courant, sans déclarer les essais QEMU comme une validation de tout matériel physique.
 
 ### P1 — Fiabilité du chargeur et de la mémoire — 90 %
 
-**État : IMPLÉMENTATION AUTOMATISÉE AVANCÉE, VALIDATION MATÉRIELLE OUVERTE — 90 %.** La campagne physique vaut 10 points : elle n'est pas un détail résiduel. Le dernier commit de code noyau/workflow examiné est `e18b1901e262f21838ab0484459d207ccf004442`. Le HEAD de branche au début de cette révision était `7bdc9e17f5a14e4800804cf36af4beac3689184c` ; la CI principale, le boot UEFI local et le test négatif BootInfo ont réussi sur ce commit. Le package USB le plus récent observé a réussi sur `dfd67f2937b95afc8c8d798c0b77483c2f7a43f9`, pas sur ce HEAD.
+**État : IMPLÉMENTATION AUTOMATISÉE AVANCÉE, VALIDATION MATÉRIELLE OUVERTE — 90 %.** La campagne physique vaut 10 points : elle n'est pas un détail résiduel. Le dernier commit de code noyau/workflow examiné est `e18b1901e262f21838ab0484459d207ccf004442`. Les trois workflows de référence ont réussi sur le HEAD documentaire `8b5ff8dbcc91cded600c03a98157bba428b86d6f` : [CI principale](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995664), [boot UEFI local](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995825) et [BootInfo négatif](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995687). Le package USB a réussi sur `dfd67f2937b95afc8c8d798c0b77483c2f7a43f9`, pas sur le HEAD documentaire testé ci-dessus.
 
 **Objectif :** sécuriser le transfert UEFI → noyau et la gestion de la mémoire physique.
 
@@ -237,7 +237,7 @@ Dépendances structurantes : **VMM/MMU → espaces d'adressage → processus/sys
 
 ### P2 — Exceptions, ordonnanceur et synchronisation — 21 %
 
-**État : PARTIELLEMENT IMPLÉMENTÉ — 21 %.** Le dernier commit de code qui touche le contexte/scheduler est `e18b1901e262f21838ab0484459d207ccf004442`; la CI principale et le test négatif BootInfo ont réussi sur le HEAD documentaire `7bdc9e17f5a14e4800804cf36af4beac3689184c`, qui contient ce même code. Cela valide un transfert x86-64 vers une pile de tâche synthétique et le retour vers le contexte appelant ; cela **ne valide pas encore un ordonnanceur qui commute entre plusieurs tâches réelles**. Le module `scheduler.rs` reste un modèle d'états isolé : les tâches ne possèdent ni pile ni contexte CPU et ses transitions ne déclenchent pas `context::switch`. L'IDT x86-64 couvre les vecteurs 0–31 avec stubs et diagnostic fatal, mais l'installation et les handlers ne disposent pas encore d'un test d'exception contrôlé démontré dans la CI. Les interruptions restent désactivées au démarrage ; pas de timer, de préemption ni de SMP activé. La synchronisation multi-cœur n'existe pas encore dans la version actuelle.
+**État : PARTIELLEMENT IMPLÉMENTÉ — 21 %.** Le dernier commit de code qui touche le contexte/scheduler est `e18b1901e262f21838ab0484459d207ccf004442`; la CI principale, le boot UEFI local et le test négatif BootInfo ont réussi sur le HEAD documentaire `8b5ff8dbcc91cded600c03a98157bba428b86d6f`, qui contient ce même code : [CI](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995664), [boot local](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995825), [BootInfo négatif](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995687). Cela valide un transfert x86-64 vers une pile de tâche synthétique et le retour vers le contexte appelant ; cela **ne valide pas encore un ordonnanceur qui commute entre plusieurs tâches réelles**. Le module `scheduler.rs` reste un modèle d'états isolé : les tâches ne possèdent ni pile ni contexte CPU et ses transitions ne déclenchent pas `context::switch`. L'IDT x86-64 couvre les vecteurs 0–31 avec stubs et diagnostic fatal, mais l'installation et les handlers ne disposent pas encore d'un test d'exception contrôlé démontré dans la CI. Les interruptions restent désactivées au démarrage ; pas de timer, de préemption ni de SMP activé. La synchronisation multi-cœur n'existe pas encore dans la version actuelle.
 
 **Implémenté et vérifié**
 - [x] Modèle d'ordonnanceur borné sans allocation dynamique : états `Empty`, `Runnable`, `Running`, `Blocked`, `Exited`, sélection round-robin, blocage/réveil, sortie et invariants.
@@ -357,8 +357,8 @@ Dépendances structurantes : **VMM/MMU → espaces d'adressage → processus/sys
 - [x] Ajouter un module x86-64 CPUID sans allocation dynamique : fabricant, famille/modèle/stepping, marque CPU si disponible et fonctionnalités pertinentes (commit `bb157c7`).
 - [x] Vérifier les feuilles CPUID maximales avant chaque interrogation et gérer proprement les champs indisponibles.
 - [ ] Ajouter des tests unitaires pour le décodage des champs CPU.
-- [ ] Découvrir les périphériques PCI en lecture seule, d'abord avec le mécanisme de configuration disponible sur la plateforme cible.
-- [ ] Prévoir une abstraction pour PCIe ECAM/ACPI ; ne pas supposer que l'accès PCI legacy convient à toutes les machines.
+- [x] Première découverte PCI lecture seule via mécanisme de configuration legacy, limitée au bus 0 et à 32 périphériques / 8 fonctions ; implémentation `kernel/src/pci.rs`, sans test dédié ni couverture de tous les bus.
+- [ ] Ajouter des tests ciblés et l'inventaire typé ; prévoir ensuite PCIe ECAM/ACPI, car l'accès legacy ne couvre pas toutes les machines.
 - [ ] Exposer un inventaire typé (identifiants vendeur/périphérique, classe, bus/emplacement) sans écrire dans les registres de configuration des périphériques.
 - [ ] Journaliser les résultats et tester sur QEMU ; distinguer clairement tests virtuels et matériel physique.
 
@@ -434,7 +434,7 @@ La vision est une seule application avec des modules cohérents, pas une simple 
 - **B6 — Contrat BootInfo : implémenté.** ABI versionnée `ARCHIABI`, entrée noyau, carte mémoire UEFI finale et pointeurs de plateforme disponibles.
 - **B7 — Sortie UEFI : implémentée.** Collecte de la carte mémoire juste avant `ExitBootServices`, nouvelle tentative avec clé fraîche en cas de `EFI_INVALID_PARAMETER`.
 - **B8 — Noyau x86-64 de production via le chargeur maison : validé en CI antérieure.** OVMF/QEMU, validation BootInfo et test PMM de 130 allocations/libérations.
-- **B9 — Démarrage maison par défaut : bascule du code effectuée ; CI complète verte sur `0094090`, validation sur matériel physique encore en attente.** Lié directement à P0.
+- **B9 — Démarrage maison par défaut : bascule du code effectuée ; `0094090` est une référence historique, pas la preuve de la CI courante.** Les runs actuels et leurs SHA sont indiqués dans le tableau « État des preuves automatisées ». Le premier affichage physique a été signalé par l'utilisateur ; la validation matérielle répétable reste distincte. Lié directement à P0.
 
 ### ARM64 — progression séparée estimée : 46 % (non ajoutée au global)
 
