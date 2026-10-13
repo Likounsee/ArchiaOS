@@ -51,7 +51,7 @@ set +e
 timeout "${SECONDS_LIMIT}s" qemu-system-x86_64 -machine q35 -m 512M \
   -drive "if=pflash,format=raw,readonly=on,file=$OVMF_CODE" \
   -drive "if=pflash,format=raw,file=$OUT/OVMF_VARS.fd" \
-  -drive "file=$IMAGE,format=raw,if=ide" -boot order=c -display none \
+  -drive "file=$IMAGE,format=raw,if=ide" -boot order=c -cpu Haswell -display none \
   -serial stdio -monitor none -no-reboot -no-shutdown >"$LOG" 2>&1
 status=$?
 set -e
