@@ -4,6 +4,7 @@
 //! It does not probe temperatures, clocks, power, or other live sensor values.
 
 use core::arch::x86_64::__cpuid_count;
+use super::cpu_features;
 
 /// Fixed-size CPU information: usable before a heap allocator exists.
 pub struct CpuInfo {
@@ -95,24 +96,26 @@ pub fn detect() -> CpuInfo {
             base_model
         };
         stepping = (leaf1.eax & 0x0f) as u8;
-        has_tsc = leaf1.edx & (1 << 4) != 0;
-        has_sse2 = leaf1.edx & (1 << 26) != 0;
-        has_sse41 = leaf1.ecx & (1 << 19) != 0;
-        has_sse42 = leaf1.ecx & (1 << 20) != 0;
-        has_aesni = leaf1.ecx & (1 << 25) != 0;
-        has_xsave = leaf1.ecx & (1 << 26) != 0;
-        has_osxsave = leaf1.ecx & (1 << 27) != 0;
-        has_avx = leaf1.ecx & (1 << 28) != 0;
-        has_fma = leaf1.ecx & (1 << 12) != 0;
+        let features = cpu_features::decode_leaf1(leaf1.ecx, leaf1.edx);
+        has_tsc = features.tsc;
+        has_sse2 = features.sse2;
+        has_sse41 = features.sse41;
+        has_sse42 = features.sse42;
+        has_aesni = features.aesni;
+        has_xsave = features.xsave;
+        has_osxsave = features.osxsave;
+        has_avx = features.avx;
+        has_fma = features.fma;
     }
 
     if max_basic_leaf >= 7 {
         // SAFETY: leaf 7 is available according to leaf 0.
         let leaf7 = unsafe { __cpuid_count(7, 0) };
-        has_bmi1 = leaf7.ebx & (1 << 3) != 0;
-        has_avx2 = leaf7.ebx & (1 << 5) != 0;
-        has_bmi2 = leaf7.ebx & (1 << 8) != 0;
-        has_avx512f = leaf7.ebx & (1 << 16) != 0;
+        let features = cpu_features::decode_leaf7(leaf7.ebx);
+        has_bmi1 = features.bmi1;
+        has_avx2 = features.avx2;
+        has_bmi2 = features.bmi2;
+        has_avx512f = features.avx512f;
     }
 
     // AVX-family instructions require both CPU support and OS-enabled state.
@@ -131,16 +134,16 @@ pub fn detect() -> CpuInfo {
             );
         }
         let xcr0 = ((high as u64) << 32) | low as u64;
-        xcr0 & 0b110 == 0b110
+        cpu_features::avx_state_usable(has_xsave, has_osxsave, has_avx, xcr0)
     } else {
         false
     };
     let avx2_usable = has_avx2 && avx_state_usable;
     let fma_usable = has_fma && avx_state_usable;
-    let avx512f_usable = has_avx512f && avx_state_usable && {
+    let avx512f_usable = if avx_state_usable && has_avx512f {
+        // SAFETY: this branch is reachable only after XSAVE and OSXSAVE checks.
         let low: u32;
         let high: u32;
-        // SAFETY: same OSXSAVE guard as the XGETBV above.
         unsafe {
             core::arch::asm!(
                 "xgetbv",
@@ -151,7 +154,9 @@ pub fn detect() -> CpuInfo {
             );
         }
         let xcr0 = ((high as u64) << 32) | low as u64;
-        xcr0 & 0xE6 == 0xE6
+        cpu_features::avx512_state_usable(has_xsave, has_osxsave, has_avx, has_avx512f, xcr0)
+    } else {
+        false
     };
 
     CpuInfo {
