@@ -257,7 +257,7 @@ pub extern "C" fn rust_kernel_main(
     );
     let _ = writeln!(
         serial,
-        "ArchiaOS: CPU features TSC={} SSE2={} SSE4.1={} SSE4.2={} AES={} XSAVE={} OSXSAVE={} AVX(hw/usable)={}/{} AVX2(hw/usable)={}/{} AVX512F(hw/usable)={}/{} FMA={} BMI1={} BMI2={}",
+        "ArchiaOS: CPU features TSC={} SSE2={} SSE4.1={} SSE4.2={} AES={} XSAVE={} OSXSAVE={} AVX(hw/usable)={}/{} AVX2(hw/usable)={}/{} AVX512F(hw/usable)={}/{} FMA(hw/usable)={}/{} BMI1={} BMI2={}",
         cpu_info.has_tsc as u8,
         cpu_info.has_sse2 as u8,
         cpu_info.has_sse41 as u8,
@@ -272,6 +272,7 @@ pub extern "C" fn rust_kernel_main(
         cpu_info.has_avx512f as u8,
         cpu_info.avx512f_usable as u8,
         cpu_info.has_fma as u8,
+        cpu_info.fma_usable as u8,
         cpu_info.has_bmi1 as u8,
         cpu_info.has_bmi2 as u8
     );
