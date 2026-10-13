@@ -427,6 +427,7 @@ jobs:
           grep -Fq "ArchiaOS: CPU features " "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "ArchiaOS: x87/SSE context state initialized (FXSAVE64/FXRSTOR64)" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "ArchiaOS: SSE4.1 optimized integer self-test passed" "$RUNNER_TEMP/archiaos-production-uefi.log"
+          grep -Fq "ArchiaOS: real task block/wake context-switch self-test passed" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Eq "ArchiaOS: PCI bus 0 scan complete: [1-9][0-9]* function\(s\)" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "PMM: validated ArchiaOS UEFI BootInfo v1" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Eq "PMM: UEFI memory descriptors validated: [1-9][0-9]*" "$RUNNER_TEMP/archiaos-production-uefi.log"
