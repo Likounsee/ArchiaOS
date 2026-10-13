@@ -14,7 +14,7 @@ Ce minimum est une décision de compatibilité x86-64. Il ne définit pas le min
 - **AVX-512** : vérifier AVX-512F côté CPU et l'état OS requis dans XCR0 (XCR0 & 0xE6 == 0xE6) avant tout usage.
 - **Extensions futures** : aucune extension ne devient une dépendance globale par simple présence dans une machine de développement.
 
-Les informations « support matériel » et « utilisable par le noyau maintenant » doivent rester séparées. Le support AVX détecté sur le CPU ne signifie pas que le noyau a déjà configuré l'état étendu nécessaire. Le noyau devra sauvegarder/restaurer cet état correctement avant d'autoriser son utilisation dans les tâches, interruptions ou contextes concurrents.
+Les informations « support matériel » et « utilisable par le noyau maintenant » doivent rester séparées. Le support AVX détecté sur le CPU ne signifie pas que le noyau a déjà configuré l'état étendu nécessaire. Le noyau sauvegarde désormais l'état x87/SSE historique avec FXSAVE64/FXRSTOR64 à chaque commutation. Cela ne préserve pas les registres YMM/ZMM supérieurs : aucune routine AVX/AVX2/AVX-512 ne doit donc être dispatchée dans le scheduler avant l'ajout d'un contexte XSAVE/XRSTOR complet et testé.
 
 ## Dispatch et portabilité
 
