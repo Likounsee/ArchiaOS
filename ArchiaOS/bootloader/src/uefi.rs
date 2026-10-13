@@ -1293,24 +1293,23 @@ fn configuration_table_range_is_bounded(base: usize, count: usize) -> bool {
     bytes <= isize::MAX as usize && base.checked_add(bytes).is_some()
 }
 
-fn configuration_table(system_table: *mut SystemTable, wanted: &Guid) -> *mut c_void {
-    if system_table.is_null() {
-        return ptr::null_mut();
-    }
-    // SAFETY: firmware provides the configuration-table array and count.
-    let (count, tables) = unsafe {
-        ((*system_table).number_of_table_entries, (*system_table).configuration_table)
-    };
+fn configuration_table(
+    tables: *mut ConfigurationTable,
+    count: usize,
+    wanted: &Guid,
+) -> *mut c_void {
     if !configuration_table_range_is_bounded(tables as usize, count) {
         return ptr::null_mut();
     }
     for index in 0..count {
         // Firmware metadata is external input: read unaligned so malformed alignment
         // cannot trigger undefined behavior before the table's GUID is checked.
-        // SAFETY: the index is bounded and the byte-range arithmetic was checked above.
-        let candidate = unsafe { ptr::read_unaligned(tables.cast::<u8>().add(
-            index * core::mem::size_of::<ConfigurationTable>()
-        ).cast::<ConfigurationTable>()) };
+        // SAFETY: callers validate the full array range before lookup; the bounds
+        // helper proves multiplication and address arithmetic cannot overflow.
+        let offset = index * core::mem::size_of::<ConfigurationTable>();
+        let candidate = unsafe {
+            ptr::read_unaligned(tables.cast::<u8>().add(offset).cast::<ConfigurationTable>())
+        };
         if candidate.vendor_guid == *wanted && !candidate.vendor_table.is_null() {
             return candidate.vendor_table;
         }
@@ -2045,8 +2044,10 @@ fn platform_tables(
         return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: configuration-table array overlaps the GOP framebuffer.\r\n\0"));
     }
     let _ = high_half_image;
-    let acpi20 = configuration_table(system_table, &ACPI_20_TABLE_GUID);
-    let acpi10 = configuration_table(system_table, &ACPI_10_TABLE_GUID);
+    // Use the exact metadata snapshot whose full range was just validated. Do not
+    // reread count or pointer from SystemTable between validation and lookup.
+    let acpi20 = configuration_table(tables, count, &ACPI_20_TABLE_GUID);
+    let acpi10 = configuration_table(tables, count, &ACPI_10_TABLE_GUID);
     // Do not dereference firmware-controlled table pointers here: the final memory
     // map is not available yet. The handoff audit validates every prefix and complete
     // range before parsing the RSDP or Device Tree.
@@ -2056,7 +2057,7 @@ fn platform_tables(
         platform_table_address(acpi10)
     };
 
-    let dtb = configuration_table(system_table, &EFI_DTB_TABLE_GUID);
+    let dtb = configuration_table(tables, count, &EFI_DTB_TABLE_GUID);
     let dtb = platform_table_address(dtb);
     Ok((rsdp, dtb, Some((address, bytes))))
 }
@@ -2877,5 +2878,47 @@ mod acpi_fadt_indirect_pointer_tests {
         assert!(acpi_fadt_indirect_pointers(&fadt).is_err());
         put_u32(&mut fadt, 40, 0x2000);
         assert_eq!(acpi_fadt_indirect_pointers(&fadt), Ok((0, 0x2000)));
+    }
+}
+
+
+#[cfg(test)]
+mod configuration_table_lookup_tests {
+    use super::{configuration_table, ConfigurationTable, Guid};
+    use core::ffi::c_void;
+
+    const FIRST_GUID: Guid = Guid {
+        data1: 0x1234,
+        data2: 0x5678,
+        data3: 0x9abc,
+        data4: [1, 2, 3, 4, 5, 6, 7, 8],
+    };
+    const SECOND_GUID: Guid = Guid {
+        data1: 0x4321,
+        data2: 0x8765,
+        data3: 0xcba9,
+        data4: [8, 7, 6, 5, 4, 3, 2, 1],
+    };
+
+    #[test]
+    fn finds_requested_guid_in_validated_snapshot() {
+        let first = 0x1234usize as *mut c_void;
+        let second = 0x5678usize as *mut c_void;
+        let entries = [
+            ConfigurationTable { vendor_guid: FIRST_GUID, vendor_table: first },
+            ConfigurationTable { vendor_guid: SECOND_GUID, vendor_table: second },
+        ];
+        assert_eq!(configuration_table(entries.as_ptr() as *mut _, entries.len(), &SECOND_GUID), second);
+    }
+
+    #[test]
+    fn missing_or_null_entries_are_not_returned() {
+        let entries = [
+            ConfigurationTable { vendor_guid: FIRST_GUID, vendor_table: core::ptr::null_mut() },
+        ];
+        assert!(configuration_table(entries.as_ptr() as *mut _, entries.len(), &FIRST_GUID).is_null());
+        assert!(configuration_table(entries.as_ptr() as *mut _, entries.len(), &SECOND_GUID).is_null());
+        assert!(configuration_table(core::ptr::null_mut(), 1, &FIRST_GUID).is_null());
+        assert!(configuration_table(entries.as_ptr() as *mut _, 0, &FIRST_GUID).is_null());
     }
 }
