@@ -7,7 +7,7 @@
 | Priorité | Domaine | Avancement estimé | État / prochaine preuve attendue |
 |---|---|---:|---|
 | **P0** | Démarrage UEFI maison x86-64 par défaut | **100 % (jalon physique atteint)** | Démarrage depuis la clé USB et premier affichage framebuffer confirmés par l’utilisateur sur le PC physique. Le motif bleu prouve l’écriture dans le framebuffer après le handoff ; il ne constitue pas encore un bureau ni une pile graphique. Un redémarrage à froid n’est pas consigné. |
-| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **93 %** | Le HEAD `338d02e` ajoute le rejet des tables ACPI/Device Tree qui aliasent les pages allouées aux segments ELF, en plus des buffers de handoff, du chargeur et des tables de pages. Les tests de chevauchement sont élargis ; la CI du HEAD courant doit encore être vérifiée. Reste : finir l’audit des autres plages spécifiques aux plateformes et étendre la validation matérielle. |
+| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **93 %** | Le HEAD `c864ae2` ajoute le rejet des tables ACPI/Device Tree qui aliasent les pages allouées aux segments ELF, en plus des buffers de handoff, du chargeur et des tables de pages. La signature de l’audit accepte désormais la liste dynamique complète de plages. Les tests de chevauchement sont élargis ; la CI du HEAD courant doit encore être vérifiée. Reste : finir l’audit des autres plages spécifiques aux plateformes et étendre la validation matérielle. |
 | **P2** | Ordonnanceur et synchronisation | **0 %** | Non implémenté ; définir les primitives de tâches et le changement de contexte avant la préemption. |
 | **P3** | Espace utilisateur et ABI système | **0 %** | Non commencé ; dépend notamment des exceptions, syscalls et mécanismes mémoire isolés. |
 | **P4** | Stockage, VFS et préparation OpenFS | **0 %** | Pas de pilote bloc/VFS fonctionnel ; spécifier d'abord les interfaces. |
@@ -45,7 +45,7 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 
 ### P1 — Fiabilité du chargeur et de la mémoire — 93 %
 
-**État : EN COURS — 93 %.** Le HEAD `338d02e` étend l’audit des alias ACPI RSDP/Device Tree aux pages physiques complètes allouées aux segments `PT_LOAD` (plages arrondies à la page), afin qu’une table firmware ne puisse pas recouvrir le code ou les données du noyau. Les tests de chevauchement incluent désormais ces plages. La CI du HEAD courant n’est pas encore confirmée. Reste : terminer l’audit des autres plages spécifiques aux plateformes, vérifier la CI et étendre les scénarios matériels.
+**État : EN COURS — 93 %.** Le HEAD `c864ae2` étend l’audit des alias ACPI RSDP/Device Tree aux pages physiques complètes allouées aux segments `PT_LOAD` (plages arrondies à la page), afin qu’une table firmware ne puisse pas recouvrir le code ou les données du noyau. La fonction d’audit accepte une tranche de taille dynamique, alignée sur le nombre réel de plages conservées. Les tests de chevauchement incluent désormais ces plages. La CI du HEAD courant n’est pas encore confirmée. Reste : terminer l’audit des autres plages spécifiques aux plateformes, vérifier la CI et étendre les scénarios matériels.
 
 **Objectif :** sécuriser le transfert UEFI → noyau et la gestion de la mémoire physique.
 
@@ -66,7 +66,7 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 - [x] Ajouter une simulation d'épuisement mémoire isolée et déterministe sur des bitmaps locaux, incluant filtrage des frames réservées et réutilisation, sans consommer la mémoire firmware ni bloquer QEMU (tests et démarrages CI verts sur `1ab767a`).
 - [x] Vérifier avant ExitBootServices que les buffers BootInfo/carte mémoire, les segments noyau, l'image du chargeur et l'arène de tables de pages ne chevauchent aucune plage UEFI conventionnelle.
 - [x] Valider la cohérence et l'absence de débordement de la plage framebuffer dans BootInfo. Le framebuffer GOP est une plage MMIO : elle peut légitimement être absente des descripteurs UEFI ; elle est mappée séparément en uncached et exclue de la RAM allocatable. Les tests de couverture générique rejettent les trous sans imposer à tort que le MMIO soit décrit comme mémoire système.
-- [x] Rejeter les tables ACPI RSDP et Device Tree qui chevauchent les pages physiques allouées aux segments ELF `PT_LOAD` ; l’audit couvre les pages arrondies réellement réservées et des cas de chevauchement partiel ainsi que des plages disjointes (HEAD `338d02e`).
+- [x] Rejeter les tables ACPI RSDP et Device Tree qui chevauchent les pages physiques allouées aux segments ELF `PT_LOAD` ; l’audit couvre les pages arrondies réellement réservées et des cas de chevauchement partiel ainsi que des plages disjointes (HEAD `c864ae2`).
 - [ ] Terminer l'audit des autres plages réservées spécifiques à chaque plateforme.
 - [x] Étendre les tests de couverture mémoire aux sous-plages non alignées, aux frontières entre descripteurs de types différents et aux trous entre descripteurs ; CI verte sur `1ab767a`.
 - [x] Durcir le calcul des plages PMM réservées : écrêtage à la fenêtre gérée sous 4 Gio avant l'arrondi, sans débordement inutile pour une plage MMIO située hors fenêtre ; auto-vérifications au démarrage pour les limites, les plages non alignées et les longueurs nulles (commit `a8654bf`).
