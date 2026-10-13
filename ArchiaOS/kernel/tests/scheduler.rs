@@ -16,6 +16,11 @@ fn x86_64_context_switch_enters_task_stack_and_returns() {
 }
 
 #[test]
+fn two_runtime_tasks_really_yield_resume_and_exit_on_distinct_stacks() {
+    assert_eq!(scheduler::runtime_self_test(), Ok(()));
+}
+
+#[test]
 fn public_dispatch_starts_and_refuses_to_replace_running_task() {
     let mut scheduler = Scheduler::new();
     let first = scheduler.create_task().expect("first task slot");
