@@ -1958,21 +1958,20 @@ pub unsafe fn transfer_to_kernel(
             );
         }
 
-        // Read framebuffer metadata only after fully initializing BootInfo. The
-        // current loader sets it to absent; this guard becomes active when GOP
-        // discovery is wired in and prevents the PMM from treating framebuffer
-        // MMIO as conventional free memory.
+        // Re-read framebuffer metadata from the completed BootInfo before auditing
+        // its physical range. GOP discovery has already run above; keep this check
+        // next to the handoff validation so incomplete metadata cannot slip through.
         let framebuffer_base = unsafe { (*info_pointer).framebuffer_base };
         let framebuffer_size = unsafe { (*info_pointer).framebuffer_size };
         if (framebuffer_base == 0) != (framebuffer_size == 0) {
-            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: incomplete framebuffer range in BootInfo.\\r\\n\\0"));
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: incomplete framebuffer range in BootInfo.\r\n\0"));
         }
         // GOP framebuffer apertures are device MMIO and may legitimately be absent
         // from the UEFI memory descriptors. Validate arithmetic here; the page-table
         // builder maps the aperture explicitly as uncached and excludes it from RAM.
         if framebuffer_base != 0 {
             framebuffer_base.checked_add(framebuffer_size)
-                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer range overflow in BootInfo.\\r\\n\\0"))?;
+                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer range overflow in BootInfo.\r\n\0"))?;
         }
 
         // The framebuffer is an MMIO aperture, not ordinary memory. Even if its
@@ -1986,7 +1985,7 @@ pub unsafe fn transfer_to_kernel(
                 info_storage_start,
                 core::mem::size_of::<BootInfo>() as u64,
             ) || framebuffer_conflicts_with(map_storage_start, MAX_MEMORY_MAP_SIZE as u64) {
-                return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer overlaps BootInfo or memory-map storage.\\r\\n\\0"));
+                return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer overlaps BootInfo or memory-map storage.\r\n\0"));
             }
 
             for segment_index in 0.._elf.program_header_count() {
@@ -1997,18 +1996,18 @@ pub unsafe fn transfer_to_kernel(
                 ) {
                     Ok(segment) => segment,
                     Err(archiaos_bootloader::elf::ElfError::NotLoadableSegment) => continue,
-                    Err(_) => return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ELF segment during framebuffer overlap audit.\\r\\n\\0")),
+                    Err(_) => return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ELF segment during framebuffer overlap audit.\r\n\0")),
                 };
                 let segment_end = segment.physical_address
                     .checked_add(segment.memory_size)
-                    .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF range overflow during framebuffer overlap audit.\\r\\n\\0"))?;
+                    .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF range overflow during framebuffer overlap audit.\r\n\0"))?;
                 let rounded_start = segment.physical_address & !(EFI_PAGE_SIZE - 1);
                 let rounded_end = segment_end
                     .checked_add(EFI_PAGE_SIZE - 1)
                     .map(|value| value & !(EFI_PAGE_SIZE - 1))
-                    .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF rounded range overflow during framebuffer overlap audit.\\r\\n\\0"))?;
+                    .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF rounded range overflow during framebuffer overlap audit.\r\n\0"))?;
                 if framebuffer_conflicts_with(rounded_start, rounded_end - rounded_start) {
-                    return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer overlaps a loaded kernel segment.\\r\\n\\0"));
+                    return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer overlaps a loaded kernel segment.\r\n\0"));
                 }
             }
 
@@ -2017,18 +2016,18 @@ pub unsafe fn transfer_to_kernel(
                 if framebuffer_conflicts_with(
                     loader_start,
                     loader_end.checked_sub(loader_start)
-                        .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: inverted loader-image range during framebuffer overlap audit.\\r\\n\\0"))?,
+                        .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: inverted loader-image range during framebuffer overlap audit.\r\n\0"))?,
                 ) {
-                    return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer overlaps the UEFI loader image.\\r\\n\\0"));
+                    return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer overlaps the UEFI loader image.\r\n\0"));
                 }
             }
             #[cfg(target_arch = "x86_64")]
             if let Some(arena) = page_table_arena.as_ref() {
                 let arena_bytes = (PAGE_TABLE_ARENA_PAGES as u64)
                     .checked_mul(EFI_PAGE_SIZE)
-                    .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: page-table arena size overflow during framebuffer overlap audit.\\r\\n\\0"))?;
+                    .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: page-table arena size overflow during framebuffer overlap audit.\r\n\0"))?;
                 if framebuffer_conflicts_with(arena.physical_base, arena_bytes) {
-                    return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer overlaps page-table storage.\\r\\n\\0"));
+                    return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer overlaps page-table storage.\r\n\0"));
                 }
             }
         }
