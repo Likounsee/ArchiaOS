@@ -10,6 +10,10 @@ path = "kernel/src/main.rs"
 test = false
 bench = false
 
+[[test]]
+name = "scheduler"
+path = "kernel/tests/scheduler.rs"
+
 [features]
 default = ["uefi-boot"]
 uefi-boot = []
