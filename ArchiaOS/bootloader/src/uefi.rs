@@ -2022,8 +2022,11 @@ fn platform_tables(
     let (count, tables) = unsafe {
         ((*system_table).number_of_table_entries, (*system_table).configuration_table)
     };
-    if !configuration_table_range_is_bounded(tables as usize, count) {
+    if count == 0 {
         return Ok((0, 0, None));
+    }
+    if !configuration_table_range_is_bounded(tables as usize, count) {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid UEFI configuration-table array bounds.\r\n\0"));
     }
     let bytes = (count as u64)
         .checked_mul(core::mem::size_of::<ConfigurationTable>() as u64)
