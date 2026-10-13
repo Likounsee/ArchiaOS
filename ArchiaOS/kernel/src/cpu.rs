@@ -14,10 +14,22 @@ pub struct CpuInfo {
     pub stepping: u8,
     pub has_tsc: bool,
     pub has_sse2: bool,
+    pub has_sse41: bool,
+    pub has_sse42: bool,
+    /// Hardware advertises AVX, regardless of whether OS state is enabled.
     pub has_avx: bool,
     pub has_avx2: bool,
+    pub has_avx512f: bool,
+    pub has_fma: bool,
+    pub has_bmi1: bool,
+    pub has_bmi2: bool,
     pub has_aesni: bool,
     pub has_xsave: bool,
+    pub has_osxsave: bool,
+    /// AVX state is enabled by the OS in CR4/XCR0; safe to execute AVX now.
+    pub avx_state_usable: bool,
+    pub avx2_usable: bool,
+    pub avx512f_usable: bool,
     pub max_basic_leaf: u32,
     pub max_extended_leaf: u32,
 }
@@ -56,10 +68,17 @@ pub fn detect() -> CpuInfo {
     let mut stepping = 0u8;
     let mut has_tsc = false;
     let mut has_sse2 = false;
+    let mut has_sse41 = false;
+    let mut has_sse42 = false;
     let mut has_avx = false;
+    let mut has_avx2 = false;
+    let mut has_avx512f = false;
+    let mut has_fma = false;
+    let mut has_bmi1 = false;
+    let mut has_bmi2 = false;
     let mut has_aesni = false;
     let mut has_xsave = false;
-    let mut has_avx2 = false;
+    let mut has_osxsave = false;
 
     if max_basic_leaf >= 1 {
         // SAFETY: leaf 1 is available according to leaf 0.
@@ -77,16 +96,61 @@ pub fn detect() -> CpuInfo {
         stepping = (leaf1.eax & 0x0f) as u8;
         has_tsc = leaf1.edx & (1 << 4) != 0;
         has_sse2 = leaf1.edx & (1 << 26) != 0;
+        has_sse41 = leaf1.ecx & (1 << 19) != 0;
+        has_sse42 = leaf1.ecx & (1 << 20) != 0;
         has_aesni = leaf1.ecx & (1 << 25) != 0;
         has_xsave = leaf1.ecx & (1 << 26) != 0;
+        has_osxsave = leaf1.ecx & (1 << 27) != 0;
         has_avx = leaf1.ecx & (1 << 28) != 0;
+        has_fma = leaf1.ecx & (1 << 12) != 0;
     }
 
     if max_basic_leaf >= 7 {
         // SAFETY: leaf 7 is available according to leaf 0.
         let leaf7 = unsafe { __cpuid_count(7, 0) };
+        has_bmi1 = leaf7.ebx & (1 << 3) != 0;
         has_avx2 = leaf7.ebx & (1 << 5) != 0;
+        has_bmi2 = leaf7.ebx & (1 << 8) != 0;
+        has_avx512f = leaf7.ebx & (1 << 16) != 0;
     }
+
+    // AVX-family instructions require both CPU support and OS-enabled state.
+    // XGETBV is legal only after CPUID reports OSXSAVE (CR4.OSXSAVE is set).
+    let avx_state_usable = if has_xsave && has_osxsave && has_avx {
+        let low: u32;
+        let high: u32;
+        // SAFETY: CPUID.OSXSAVE confirms the OS enabled XGETBV access.
+        unsafe {
+            core::arch::asm!(
+                "xgetbv",
+                in("ecx") 0u32,
+                out("eax") low,
+                out("edx") high,
+                options(nomem, nostack, preserves_flags)
+            );
+        }
+        let xcr0 = ((high as u64) << 32) | low as u64;
+        xcr0 & 0b110 == 0b110
+    } else {
+        false
+    };
+    let avx2_usable = has_avx2 && avx_state_usable;
+    let avx512f_usable = has_avx512f && avx_state_usable && {
+        let low: u32;
+        let high: u32;
+        // SAFETY: same OSXSAVE guard as the XGETBV above.
+        unsafe {
+            core::arch::asm!(
+                "xgetbv",
+                in("ecx") 0u32,
+                out("eax") low,
+                out("edx") high,
+                options(nomem, nostack, preserves_flags)
+            );
+        }
+        let xcr0 = ((high as u64) << 32) | low as u64;
+        xcr0 & 0xE6 == 0xE6
+    };
 
     CpuInfo {
         vendor,
@@ -96,10 +160,20 @@ pub fn detect() -> CpuInfo {
         stepping,
         has_tsc,
         has_sse2,
+        has_sse41,
+        has_sse42,
         has_avx,
         has_avx2,
+        has_avx512f,
+        has_fma,
+        has_bmi1,
+        has_bmi2,
         has_aesni,
         has_xsave,
+        has_osxsave,
+        avx_state_usable,
+        avx2_usable,
+        avx512f_usable,
         max_basic_leaf,
         max_extended_leaf,
     }
