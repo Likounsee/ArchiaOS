@@ -68,7 +68,7 @@ L’utilisateur rapporte **5 démarrages à froid réussis sur 5**, avec le mêm
 | Modèle de machine / version UEFI | Non consignés dans ce compte rendu | À renseigner |
 | Sortie série BootInfo + PMM | Non fournie | Non vérifiée par cette observation |
 | 5 redémarrages à chaud | Non communiqués | À vérifier séparément |
-| Retour firmware et démarrage du système habituel | Non communiqués | À vérifier séparément |
+| Retour firmware et démarrage du système habituel | Confirmés sans problème par l’utilisateur le 13 octobre 2026 | Rapporté par l’utilisateur |
 
 Cette observation fait progresser la campagne physique, mais **ne clôt pas encore P1** : l’artefact exact et les autres critères doivent être consignés. Ne pas interpréter la barre blanche comme un journal complet de tous les tests.
 
