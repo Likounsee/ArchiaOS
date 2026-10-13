@@ -3,6 +3,7 @@
 
 mod memory;
 mod cpu;
+mod cpu_features;
 mod pci;
 mod scheduler;
 mod context;
