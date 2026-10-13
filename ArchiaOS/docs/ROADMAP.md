@@ -9,7 +9,7 @@
 | **GLOBAL** | Ensemble des objectifs P0–P10 | **24 %** | Score pondéré recalculé : 23,82 %, arrondi à l’entier le plus proche. Maturité de validation suivie séparément ; les pistes B/A ne sont pas additionnées. |
 | **P0** | Démarrage UEFI maison x86-64 par défaut | **100 % (jalon physique atteint)** | Démarrage depuis la clé USB et premier affichage framebuffer confirmés par l’utilisateur sur le PC physique. Le motif bleu prouve l’écriture dans le framebuffer après le handoff ; il ne constitue pas encore un bureau ni une pile graphique. Un redémarrage à froid n’est pas consigné. |
 | **P1** | Fiabilité du chargeur, BootInfo et mémoire | **90 %** | Les contrôles ELF, mappings/protections, BootInfo/ExitBootServices, audit firmware et PMM ont leurs tests automatisés documentés. Le dernier commit de code noyau audité reste `e18b1901e262f21838ab0484459d207ccf004442`. Le dernier HEAD documentaire ayant les trois workflows terminés avec succès est `4c0bfa4f4c752c5f0385d3a0913eec4159e31757` : [CI principale, run 38422476186](https://github.com/Likounsee/ArchiaOS/actions/runs/38422476186), [UEFI local, run 38422476688](https://github.com/Likounsee/ArchiaOS/actions/runs/38422476688) et [BootInfo négatif, run 38422476325](https://github.com/Likounsee/ArchiaOS/actions/runs/38422476325). Ces résultats prouvent les étapes automatisées de ces workflows, pas une validation matérielle reproductible. Les workflows déclenchés par la révision documentaire en cours doivent être considérés séparément tant qu'ils ne sont pas terminés. Le package USB est uniquement prouvé sur `dfd67f2937b95afc8c8d798c0b77483c2f7a43f9` ([workflow](https://github.com/Likounsee/ArchiaOS/actions/runs/38375095036)) ; il n'est pas validé sur le HEAD courant. Les 10 points restants correspondent à la campagne matérielle répétable non consignée. |
-| **P2** | Exceptions, ordonnanceur et synchronisation | **21 %** | Le modèle d'états et la primitive de contexte ont des tests hôte ; la CI complète actuelle a réussi sur le HEAD documentaire `4c0bfa4f`. Le code de scheduler reste un modèle séparé : il ne possède pas les contextes/piles et ne commute pas réellement entre tâches. |
+| **P2** | Exceptions, ordonnanceur et synchronisation | **21 %** | Le modèle d'états et la primitive de contexte ont des tests hôte ; la dernière CI complète terminée a réussi sur le HEAD documentaire `4c0bfa4f`. Le code de scheduler reste un modèle séparé : il ne possède pas les contextes/piles et ne commute pas réellement entre tâches. |
 | **P3** | Espace utilisateur et ABI système | **0 %** | Non commencé ; dépend notamment des exceptions, syscalls et mécanismes mémoire isolés. |
 | **P4** | Stockage, VFS et préparation OpenFS | **0 %** | Pas de pilote bloc/VFS fonctionnel ; spécifier d'abord les interfaces. |
 | **P5** | Affichage et pile graphique | **0 %** | Pas de pile graphique de production. |
@@ -114,7 +114,7 @@ Le 100 % P0 porte sur le jalon limité « démarrage maison par défaut et premi
 | Interfaces pilotes et permissions | 10 | 0 |
 | Contrôle sûr des actionneurs / état de repli | 10 | 0 |
 | Tests QEMU et matériel par modèle | 10 | 0 |
-| **Total** | **100** | **28 %** |
+| **Total** | **100** | **32 %** |
 
 Scores P8 calculés par critères élémentaires explicites. Les tests sont évalués séparément par la ligne « Tests QEMU et matériel par modèle » de la grille P8, afin de ne pas les compter deux fois.
 
