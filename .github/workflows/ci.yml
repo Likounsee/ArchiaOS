@@ -34,6 +34,7 @@ jobs:
           harness="$RUNNER_TEMP/archiaos-scheduler-tests"
           mkdir -p "$harness/src" "$harness/tests"
           cp kernel/src/scheduler.rs "$harness/src/scheduler.rs"
+          cp kernel/src/context.rs "$harness/src/context.rs"
           cp kernel/tests/scheduler.rs "$harness/tests/scheduler.rs"
           cat > "$harness/Cargo.toml" <<'EOF'
           [package]
