@@ -6,7 +6,7 @@
 
 | Priorité | Domaine | Avancement estimé | État / prochaine preuve attendue |
 |---|---|---:|---|
-| **GLOBAL** | Ensemble des objectifs P0–P10 | **23 %** | Score pondéré recalculé : 23,33 %, arrondi à l’entier le plus proche. Maturité de validation suivie séparément ; les pistes B/A ne sont pas additionnées. |
+| **GLOBAL** | Ensemble des objectifs P0–P10 | **23 %** | Score pondéré recalculé : 23,42 %, arrondi à l’entier le plus proche. Maturité de validation suivie séparément ; les pistes B/A ne sont pas additionnées. |
 | **P0** | Démarrage UEFI maison x86-64 par défaut | **100 % (jalon physique atteint)** | Démarrage depuis la clé USB et premier affichage framebuffer confirmés par l’utilisateur sur le PC physique. Le motif bleu prouve l’écriture dans le framebuffer après le handoff ; il ne constitue pas encore un bureau ni une pile graphique. Un redémarrage à froid n’est pas consigné. |
 | **P1** | Fiabilité du chargeur, BootInfo et mémoire | **90 %** | Le HEAD courant `e18b1901e262f21838ab0484459d207ccf004442` passe la CI principale ([CI](https://github.com/Likounsee/ArchiaOS/actions/runs/38375116739)) et le démarrage négatif BootInfo ([workflow](https://github.com/Likounsee/ArchiaOS/actions/runs/38375116552)). Le package USB et le démarrage UEFI local ont également réussi sur le commit de code précédent `dfd67f2937b95afc8c8d798c0b77483c2f7a43f9`; ils doivent être relancés après toute modification pertinente du chargeur. L’audit ACPI couvre RSDT/XSDT, SDT enfants et pointeurs FADT DSDT/FACS, avec limites de 256 entrées et 64 Mio ; la capacité maximale de suivi a été corrigée. Les objets firmware effectivement consommés après `ExitBootServices` sont validés et protégés. Les autres entrées de configuration UEFI ne sont ni déréférencées ni transmises au noyau ; le PMM n’accepte comme RAM allocatable que le type UEFI Conventional Memory (7), laissant les autres types réservés. Le package USB est généré avec succès sur le commit de code `45fffbf9` (identique au code du HEAD, la modification ultérieure étant documentaire). **Seule la validation sur machine physique reste à faire** ; l’utilisateur possède l’image USB mais ne dispose pas actuellement d’une machine pour l’essayer. P1 reste donc à 99 % et doit être repris pour les démarrages à froid, le transfert BootInfo/PMM, le framebuffer et le retour firmware. QEMU ne prouve pas le comportement de tous les firmwares et PC. |
 | **P2** | Exceptions, ordonnanceur et synchronisation | **21 %** | Modèle de tâches, IDT x86-64 et primitive de changement de contexte coopératif ajoutés ; CI principale et régression hôte du contexte vertes sur HEAD `e18b1901`. Le scheduler n'est pas encore relié aux contextes et ne commute pas encore entre tâches. |
@@ -15,7 +15,7 @@
 | **P5** | Affichage et pile graphique | **0 %** | Pas de pile graphique de production. |
 | **P6** | Réseau et mesures de performances | **0 %** | Pas de pile réseau complète ni de bancs de performance stabilisés. |
 | **P7** | Distribution, installation et sécurité | **0 %** | Pas de version distribuable validée. |
-| **P8** | Fondations noyau pour le contrôle matériel | **12 %** | CPUID x86-64 intégré et inventaire PCI legacy en lecture seule sur le bus 0 ; ECAM/ACPI et tests dédiés restent à faire. |
+| **P8** | Fondations noyau pour le contrôle matériel | **18 %** | CPUID et scan PCI legacy lecture seule existent ; CPUID et inventaire restent partiellement testés, et ECAM/ACPI/capteurs/pilotes contrôlés sont absents. |
 | **P9** | Service privilégié de télémétrie/contrôle | **0 %** | Pas de service fonctionnel ; dépend d'interfaces noyau et de pilotes sûrs. |
 | **P10** | Archia Control Center (interface tout-en-un) | **0 %** | Vision documentée mais aucune application fonctionnelle ; la documentation seule ne compte pas dans le score. |
 | **B0–B9** | Chargeur UEFI maison | Voir jalons ci-dessous | Plusieurs fondations validées en CI ; la CI du HEAD courant est verte ; la validation sur matériel physique reste ouverte. |
@@ -62,12 +62,12 @@ Cet audit porte sur les sources présentes et leurs raccordements visibles, pas 
 | P5 | 8 | 0 | 0,00 |
 | P6 | 8 | 0 | 0,00 |
 | P7 | 7 | 0 | 0,00 |
-| P8 | 4 | 12 | 0,48 |
+| P8 | 4 | 18 | 0,72 |
 | P9 | 3 | 0 | 0,00 |
 | P10 | 3 | 0 | 0,00 |
-| **Total** | **100** | — | **23,18** |
+| **Total** | **100** | — | **23,42** |
 
-La somme des contributions est **23,18 %** (5 + 13,5 + 4,2 + 0,48 = 23,18), affichée **23 %** après arrondi. La pondération privilégie les fondations noyau et les livrables qui débloquent plusieurs phases ; les objectifs produit restent dans le dénominateur et ne sont pas supprimés.
+La somme des contributions est **23,42 %** (5 + 13,5 + 4,2 + 0,72 = 23,42), affichée **23 %** après arrondi. La pondération privilégie les fondations noyau et les livrables qui débloquent plusieurs phases ; les objectifs produit restent dans le dénominateur et ne sont pas supprimés.
 
 **Preuves du HEAD antérieur à cette révision :**
 - CI principale : [run 38378609054](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609054) — succès sur `7bdc9e17f5a14e4800804cf36af4beac3689184c`.
@@ -102,19 +102,19 @@ Le 100 % P0 porte sur le jalon limité « démarrage maison par défaut et premi
 | Tests multi-tâches, QEMU et SMP | 10 | 0 | Absents. |
 | **Total** | **100** | **21 %** | 10 + 8 + (12 × 25 %) = 21. |
 
-**P8 — contrôle matériel (12 %)**
+**P8 — contrôle matériel (18 %)**
 | Livrable | Poids | Score courant |
 |---|---:|---:|
 | CPUID et décodage CPU | 20 | 60 |
-| Découverte PCI legacy lecture seule | 20 | 0 |
+| Découverte PCI legacy lecture seule | 20 | 30 |
 | PCIe ECAM/ACPI et inventaire typé | 15 | 0 |
 | Découverte ACPI/SMBIOS/capteurs | 15 | 0 |
 | Interfaces pilotes et permissions | 10 | 0 |
 | Contrôle sûr des actionneurs / état de repli | 10 | 0 |
 | Tests QEMU et matériel par modèle | 10 | 0 |
-| **Total** | **100** | **12 %** |
+| **Total** | **100** | **18 %** |
 
-Le scan PCI est partiellement présent, mais faute de tests dédiés et d'inventaire complet, il ne reçoit pas de points dans cette grille. P8 = 20 × 60 % = 12 % pour CPUID partiellement implémenté/testé, pas pour des capteurs ou du contrôle matériel.
+Le scan PCI legacy du bus 0 existe dans le code mais reste partiel et sans tests dédiés : score provisoire de 30 % pour ce livrable. P8 = 20 × 60 % + 20 × 30 % = 18 %. Aucun point n'est attribué aux capteurs, à ECAM ou au contrôle matériel.
 
 **P9 — service privilégié (0 %) :** API télémétrie et autorisations (25), IPC/authentification et séparation lecture/écriture (20), collecte/normalisation des sources (15), validation des commandes et journalisation (15), simulation/erreurs et arrêt sûr (15), tests intégration/fuzzing (10). Aucun livrable opérationnel raccordé : 0/100.
 
@@ -124,7 +124,7 @@ Le scan PCI est partiellement présent, mais faute de tests dédiés et d'invent
 
 | Domaine | Ce que le code fait réellement | Limite / statut à refléter |
 |---|---|---|
-| Boot x86-64 | Entrée ELF, pile noyau propre, console série, passage BootInfo, écriture framebuffer et chemin UEFI maison ; workflows OVMF/CI et package USB. | P0 : premier démarrage physique signalé ; P1 reste à 99 % car les essais physiques de répétition/redémarrage ne sont pas consignés. |
+| Boot x86-64 | Entrée ELF, pile noyau propre, console série, passage BootInfo, écriture framebuffer et chemin UEFI maison ; workflows OVMF/CI et package USB. | P0 : premier démarrage physique signalé ; P1 reste à 90 % car la campagne physique répétable (démarrages à froid, PMM/BootInfo, framebuffer et retour firmware) n'est pas consignée. |
 | Mémoire physique | `memory.rs` utilise deux bitmaps (frames gérées et libres), limite la fenêtre gérée à 4 Gio, filtre la carte UEFI et réserve les plages critiques ; auto-tests allocation/libération, doubles libérations et épuisement simulé. | Pas de VMM général, de gestion des espaces d'adressage par processus ni de mapping dynamique complet ; PMM actuel n'est pas un substitut à ces composants. |
 | Pagination / isolation | Les mappings de boot et permissions ELF sont construits par le chargeur ; le noyau démarre avec son environnement de mapping initial. | Pas de gestionnaire de tables de pages général côté noyau, pas de séparation fiable noyau/utilisateur ni de changement de CR3 par processus démontré. |
 | Exceptions / tâches | `interrupts.rs` fournit IDT x86-64 0–31 et handlers fatals ; `scheduler.rs` modélise les états ; `context.rs` sait faire un transfert x86-64 sur pile dédiée testé en hôte. | Le scheduler ne possède pas les contextes/piles et n'appelle pas le switch ; pas de timer, préemption, livraison d'exception aux tâches ou SMP activé. |
@@ -134,15 +134,16 @@ Le scan PCI est partiellement présent, mais faute de tests dédiés et d'invent
 | ARM64 | Un chemin de démarrage/prototype séparé et un PMM initial existent, avec tests de compilation/émulation selon workflows. | Pas de parité avec x86-64 : MMU/espaces d'adressage, interruptions, SMP et pilotes ne doivent pas être supposés équivalents. |
 | Tests et CI | CI principale verte au HEAD ; test hôte du scheduler/context switch et workflows de boot négatif présents. | Vérifier les jobs individuellement après chaque modification ; la CI hôte ne remplace pas le boot QEMU, et QEMU ne remplace pas le matériel physique. |
 
-### État des preuves automatisées au moment de l'audit
+### État des preuves automatisées et portée
 
-| Vérification | Résultat observé | Ce que cela prouve / ne prouve pas |
-|---|---|---|
-| CI principale sur HEAD `e18b1901` | **Réussie** — [run 38375116739](https://github.com/Likounsee/ArchiaOS/actions/runs/38375116739) | Les jobs inclus dans ce workflow ont réussi, dont la régression hôte scheduler/context ; ne prouve pas toutes les fonctionnalités futures. |
-| Démarrage négatif BootInfo sur HEAD `e18b1901` | **Réussi** — [run 38375116552](https://github.com/Likounsee/ArchiaOS/actions/runs/38375116552) | Le scénario négatif BootInfo couvert est rejeté comme attendu. |
-| Package USB x86-64 et démarrage UEFI local | **Réussis sur le commit de code `dfd67f29`** — [package](https://github.com/Likounsee/ArchiaOS/actions/runs/38375095036), [boot local](https://github.com/Likounsee/ArchiaOS/actions/runs/38375095030) | Le HEAD `e18b1901` n'a ensuite changé que l'intégration des tests hôte ; ces workflows n'ont pas été relancés sur le HEAD exact. Relancer si le code de boot change. |
-| Validation USB sur machine physique | **Non réalisée / non vérifiable ici** | Nécessite un PC et plusieurs essais consignés ; ne pas assimiler le package USB à un démarrage matériel. |
-| Tests du noyau Rust hors des modules explicitement ciblés | **Couverture partielle** | Ajouter des tests d'intégration par contrat ; l'absence d'un job de test n'est pas une preuve de réussite. |
+| Vérification | Commit réellement testé | Résultat | Portée |
+|---|---|---|---|
+| CI principale (inclut les tests hôte ciblés) | `7bdc9e17f5a14e4800804cf36af4beac3689184c` | **Réussie** — [run 38378609054](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609054) | Confirme les jobs de ce workflow sur ce commit, pas les fonctions non testées. |
+| Démarrage UEFI local | `7bdc9e17f5a14e4800804cf36af4beac3689184c` | **Réussi** — [run 38378609108](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609108) | Démarrage sous émulation ; ne remplace pas une validation physique. |
+| BootInfo négatif | `7bdc9e17f5a14e4800804cf36af4beac3689184c` | **Réussi** — [run 38378609145](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609145) | Valide uniquement le scénario négatif configuré. |
+| Package USB x86-64 | `dfd67f2937b95afc8c8d798c0b77483c2f7a43f9` | **Réussi** — [run 38375095036](https://github.com/Likounsee/ArchiaOS/actions/runs/38375095036) | Plus ancien que le HEAD actuel ; package non revalidé sur le HEAD documentaire. |
+| Campagne matérielle P1 | Aucun commit/résultat consigné | **Non validée** | Démarrages à froid, transfert BootInfo/PMM, framebuffer, redémarrage et retour firmware à consigner. |
+| Tests hors des jobs ci-dessus | Selon le module | **Couverture partielle** | Absence de test CI ne signifie ni réussite ni échec. |
 
 ### Comparaison du code avec `Likounsee/ArchiaOS-old`
 
@@ -398,7 +399,7 @@ Dépendances structurantes : **VMM/MMU → espaces d'adressage → processus/sys
 
 ## P10 — Archia Control Center, application tout-en-un — 5 %
 
-La vision est une seule application avec des modules cohérents, pas une simple liste de capteurs. L'interface ne doit jamais accéder directement aux ports, registres ou protocoles fabricants : elle passe par le service privilégié.
+La vision est une seule application avec des modules cohérents, pas une simple liste de capteurs. Les objectifs documentés ne constituent pas une implémentation ; le score P10 reste donc à 0 % jusqu'à ce qu'une application fonctionnelle existe. L'interface ne doit jamais accéder directement aux ports, registres ou protocoles fabricants : elle passe par le service privilégié.
 
 1. **Tableau de bord :** état général, températures, fréquences, charge et alertes réellement disponibles.
 2. **CPU et carte mère :** identification, fonctionnalités CPU et capteurs pris en charge.
