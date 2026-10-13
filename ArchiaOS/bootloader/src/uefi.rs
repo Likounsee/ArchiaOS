@@ -1695,7 +1695,7 @@ fn audit_acpi_facs_range(
 
     // SAFETY: the prefix is reserved, mapped where required, and disjoint from protected ranges.
     let header = unsafe { core::slice::from_raw_parts(address as *const u8, FACS_HEADER_SIZE as usize) };
-    if header[0..4] != *b"FACS" {
+    if header.get(0..4) != Some(&b"FACS"[..]) {
         return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: FADT FACS pointer has an invalid signature.\r\n\0"));
     }
     let length = u32::from_le_bytes([header[4], header[5], header[6], header[7]]) as u64;
@@ -1948,7 +1948,7 @@ fn audit_platform_table_ranges(
         // Protect already-audited child tables too, so duplicate pointers and
         // partial table aliases are rejected before dereferencing the next one.
         // Each root entry can add one SDT, and a FADT can add a DSDT plus a FACS.
-        let mut child_protected = [(0u64, 0u64); MAX_ACPI_ROOT_ENTRIES + 5];
+        let mut child_protected = [(0u64, 0u64); MAX_ACPI_ROOT_ENTRIES * 3 + 3];
         child_protected[..protected_count].copy_from_slice(&protected[..protected_count]);
         child_protected[protected_count] = (root_address, root_length);
         let mut child_protected_count = protected_count + 1;
