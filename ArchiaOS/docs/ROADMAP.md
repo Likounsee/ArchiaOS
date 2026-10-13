@@ -133,47 +133,44 @@ L'ancien dépôt est une base C/C++ x86-64 plus large, mais plus complexe et non
 
 **Critère de sortie :** build reproductible et tests de démarrage verts sur le HEAD courant, sans déclarer les essais QEMU comme une validation de tout matériel physique.
 
-### P1 — Fiabilité du chargeur et de la mémoire — 99 %
+### P1 — Fiabilité du chargeur et de la mémoire — 90 %
 
-**État : EN COURS — 99 %.** Le chargeur utilise exactement le snapshot du tableau de configuration UEFI dont la plage complète vient d’être validée dans la carte mémoire finale : les recherches ACPI 2.0, ACPI 1.0 et Device Tree ne relisent plus le compteur ni le pointeur depuis la table système entre validation et lecture. Les tests couvrent la recherche GUID, les entrées nulles, les tableaux absents ou vides, la lecture d’entrées non alignées et le rejet des comptes hors limites. Avant de parcourir ses entrées, le chargeur vérifie que le tableau entier est borné, réservé, accessible en mapping identité pour le noyau high-half x86-64 et disjoint du framebuffer ; l’audit final rejette aussi son chevauchement avec les buffers de transfert et les segments ELF. Le tableau lui-même est ajouté aux plages protégées de l’audit ACPI, empêchant une SDT ou une table FADT indirecte de l’aliaser. Le RSDP et le Device Tree restent différés jusqu’à validation de leurs plages. L’audit ACPI couvre RSDT/XSDT, les SDT enfants et les pointeurs FADT vers DSDT/FACS, avec une limite de 256 entrées racine et un budget de 64 Mio. La CI complète est verte sur le HEAD `e563bab342056ee32e7d41da062664b2c0fa12b9` : [CI principale](https://github.com/Likounsee/ArchiaOS/actions/runs/38369633471), [démarrage UEFI local](https://github.com/Likounsee/ArchiaOS/actions/runs/38369633426) et [test négatif BootInfo](https://github.com/Likounsee/ArchiaOS/actions/runs/38369633506). Les tests couvrent les plages du chargeur, les métadonnées GOP, les types mémoire UEFI et les réservations qui rejettent les plages mixtes, les trous, les plages vides et les débordements. La capacité maximale du tableau de plages protégées ACPI a été corrigée pour le pire cas théorique : trois plages initiales, la racine, puis un SDT, un DSDT et un FACS par entrée racine. L’audit de périmètre est clos : seuls les objets firmware réellement consommés après `ExitBootServices` sont suivis et validés ; les entrées UEFI inconnues/non utilisées ne sont ni déréférencées ni transmises au noyau, et le PMM ne considère allocatable que le type UEFI Conventional Memory (7). Le package USB est disponible depuis le workflow réussi sur le commit de code `45fffbf9` (code identique au HEAD actuel, la modification ultérieure étant documentaire). **Il ne reste que la validation sur machine physique**, qui ne peut pas être prouvée par QEMU.
+**État : IMPLÉMENTATION AUTOMATISÉE AVANCÉE, VALIDATION MATÉRIELLE OUVERTE — 90 %.** La campagne physique vaut 10 points : elle n'est pas un détail résiduel. Le dernier commit de code noyau/workflow examiné est `e18b1901e262f21838ab0484459d207ccf004442`. Le HEAD avant cette révision documentaire est `d731af02c4d6601d63afe9318dda98d372fec1aa` (révision de documentation intermédiaire) ; la CI principale, le boot UEFI local et le test négatif BootInfo ont réussi sur le HEAD précédent `7bdc9e17f5a14e4800804cf36af4beac3689184c`. Le package USB le plus récent observé a réussi sur `dfd67f2937b95afc8c8d798c0b77483c2f7a43f9`, pas sur ce HEAD.
 
 **Objectif :** sécuriser le transfert UEFI → noyau et la gestion de la mémoire physique.
 
-- [x] Valider les en-têtes ELF64 et les tables de programmes.
-- [x] Contrôler les tailles, alignements, débordements, recouvrements et l'entrée exécutable.
-- [x] Refuser les segments ELF RWX.
-- [x] Construire les mappings high-half x86-64 et appliquer les permissions ELF.
-- [x] Activer NXE et CR0.WP dans le chemin testé.
-- [x] Fournir un BootInfo versionné et récupérer la carte mémoire UEFI finale.
-- [x] Réessayer ExitBootServices avec une clé de carte mémoire fraîche si nécessaire.
-- [x] Ajouter un contrôle de la carte mémoire UEFI finale pour détecter les buffers BootInfo/carte mémoire, segments ELF, image du chargeur et arène de tables de pages incorrectement classés en RAM conventionnelle.
-- [x] Découvrir le framebuffer actif via UEFI GOP, transmettre base/taille dans BootInfo et refuser le transfert si sa plage chevauche de la RAM conventionnelle ou traverse un trou de carte mémoire.
-- [x] Auditer les plages du RSDP ACPI et du Device Tree : contrôler le préfixe avant lecture des métadonnées, borner les tailles annoncées, vérifier la réservation complète et, pour le noyau high-half x86-64, l'identité de mapping RAM sous 4 Gio (commits `3d3dae0`, `2c3058e`; CI BootInfo négatif, UEFI local, CI et paquet USB verts sur `2c3058e`).
-- [x] Auditer explicitement l'accessibilité dans le mapping identité actif des plages critiques BootInfo, carte mémoire, segments ELF et arène de tables de pages ; le framebuffer GOP reçoit un mapping d'écriture uncached dédié. Les autres plages réservées spécifiques aux plateformes restent à examiner.
-- [x] Vérifier en CI les rejets de libérations invalides/doubles, la cohérence bitmap (toute page libre est gérée, mémoire basse réservée), la réutilisation après libération et la restauration du compte de pages.
-- [x] Extraire la validation scalaire du contrat BootInfo en fonction testable sans déréférencer la carte mémoire, avec tests négatifs magic/version, taille de structure, pointeur absent/désaligné, taille de carte et métadonnées.
-- [x] Valider aussi l'adresse d'entrée noyau non nulle et la cohérence/non-débordement de la plage framebuffer, avec tests unitaires confirmés par la CI du HEAD `1ab767a`.
-- [x] Ajouter une simulation d'épuisement mémoire isolée et déterministe sur des bitmaps locaux, incluant filtrage des frames réservées et réutilisation, sans consommer la mémoire firmware ni bloquer QEMU (tests et démarrages CI verts sur `1ab767a`).
-- [x] Vérifier avant ExitBootServices que les buffers BootInfo/carte mémoire, les segments noyau, l'image du chargeur et l'arène de tables de pages ne chevauchent aucune plage UEFI conventionnelle.
-- [x] Valider la cohérence et l'absence de débordement de la plage framebuffer dans BootInfo. Le framebuffer GOP est une plage MMIO : elle peut légitimement être absente des descripteurs UEFI ; elle est mappée séparément en uncached et exclue de la RAM allocatable. Les tests de couverture générique rejettent les trous sans imposer à tort que le MMIO soit décrit comme mémoire système.
-- [x] Rejeter les tables ACPI RSDP et Device Tree qui chevauchent les pages physiques allouées aux segments ELF `PT_LOAD` ; l’audit couvre les pages arrondies réellement réservées et des cas de chevauchement partiel ainsi que des plages disjointes (HEAD `c864ae2`).
-- [x] Auditer les pointeurs FADT indirects vers DSDT/FACS : priorité aux pointeurs étendus non nuls, repli sur les champs legacy, signature DSDT obligatoire, FACS contrôlé séparément (signature, longueur, réservation, mapping identité et absence de chevauchement), budget global conservé et capacité de suivi bornée ; tests unitaires de sélection des pointeurs ajoutés (HEAD `abe8d7f`, CI en attente).
-- [x] Reporter le parsing du RSDP et du Device Tree jusqu'à ce que la carte mémoire finale valide leurs plages complètes : la découverte UEFI ne fait plus que capturer les adresses, et l'audit final vérifie réservation, mapping identité, tailles, checksums/contenu et chevauchements avant tout déréférencement (HEAD `359c8b8`).
-- [x] Reporter la lecture du tableau de configuration UEFI jusqu’à la carte mémoire finale ; vérifier sa plage entière comme réservée et, pour x86-64 high-half, identité-mappée avant d’en lire les entrées, puis rejeter les chevauchements avec framebuffer et stockage de transfert. Inclure ce tableau dans les plages protégées de l’audit ACPI pour interdire les alias avec les SDT/DSDT/FACS (HEAD `e57125e`, CI en cours).
-- [x] Étendre les tests de couverture mémoire aux sous-plages non alignées, aux frontières entre descripteurs de types différents et aux trous entre descripteurs ; CI verte sur `1ab767a`.
-- [x] Durcir le calcul des plages PMM réservées : écrêtage à la fenêtre gérée sous 4 Gio avant l'arrondi, sans débordement inutile pour une plage MMIO située hors fenêtre ; auto-vérifications au démarrage pour les limites, les plages non alignées et les longueurs nulles (commit `a8654bf`).
-- [x] Centraliser le calcul du chevauchement entre intervalles de frames et ajouter des auto-vérifications déterministes pour les plages libres, réservées, adjacentes, disjointes, incluses et vides ; validation de démarrage OVMF et tests négatifs BootInfo verts sur le code correspondant (commit `b22d509`).
-- [x] Valider le framebuffer GOP linéaire avant de le transmettre : rejeter les modes BltOnly, les dimensions/strides invalides, les plages débordantes et les buffers trop petits ; tests unitaires pour RGB/BGR/bitmask et cas invalides, CI x86-64/ARM64 et démarrages OVMF/AAVMF verts (commits `5526ae4`, `d218075`).
-- [x] Borner le tableau des tables de configuration UEFI avant toute lecture : vérifier le nombre d'entrées, le calcul de taille et l'absence de débordement d'adresse, puis lire les entrées de façon non alignée pour éviter un comportement indéfini sur une adresse mal alignée ; tests des bornes et débordements (commit `2f360f7` ; CI ultérieure verte sur le HEAD `2c3058e`).
-- [x] Confirmer les contrôles de transfert, mappings et BootInfo par la CI du HEAD `00bcb8c` : compilation x86-64/ARM64, démarrage UEFI OVMF, BootInfo négatif et paquet USB tous verts.
-- [x] Réinitialiser les bitmaps PMM après la prévalidation et avant chaque tentative de population, afin qu'une tentative échouée ne laisse pas d'état périmé pour une reprise.
-- [x] Refuser l'allocation lorsque le bitmap ne contient aucune frame à la fois libre et gérée ; la simulation locale teste l'épuisement déterministe.
-- [x] Empêcher la libération des frames qui ne sont pas gérées par le PMM ; tests de frames réservées et de double libération intégrés.
-- [x] Confirmer les contrôles mémoire/PMM existants sur le HEAD `00bcb8c` en CI.
-- [x] Clore l’audit des objets firmware : toutes les tables consommées après `ExitBootServices` sont validées et protégées ; les entrées inconnues non utilisées ne sont pas déréférencées/transmises, et les descripteurs non-Conventional Memory restent exclus du PMM.
-- [ ] Valider sur machine physique : plusieurs démarrages à froid depuis l’USB, transfert BootInfo et initialisation PMM sans blocage, affichage framebuffer, puis redémarrage et retour firmware. Consigner les résultats réels ; ne pas déduire ces preuves de QEMU.
+**Calcul P1 (poids = 100 ; score = somme(poids × score du livrable) / 100)**
 
-**Critère de sortie :** invariants mémoire documentés et testés, sans chevauchement dangereux ni accès hors plage.
+| Livrable pondéré | Poids | Score | Preuve / limite |
+|---|---:|---:|---|
+| Validation ELF64, segments, alignements, débordements et refus RWX | 20 | 100 | Tests ELF et démarrages négatifs OVMF documentés. |
+| Mapping high-half, NXE/CR0.WP et permissions ELF | 20 | 100 | Chemin x86-64 automatisé et tests des permissions effectives. |
+| BootInfo versionné, carte mémoire finale et ExitBootServices avec retry | 20 | 100 | CI et boot UEFI local sur HEAD antérieur ; BootInfo négatif vert. |
+| Audit des plages firmware consommées, ACPI/DT, framebuffer et réservations | 15 | 100 | Tests de bornes/chevauchements et audit des objets consommés. |
+| PMM, types UEFI allocatables et erreurs allocation/libération | 15 | 100 | Auto-tests et tests hôte/démarrage cités ; fenêtre actuelle limitée à 4 Gio. |
+| Campagne physique : froid, transfert BootInfo/PMM, framebuffer, redémarrage/retour firmware | 10 | 0 | Pas de journal matériel vérifiable disponible. |
+| **Total** | **100** | **90 %** | **90 points acquis / 100.** |
+
+**Implémenté et testé automatiquement**
+- [x] Valider ELF64, en-têtes/program headers, tailles, alignements, débordements, recouvrements, entrée exécutable ; refuser RWX.
+- [x] Construire les mappings high-half x86-64 et appliquer NXE/CR0.WP dans le chemin testé.
+- [x] Transmettre BootInfo versionné, carte mémoire finale, framebuffer validé et réessayer `ExitBootServices` avec une clé fraîche.
+- [x] Contrôler la classification UEFI des buffers, segments ELF, image chargeur, tables de pages et plages critiques ; exclure du PMM les types autres que Conventional Memory.
+- [x] Tester les cas limites PMM : trous, types mixtes, plages non alignées/vides, débordements, réservations, double libération, frames non gérées et épuisement simulé.
+- [x] Valider les objets firmware réellement déréférencés après `ExitBootServices`, y compris les tables ACPI consommées, pointeurs FADT DSDT/FACS et table de configuration UEFI.
+- [x] CI principale, démarrage UEFI local et BootInfo négatif verts sur le HEAD documentaire précédent : [CI](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609054), [UEFI local](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609108), [BootInfo négatif](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609145).
+
+**À faire — seul livrable pondéré restant**
+- [ ] Préparer une clé à partir d'un artefact USB dont le SHA et le commit source sont consignés.
+- [ ] Effectuer plusieurs démarrages à froid, en notant firmware/PC, périphérique de démarrage, résultat, éventuel blocage et sortie série.
+- [ ] Confirmer sur matériel que BootInfo est cohérent, que le PMM s'initialise sans blocage et que les réservations n'endommagent pas le framebuffer.
+- [ ] Vérifier l'affichage framebuffer, puis redémarrer et confirmer le retour firmware.
+- [ ] Conserver les journaux et résultats comme preuve attachée au commit testé.
+
+**Pourquoi P1 n'est pas à 100 % :** aucune preuve matérielle reproductible n'a été fournie pour cette campagne. Le premier démarrage physique signalé justifie le jalon P0, mais ne prouve pas les redémarrages à froid répétés ni le retour firmware demandés par P1.
+
+**Critère de sortie :** 100 % uniquement quand les cinq livrables automatisés restent verts sur le code candidat et que la campagne physique complète est documentée. Les références historiques (par exemple `3d3dae0`, `2c3058e`, `1ab767a`, `c864ae2`, `abe8d7f`, `359c8b8`, `e57125e`, `a8654bf`, `b22d509`, `5526ae4`, `d218075`, `2f360f7`, `00bcb8c`) identifient des jalons de changements, pas des preuves à elles seules du HEAD actuel.
+
 
 ### P2 — Exceptions, ordonnanceur et synchronisation — 21 %
 
@@ -202,34 +199,39 @@ L'ancien dépôt est une base C/C++ x86-64 plus large, mais plus complexe et non
 
 ### P3 — Espace utilisateur et ABI — 0 %
 
-- Définir les niveaux de privilège et les frontières noyau/utilisateur.
-- Définir une ABI système versionnée et des codes d'erreur stables.
-- Concevoir les syscalls minimaux avec validation stricte des pointeurs et tailles.
-- Ajouter un chargeur de programmes et des espaces d'adressage isolés.
-- Prévoir permissions, terminaison et diagnostic des processus.
-- Ne pas exposer l'accès brut aux ports, registres ou périphériques aux applications ordinaires.
+**État : NON COMMENCÉ.** Prérequis : gestionnaire de tables de pages/VMM, permissions page par page, contexte CPU intégré au scheduler et gestion fiable des exceptions.
 
-**Critère de sortie :** un programme utilisateur peut démarrer, appeler l'ABI documentée et échouer sans compromettre le noyau.
+| Livrable | Poids | Critères d'acceptation / preuves exigées |
+|---|---:|---|
+| Contrat mémoire virtuelle et espaces d'adressage | 25 | Créer/détruire un espace, mapper/démapper des pages, permissions W^X, séparation noyau/utilisateur et invalidation TLB ; tests des limites, collisions et échecs d'allocation. |
+| Passage ring 3 et retour contrôlé | 15 | GDT/TSS/IST et piles noyau par tâche configurées ; entrer en ring 3 puis revenir sans corruption ; test QEMU avec registres/flags vérifiés. |
+| ABI syscall versionnée | 15 | Convention d'appel documentée, numéros stables, erreurs et chemin d'entrée sécurisé ; tests d'arguments valides/invalides. |
+| Validation des pointeurs et copies user/kernel | 15 | Aucun déréférencement direct de pointeur utilisateur ; vérifier tailles, overflow, pages mappées et droits ; fuzzing des adresses limites. |
+| Chargeur ELF utilisateur | 15 | Vérifier ELF, segments, permissions, entrée, pile et arguments ; rejeter fichiers tronqués, RWX, overflow et segments chevauchant les zones réservées. |
+| Cycle de vie processus/threads | 10 | PID/état, lancement, yield/blocage, sortie, nettoyage et récupération d'erreurs ; test de plusieurs processus. |
+| Tests d'isolation et régression | 5 | Un programme utilisateur ne peut lire/écrire la mémoire noyau ; faute utilisateur isolée et aucun impact sur un autre processus. |
+| **Total** | **100** | Phase validée seulement quand un programme ring 3 utilise l'ABI et que les tests d'isolation passent. |
+
+**Ordre :** VMM → espace d'adressage → transition ring 3 → syscall minimale → chargeur ELF → cycle de vie → isolation multi-processus. Le contrat ABI et les tests ELF peuvent être conçus en parallèle. Risque principal : confusion adresse virtuelle/physique ou pointeur utilisateur malveillant. Tests hôte pour parseur/copies, puis QEMU pour privilèges et fautes ; matériel après stabilisation.
+
 
 ### P4 — Stockage, VFS et OpenFS — 0 %
 
-**P4.1 — Contrat VFS**
-- Définir les abstractions fichiers, répertoires, volumes, handles, erreurs et permissions.
-- Définir la propriété mémoire, les limites de blocs, la synchronisation et la gestion des accès concurrents.
-- Séparer le VFS des formats et pilotes de stockage.
+**État : NON COMMENCÉ dans le noyau Rust actuel.** Les sources historiques VFS/OpenFS d'ArchiaOS-old et le dépôt OpenFS distinct sont des références, pas une intégration active. Prérequis : PMM, synchronisation de base et contrat de périphérique bloc.
 
-**P4.2 — Pilote bloc et tests**
-- Choisir un périphérique bloc initial pour QEMU.
-- Implémenter les opérations de lecture/écriture et leur gestion d'erreurs.
-- Tester les limites, les transferts partiels et les erreurs de périphérique.
+| Livrable | Poids | Critères d'acceptation / preuves exigées |
+|---|---:|---|
+| Contrat bloc + pilote initial QEMU | 20 | API bloc bornée, capacité/taille secteur, lecture/écriture, timeout/erreurs et transferts partiels ; tests sur image virtuelle et périphérique absent. |
+| Cache de blocs et synchronisation | 10 | Règles de cohérence, verrouillage et vidage explicites ; tests d'accès concurrents, échec d'écriture et limites de cache. |
+| Contrat VFS | 20 | Fichiers, répertoires, handles, volumes, permissions, erreurs et propriété mémoire ; tests indépendants du format on-disk. |
+| Opérations fichiers et montage | 15 | Ouvrir/lire/écrire/seek/stat/readdir/close, chemins bornés et erreurs stables ; tests fichiers vides, gros fichiers, noms limites et espace insuffisant. |
+| Adaptateur OpenFS | 15 | API/version/licence/dépendances vérifiées, adaptation isolée, format épinglé et build reproductible ; pas de couplage aux détails internes. |
+| Robustesse et corruption | 15 | Images tronquées/corrompues, métadonnées invalides, allocations épuisées, erreurs I/O ; pas de panique ni écriture hors volume. Vérifier les garanties réelles du journal/transactions. |
+| Intégration CI/QEMU et stockage | 5 | Image de test, formatage/montage/lecture/écriture/reboot et persistance ; tests d'intégration reproductibles. |
+| **Total** | **100** | Montage, opérations VFS et régression corruption doivent réussir avant d'annoncer OpenFS intégré. |
 
-**P4.3 — Adaptateur OpenFS**
-- Vérifier dans le dépôt distinct Likounsee/OpenFS l'API publique, la licence, les cibles, les dépendances et l'état des tests.
-- Créer un adaptateur distinct plutôt que coupler directement le noyau au code interne d'OpenFS.
-- Tester montage, lecture, écriture, répertoires, corruption, erreurs et concurrence effectivement prise en charge.
-- Épingler une version/révision stable et rendre l'intégration reproductible en CI.
+**Ordre :** contrat bloc → pilote/erreurs → tests d'image → VFS → adaptateur OpenFS → robustesse/corruption → tests reboot/persistance. Les tests hôte du format et les outils d'image peuvent avancer en parallèle. Risques : incohérence après panne, corruption on-disk, blocage I/O et concurrence. Validation hôte + QEMU avec erreurs injectées ; stockage réel avant compatibilité large.
 
-**Critère de sortie :** tests VFS et d'intégration verts. OpenFS ne doit pas être considéré intégré avant ces preuves.
 
 ### P5 — Affichage et pile graphique — 0 %
 
