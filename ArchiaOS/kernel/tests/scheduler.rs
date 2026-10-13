@@ -5,7 +5,15 @@
 #[path = "../src/scheduler.rs"]
 mod scheduler;
 
+#[path = "../src/context.rs"]
+mod context;
+
 use scheduler::{Scheduler, SchedulerError, TaskState};
+
+#[test]
+fn x86_64_context_switch_enters_task_stack_and_returns() {
+    assert_eq!(context::self_test(), Ok(()));
+}
 
 #[test]
 fn public_dispatch_starts_and_refuses_to_replace_running_task() {
