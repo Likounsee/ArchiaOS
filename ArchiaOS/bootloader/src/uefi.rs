@@ -1674,6 +1674,7 @@ fn audit_platform_table_ranges(
     framebuffer_base: u64,
     framebuffer_size: u64,
     handoff_ranges: &[(u64, u64)],
+    configuration_table_range: Option<(u64, u64)>,
 ) -> Result<(), BootError> {
     #[cfg(target_arch = "aarch64")]
     let _ = high_half_image;
@@ -1682,6 +1683,13 @@ fn audit_platform_table_ranges(
     let mut validated_acpi_root: Option<(u64, bool)> = None;
     let mut validated_rsdp_range: Option<(u64, u64)> = None;
     let mut validated_device_tree_range: Option<(u64, u64)> = None;
+    if let Some((start, length)) = configuration_table_range {
+        if platform_range_overlaps_handoff_storage(start, length, handoff_ranges)
+            || physical_ranges_overlap(start, length, framebuffer_base, framebuffer_size)
+        {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: configuration-table array overlaps handoff storage or framebuffer.\r\n\0"));
+        }
+    }
     if acpi_rsdp != 0 {
         // ACPI 1.0 RSDP is only 20 bytes. Validate that prefix first so a valid
         // legacy table at a descriptor boundary is not forced to reserve 24 bytes.
@@ -1995,7 +2003,41 @@ fn require_identity_mapped_ram(
     Ok(())
 }
 
-fn platform_tables(system_table: *mut SystemTable) -> (u64, u64) {
+fn platform_tables(
+    system_table: *mut SystemTable,
+    memory_map: &UefiMemoryMap<'_>,
+    high_half_image: bool,
+    framebuffer_base: u64,
+    framebuffer_size: u64,
+) -> Result<(u64, u64, Option<(u64, u64)>), BootError> {
+    if system_table.is_null() {
+        return Err(error(EFI_INVALID_PARAMETER, b"ArchiaOS: missing system table during platform-table discovery.\r\n\0"));
+    }
+    // Snapshot the configuration-table array metadata, then prove the complete
+    // array is reserved in the final map before reading any firmware entry.
+    let (count, tables) = unsafe {
+        ((*system_table).number_of_table_entries, (*system_table).configuration_table)
+    };
+    if !configuration_table_range_is_bounded(tables as usize, count) {
+        return Ok((0, 0, None));
+    }
+    let bytes = (count as u64)
+        .checked_mul(core::mem::size_of::<ConfigurationTable>() as u64)
+        .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: configuration-table array size overflow.\r\n\0"))?;
+    let address = tables as u64;
+    if !memory_map.range_is_fully_reserved(address, bytes)
+        .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: malformed configuration-table array in final memory map.\r\n\0"))?
+    {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: configuration-table array is not fully reserved in the final memory map.\r\n\0"));
+    }
+    #[cfg(target_arch = "x86_64")]
+    if high_half_image && !range_is_identity_mapped_ram(memory_map, address, bytes)? {
+        return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: configuration-table array is outside identity-mapped RAM for the high-half kernel.\r\n\0"));
+    }
+    if physical_ranges_overlap(address, bytes, framebuffer_base, framebuffer_size) {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: configuration-table array overlaps the GOP framebuffer.\r\n\0"));
+    }
+    let _ = high_half_image;
     let acpi20 = configuration_table(system_table, &ACPI_20_TABLE_GUID);
     let acpi10 = configuration_table(system_table, &ACPI_10_TABLE_GUID);
     // Do not dereference firmware-controlled table pointers here: the final memory
@@ -2009,7 +2051,7 @@ fn platform_tables(system_table: *mut SystemTable) -> (u64, u64) {
 
     let dtb = configuration_table(system_table, &EFI_DTB_TABLE_GUID);
     let dtb = platform_table_address(dtb);
-    (rsdp, dtb)
+    Ok((rsdp, dtb, Some((address, bytes))))
 }
 
 /// Capture platform metadata, validate the final firmware memory map, terminate
@@ -2037,12 +2079,6 @@ pub unsafe fn transfer_to_kernel(
     #[cfg(target_arch = "x86_64")]
     if image_uses_highhalf(_elf) && !cpu_supports_nx() {
         return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: high-half paging requires CPU NX support.\r\n\0"));
-    }
-
-    let (acpi_rsdp, device_tree) = platform_tables(system_table);
-    #[cfg(target_arch = "aarch64")]
-    if device_tree == 0 && acpi_rsdp == 0 {
-        return Err(error(EFI_NOT_FOUND, b"ArchiaOS: neither a valid UEFI Device Tree nor ACPI RSDP table was found.\r\n\0"));
     }
 
     let mut info_allocation = unsafe {
@@ -2129,6 +2165,18 @@ pub unsafe fn transfer_to_kernel(
             .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: UEFI memory-map validation failed.\r\n\0"))?;
         if parsed_map.is_empty() {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: UEFI memory map is empty.\r\n\0"));
+        }
+
+        let (acpi_rsdp, device_tree, configuration_table_range) = platform_tables(
+            system_table,
+            &parsed_map,
+            image_uses_highhalf(_elf),
+            framebuffer_base,
+            framebuffer_size,
+        )?;
+        #[cfg(target_arch = "aarch64")]
+        if device_tree == 0 && acpi_rsdp == 0 {
+            return Err(error(EFI_NOT_FOUND, b"ArchiaOS: neither a valid UEFI Device Tree nor ACPI RSDP table was found.\r\n\0"));
         }
 
         // The final map must continue to classify loader-owned handoff storage as
@@ -2414,6 +2462,7 @@ pub unsafe fn transfer_to_kernel(
             framebuffer_base,
             framebuffer_size,
             &handoff_ranges[..handoff_range_count],
+            configuration_table_range,
         )?;
 
         // Stop tracking the two pool buffers before the first EBS call, so no
