@@ -48,3 +48,33 @@ fn exited_task_is_not_dispatchable_or_wakeable() {
     assert_eq!(scheduler.schedule(), Err(SchedulerError::NoRunnableTask));
     assert_eq!(scheduler.check_invariants(), Ok(()));
 }
+
+#[test]
+fn round_robin_wraps_across_capacity_and_never_runs_two_tasks() {
+    let mut scheduler = Scheduler::new();
+    let mut ids = Vec::new();
+    for _ in 0..scheduler::MAX_TASKS {
+        ids.push(scheduler.create_task().expect("available task slot"));
+    }
+
+    let first = scheduler.schedule().expect("first dispatch");
+    assert_eq!(first, ids[0]);
+    for expected in ids.iter().skip(1).chain(ids.iter().take(1)) {
+        assert_eq!(scheduler.yield_current(), Ok(*expected));
+        assert_eq!(scheduler.check_invariants(), Ok(()));
+        assert_eq!(scheduler.current(), Some(*expected));
+    }
+}
+
+#[test]
+fn invalid_wake_does_not_mutate_task_state() {
+    let mut scheduler = Scheduler::new();
+    let runnable = scheduler.create_task().expect("task slot");
+    assert_eq!(scheduler.wake(runnable), Err(SchedulerError::TaskNotBlocked));
+    assert_eq!(scheduler.state(runnable), Ok(TaskState::Runnable));
+
+    assert_eq!(scheduler.schedule(), Ok(runnable));
+    assert_eq!(scheduler.wake(runnable), Err(SchedulerError::TaskNotBlocked));
+    assert_eq!(scheduler.state(runnable), Ok(TaskState::Running));
+    assert_eq!(scheduler.check_invariants(), Ok(()));
+}
