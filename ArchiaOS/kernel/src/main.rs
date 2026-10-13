@@ -319,17 +319,27 @@ pub extern "C" fn rust_kernel_main(
         }
     }
 
-    // P2 starts with a bounded, allocation-free task-state machine. This test
-    // validates round-robin selection and task transitions; it is not a CPU
-    // context switch and must not be presented as a working multitasking kernel.
+    // Validate the state model and then perform a real two-task round-robin
+    // context-switch test. Each task has a separate static stack and CPU context;
+    // both must yield, resume after suspension, and exit back to the boot stack.
     match scheduler::Scheduler::self_test() {
         Ok(()) => {
-            paint_status_line(info, 5, FB_SCHEDULER_OK);
             let _ = writeln!(serial, "ArchiaOS: cooperative scheduler state self-test passed");
         }
         Err(error) => {
             paint_status_line(info, 5, FB_FAIL);
             let _ = writeln!(serial, "ArchiaOS: scheduler state self-test failed: {:?}", error);
+            halt_forever();
+        }
+    }
+    match scheduler::runtime_self_test() {
+        Ok(()) => {
+            paint_status_line(info, 5, FB_SCHEDULER_OK);
+            let _ = writeln!(serial, "ArchiaOS: two-task cooperative context-switch self-test passed");
+        }
+        Err(error) => {
+            paint_status_line(info, 5, FB_FAIL);
+            let _ = writeln!(serial, "ArchiaOS: two-task scheduler runtime self-test failed: {:?}", error);
             halt_forever();
         }
     }
