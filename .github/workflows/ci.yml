@@ -32,6 +32,8 @@ jobs:
           set -euo pipefail
           rustc --edition=2021 --test kernel/src/cpu_features.rs -o "$RUNNER_TEMP/archiaos-cpu-feature-tests"
           "$RUNNER_TEMP/archiaos-cpu-feature-tests"
+          rustc --edition=2021 --test kernel/src/simd.rs -o "$RUNNER_TEMP/archiaos-simd-tests"
+          "$RUNNER_TEMP/archiaos-simd-tests"
       - name: Test scheduler state machine on host
         shell: bash
         run: |
@@ -464,6 +466,7 @@ jobs:
           fi
           grep -Fq "ArchiaOS: CPU features " "$RUNNER_TEMP/archiaos-cpu-sse41-only.log"
           grep -Eq "SSE4.1=1 .*AVX\(hw/usable\)=0/0" "$RUNNER_TEMP/archiaos-cpu-sse41-only.log"
+          grep -Fq "ArchiaOS: SSE4.1 optimized integer self-test passed" "$RUNNER_TEMP/archiaos-cpu-sse41-only.log"
           grep -Fq "ArchiaOS: UEFI kernel entry validated" "$RUNNER_TEMP/archiaos-cpu-sse41-only.log"
           echo "SSE4.1-capable pre-AVX CPU profile passed"
 
@@ -479,6 +482,7 @@ jobs:
           fi
           grep -Fq "ArchiaOS: CPU features " "$RUNNER_TEMP/archiaos-cpu-avx.log"
           grep -Eq "AVX\(hw/usable\)=1/[01]" "$RUNNER_TEMP/archiaos-cpu-avx.log"
+          grep -Fq "ArchiaOS: SSE4.1 optimized integer self-test passed" "$RUNNER_TEMP/archiaos-cpu-avx.log"
           grep -Fq "ArchiaOS: UEFI kernel entry validated" "$RUNNER_TEMP/archiaos-cpu-avx.log"
           echo "AVX-capable CPU profile passed; hardware support is logged separately from OS usability"
 
