@@ -8,7 +8,7 @@
 |---|---|---:|---|
 | **GLOBAL** | Ensemble des objectifs P0–P10 | **23 %** | Score pondéré recalculé : 23,42 %, arrondi à l’entier le plus proche. Maturité de validation suivie séparément ; les pistes B/A ne sont pas additionnées. |
 | **P0** | Démarrage UEFI maison x86-64 par défaut | **100 % (jalon physique atteint)** | Démarrage depuis la clé USB et premier affichage framebuffer confirmés par l’utilisateur sur le PC physique. Le motif bleu prouve l’écriture dans le framebuffer après le handoff ; il ne constitue pas encore un bureau ni une pile graphique. Un redémarrage à froid n’est pas consigné. |
-| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **90 %** | Les contrôles ELF, mappings/protections, BootInfo/ExitBootServices, audit firmware et PMM ont leurs tests automatisés documentés. Le dernier commit de code audité est `e18b1901e262f21838ab0484459d207ccf004442`. La CI, le boot UEFI local et BootInfo négatif ont réussi sur le HEAD documentaire antérieur `7bdc9e17f5a14e4800804cf36af4beac3689184c` ([CI](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609054), [UEFI](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609108), [BootInfo négatif](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609145)). Le package USB est uniquement prouvé sur `dfd67f29` ([workflow](https://github.com/Likounsee/ArchiaOS/actions/runs/38375095036)). Les 10 points restants correspondent à la campagne matérielle répétable non consignée ; QEMU ne prouve pas le comportement de tous les PC/firmwares. |
+| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **90 %** | Les contrôles ELF, mappings/protections, BootInfo/ExitBootServices, audit firmware et PMM ont leurs tests automatisés documentés. Le dernier commit de code audité est `e18b1901e262f21838ab0484459d207ccf004442`. Les trois workflows de référence ont réussi sur le HEAD documentaire `8b5ff8dbcc91cded600c03a98157bba428b86d6f` : [CI principale, run 38379995664](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995664), [UEFI local, run 38379995825](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995825), [BootInfo négatif, run 38379995687](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995687). Le package USB est uniquement prouvé sur `dfd67f2937b95afc8c8d798c0b77483c2f7a43f9` ([workflow](https://github.com/Likounsee/ArchiaOS/actions/runs/38375095036)) ; il n'est pas validé sur le HEAD actuel. Les 10 points restants correspondent à la campagne matérielle répétable non consignée ; QEMU ne prouve pas le comportement de tous les PC/firmwares. |
 | **P2** | Exceptions, ordonnanceur et synchronisation | **21 %** | Modèle de tâches, IDT x86-64 et primitive de changement de contexte coopératif ajoutés ; CI principale et régression hôte du contexte vertes sur HEAD `e18b1901`. Le scheduler n'est pas encore relié aux contextes et ne commute pas encore entre tâches. |
 | **P3** | Espace utilisateur et ABI système | **0 %** | Non commencé ; dépend notamment des exceptions, syscalls et mécanismes mémoire isolés. |
 | **P4** | Stockage, VFS et préparation OpenFS | **0 %** | Pas de pilote bloc/VFS fonctionnel ; spécifier d'abord les interfaces. |
@@ -25,7 +25,7 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 
 ## Audit de référence — code et preuves au 13 octobre 2026
 
-Cet audit porte sur les sources présentes et leurs raccordements visibles, pas sur les seuls noms de fichiers ou les déclarations de la documentation. Références à ne pas confondre : dernier commit de code noyau/workflow audité `e18b1901e262f21838ab0484459d207ccf004442`; commit de la précédente révision documentaire `dba2d5311c46adcb72e54d9c35a88f962e1a508e`; HEAD avant cette révision `7bdc9e17f5a14e4800804cf36af4beac3689184c`. Les workflows CI principale, démarrage UEFI local et BootInfo négatif ont tous réussi sur ce HEAD documentaire (runs 38378609054, 38378609108, 38378609145). Les tests restent limités aux scénarios automatisés.
+Cet audit porte sur les sources présentes et leurs raccordements visibles, pas sur les seuls noms de fichiers ou les déclarations de la documentation. Références à ne pas confondre : dernier commit de code noyau/workflow audité `e18b1901e262f21838ab0484459d207ccf004442`; HEAD documentaire de référence `8b5ff8dbcc91cded600c03a98157bba428b86d6f` ; parent documentaire de ce lot `124aea557de5164d132ceafddc843973d835cfdd`. Les workflows CI principale, démarrage UEFI local et BootInfo négatif ont réussi sur `8b5ff8dbcc91cded600c03a98157bba428b86d6f` (runs 38379995664, 38379995825, 38379995687). Les tests restent limités aux scénarios automatisés.
 
 ### Méthode de statut, score d'implémentation et maturité de validation
 
@@ -43,7 +43,7 @@ Cet audit porte sur les sources présentes et leurs raccordements visibles, pas 
 
 **Calcul reproductible**
 1. Chaque phase possède une grille de livrables pondérés totalisant exactement 100.
-2. Score par livrable : 0 % sans chemin opérationnel ; 25 % si seul contrat/squelette ; 50 % si chemin nominal intégré mais erreurs/tests majeurs manquants ; 75 % si chemin et tests automatisés présents mais une validation/cas essentiel reste ; 90 % si seule une validation explicitement pondérée reste ; 100 % uniquement si tous les critères d'acceptation sont satisfaits.
+2. Le score de chaque livrable est calculé à partir de ses critères d'acceptation : score = poids des critères effectivement démontrés / poids total des critères. Quand aucun sous-poids n'est indiqué, appliquer les paliers uniformes suivants : 0 % (aucun chemin utile), 25 % (contrat/squelette), 50 % (chemin nominal intégré mais erreurs/tests majeurs manquants), 75 % (chemin et tests automatisés présents, validation/cas essentiel restant), 90 % (seule une validation explicitement pondérée reste), 100 % (tous les critères satisfaits). Toute valeur intermédiaire, comme 60 % ou 30 %, doit être justifiée par une liste explicite de critères cochés et non par intuition.
 3. Score phase = somme(poids du livrable × score du livrable) / 100. Un test écrit mais non exécuté ne satisfait pas un critère de test.
 4. Score global = somme(poids de phase × score de phase) / 100, avec poids de phases totalisant 100. Arrondi à l'entier le plus proche uniquement pour l'affichage.
 5. Les poids ne changent pas après observation des résultats sans justification documentée. Les tâches de documentation seule ne donnent pas de points d'implémentation.
@@ -69,10 +69,10 @@ Cet audit porte sur les sources présentes et leurs raccordements visibles, pas 
 
 La somme des contributions est **23,42 %** (5 + 13,5 + 4,2 + 0,72 = 23,42), affichée **23 %** après arrondi. La pondération privilégie les fondations noyau et les livrables qui débloquent plusieurs phases ; les objectifs produit restent dans le dénominateur et ne sont pas supprimés.
 
-**Preuves du HEAD antérieur à cette révision :**
-- CI principale : [run 38378609054](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609054) — succès sur `7bdc9e17f5a14e4800804cf36af4beac3689184c`.
-- Démarrage UEFI local : [run 38378609108](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609108) — succès sous émulation.
-- BootInfo négatif : [run 38378609145](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609145) — scénario négatif attendu réussi.
+**Preuves CI exactes disponibles au moment de l'audit :**
+- CI principale : [run 38379995664](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995664) — succès sur `8b5ff8dbcc91cded600c03a98157bba428b86d6f`.
+- Démarrage UEFI local : [run 38379995825](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995825) — succès sous OVMF/QEMU sur le même SHA.
+- BootInfo négatif : [run 38379995687](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995687) — scénario négatif attendu réussi sur le même SHA.
 - Package USB : [run 38375095036](https://github.com/Likounsee/ArchiaOS/actions/runs/38375095036) — succès sur `dfd67f2937b95afc8c8d798c0b77483c2f7a43f9`, pas sur le HEAD documentaire antérieur.
 - Campagne matérielle P1 : aucun journal vérifiable consulté ; reste ouverte.
 
@@ -138,9 +138,9 @@ Le scan PCI legacy du bus 0 existe dans le code mais reste partiel et sans tests
 
 | Vérification | Commit réellement testé | Résultat | Portée |
 |---|---|---|---|
-| CI principale (inclut les tests hôte ciblés) | `7bdc9e17f5a14e4800804cf36af4beac3689184c` | **Réussie** — [run 38378609054](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609054) | Confirme les jobs de ce workflow sur ce commit, pas les fonctions non testées. |
-| Démarrage UEFI local | `7bdc9e17f5a14e4800804cf36af4beac3689184c` | **Réussi** — [run 38378609108](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609108) | Démarrage sous émulation ; ne remplace pas une validation physique. |
-| BootInfo négatif | `7bdc9e17f5a14e4800804cf36af4beac3689184c` | **Réussi** — [run 38378609145](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609145) | Valide uniquement le scénario négatif configuré. |
+| CI principale (inclut tests hôte ciblés, builds x86-64/UEFI/ARM64 et smoke test AArch64) | `8b5ff8dbcc91cded600c03a98157bba428b86d6f` | **Réussie** — [run 38379995664](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995664) | Confirme uniquement les étapes du workflow exécutées sur ce SHA ; ne prouve pas les fonctions non couvertes. |
+| Démarrage UEFI local du noyau de production | `8b5ff8dbcc91cded600c03a98157bba428b86d6f` | **Réussi** — [run 38379995825](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995825) | Démarrage sous OVMF/QEMU ; ne remplace pas une validation physique. |
+| BootInfo invalide | `8b5ff8dbcc91cded600c03a98157bba428b86d6f` | **Réussi** — [run 38379995687](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995687) | Valide uniquement le scénario négatif configuré. |
 | Package USB x86-64 | `dfd67f2937b95afc8c8d798c0b77483c2f7a43f9` | **Réussi** — [run 38375095036](https://github.com/Likounsee/ArchiaOS/actions/runs/38375095036) | Plus ancien que le HEAD actuel ; package non revalidé sur le HEAD documentaire. |
 | Campagne matérielle P1 | Aucun commit/résultat consigné | **Non validée** | Démarrages à froid, transfert BootInfo/PMM, framebuffer, redémarrage et retour firmware à consigner. |
 | Tests hors des jobs ci-dessus | Selon le module | **Couverture partielle** | Absence de test CI ne signifie ni réussite ni échec. |
