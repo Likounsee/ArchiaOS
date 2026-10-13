@@ -5,6 +5,7 @@ mod memory;
 mod cpu;
 mod pci;
 mod scheduler;
+mod interrupts;
 
 use core::arch::{asm, global_asm};
 use core::fmt::{self, Write};
@@ -175,6 +176,10 @@ pub extern "C" fn rust_kernel_main(
 ) -> ! {
     let mut serial = Serial;
     serial.init();
+    // Install fatal exception diagnostics before touching firmware-provided data.
+    // SAFETY: early boot is single-threaded and maskable interrupts remain disabled.
+    unsafe { interrupts::install() };
+    let _ = writeln!(serial, "ArchiaOS: x86-64 exception IDT installed (vectors 0-31)");
     let _ = writeln!(serial, "ArchiaOS: custom UEFI bootloader entered production kernel");
     let _ = writeln!(serial, "ArchiaOS: validating ARCHIABI BootInfo and UEFI memory map");
 
@@ -295,6 +300,36 @@ pub extern "C" fn rust_kernel_main(
     }
     let _ = writeln!(serial, "ArchiaOS: UEFI kernel entry validated");
     halt_forever();
+}
+
+/// Fatal early-kernel exception dispatcher called by the assembly stubs.
+/// The stubs normalize the stack to pass the vector and CPU error code.
+#[no_mangle]
+pub extern "C" fn archiaos_exception_dispatch(vector: u64, error_code: u64) -> ! {
+    let mut serial = Serial;
+    serial.init();
+    let name = match vector {
+        0 => "divide error", 1 => "debug", 2 => "non-maskable interrupt",
+        3 => "breakpoint", 4 => "overflow", 5 => "bound range",
+        6 => "invalid opcode", 7 => "device not available", 8 => "double fault",
+        9 => "coprocessor segment overrun", 10 => "invalid TSS",
+        11 => "segment not present", 12 => "stack-segment fault",
+        13 => "general protection fault", 14 => "page fault",
+        16 => "x87 floating-point exception", 17 => "alignment check",
+        18 => "machine check", 19 => "SIMD floating-point exception",
+        20 => "virtualization exception", 21 => "control protection exception",
+        29 => "VMM communication exception", 30 => "security exception",
+        _ => "reserved or unclassified exception",
+    };
+    let _ = writeln!(serial, "ArchiaOS: FATAL x86-64 exception vector={} ({})", vector, name);
+    let _ = writeln!(serial, "ArchiaOS: exception error_code={:#018x}", error_code);
+    if vector == 14 {
+        let fault_address: u64;
+        // SAFETY: CR2 is read only in the page-fault diagnostic path at kernel privilege.
+        unsafe { asm!("mov {}, cr2", out(reg) fault_address, options(nomem, nostack, preserves_flags)) };
+        let _ = writeln!(serial, "ArchiaOS: page-fault address={:#018x}", fault_address);
+    }
+    halt_forever()
 }
 
 #[panic_handler]
