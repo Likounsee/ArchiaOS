@@ -255,6 +255,7 @@ Dépendances structurantes : **VMM/MMU → espaces d'adressage → processus/sys
 - [x] Primitive x86-64 de sauvegarde/restauration des registres callee-saved et de RSP, avec pile initiale alignée et entrée de tâche.
 - [x] Test hôte de transfert réel vers une pile dédiée et retour au contexte initial.
 - [x] Première intégration scheduler/context : deux tâches ont chacune un contexte CPU et une pile statique ; elles cèdent réellement le CPU, reprennent après suspension et sortent sans être redispatchées. Test hôte et test de démarrage noyau raccordés ; scénario historique validé sur `087af782`.
+- [x] Ajouter des tests hôte ciblés : un réveil seulement par tâche bloquée, le second réveil doit échouer sans mutation, le round-robin doit reprendre la tâche réveillée et les identifiants des tâches terminées ne sont pas réutilisés.
 - [ ] Valider dans la CI le nouveau scénario de blocage/réveil sur le commit courant : A bloque, B réveille A, A reprend et termine, puis B termine ; vérifier les invariants et le retour à la pile de démarrage.
 - [ ] Définir un modèle de topologie/capacités CPU commun au scheduler, avec données inconnues explicites et tests synthétiques.
 - [ ] Découvrir les types de cœurs, domaines de cache, CCD/CCX et informations NUMA exposés par CPUID/ACPI, sans dépendre des noms de modèles.
