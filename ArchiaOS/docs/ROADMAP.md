@@ -65,9 +65,9 @@ Cet audit porte sur les sources présentes et leurs raccordements visibles, pas 
 | P8 | 4 | 12 | 0,48 |
 | P9 | 3 | 0 | 0,00 |
 | P10 | 3 | 0 | 0,00 |
-| **Total** | **100** | — | **23,38** |
+| **Total** | **100** | — | **23,18** |
 
-La somme correcte des contributions est **23,38 %** (5 + 13,5 + 4,2 + 0,48 + 0,15 = 23,33 ; attention : le tableau doit donc afficher **23,33 %**). La valeur affichée globale est **23 %**. La pondération privilégie les fondations noyau et les livrables qui débloquent plusieurs phases ; les objectifs produit restent dans le dénominateur et ne sont pas supprimés.
+La somme des contributions est **23,18 %** (5 + 13,5 + 4,2 + 0,48 = 23,18), affichée **23 %** après arrondi. La pondération privilégie les fondations noyau et les livrables qui débloquent plusieurs phases ; les objectifs produit restent dans le dénominateur et ne sont pas supprimés.
 
 **Preuves du HEAD antérieur à cette révision :**
 - CI principale : [run 38378609054](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609054) — succès sur `7bdc9e17f5a14e4800804cf36af4beac3689184c`.
@@ -75,6 +75,50 @@ La somme correcte des contributions est **23,38 %** (5 + 13,5 + 4,2 + 0,48 + 0,1
 - BootInfo négatif : [run 38378609145](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609145) — scénario négatif attendu réussi.
 - Package USB : [run 38375095036](https://github.com/Likounsee/ArchiaOS/actions/runs/38375095036) — succès sur `dfd67f2937b95afc8c8d798c0b77483c2f7a43f9`, pas sur le HEAD documentaire antérieur.
 - Campagne matérielle P1 : aucun journal vérifiable consulté ; reste ouverte.
+
+### Grilles de calcul des phases courtes
+
+**P0 — démarrage UEFI par défaut (100 %)**
+| Livrable | Poids | Score |
+|---|---:|---:|
+| Chemin UEFI maison par défaut et build reproductible | 25 | 100 |
+| Chargement ELF/BootInfo et transfert au noyau | 25 | 100 |
+| Démarrage QEMU/OVMF et tests négatifs de chargement | 25 | 100 |
+| Premier démarrage physique et affichage framebuffer observé | 25 | 100 |
+| **Total** | **100** | **100 %** |
+
+Le 100 % P0 porte sur le jalon limité « démarrage maison par défaut et premier affichage ». Les démarrages à froid répétés et le retour firmware sont des critères P1, pas implicitement validés par P0.
+
+**P2 — exceptions, scheduler et synchronisation (21 %)**
+| Livrable | Poids | Score courant | Preuve / manque |
+|---|---:|---:|---|
+| Modèle d'états scheduler et tests de transitions/erreurs | 10 | 100 | Tests hôte dans CI ; pas de dispatch réel entre tâches. |
+| Primitive CPU context + pile initiale | 8 | 100 | Test hôte de transfert/retour réel sur pile dédiée x86-64. |
+| IDT/stubs/diagnostic fatal | 12 | 25 | Base présente ; installation et déclenchement contrôlé non prouvés par test d'exception dédié. |
+| API tâche, piles/contextes possédés et switch intégré | 25 | 0 | Absent. |
+| Timer, acquittement et préemption | 15 | 0 | Absent. |
+| Synchronisation, réveils sans perte et données par CPU | 12 | 0 | Absent. |
+| GDT/TSS/IST et piles d'exception critiques | 8 | 0 | Absent/non validé. |
+| Tests multi-tâches, QEMU et SMP | 10 | 0 | Absents. |
+| **Total** | **100** | **21 %** | 10 + 8 + (12 × 25 %) = 21. |
+
+**P8 — contrôle matériel (12 %)**
+| Livrable | Poids | Score courant |
+|---|---:|---:|
+| CPUID et décodage CPU | 20 | 60 |
+| Découverte PCI legacy lecture seule | 20 | 0 |
+| PCIe ECAM/ACPI et inventaire typé | 15 | 0 |
+| Découverte ACPI/SMBIOS/capteurs | 15 | 0 |
+| Interfaces pilotes et permissions | 10 | 0 |
+| Contrôle sûr des actionneurs / état de repli | 10 | 0 |
+| Tests QEMU et matériel par modèle | 10 | 0 |
+| **Total** | **100** | **12 %** |
+
+Le scan PCI est partiellement présent, mais faute de tests dédiés et d'inventaire complet, il ne reçoit pas de points dans cette grille. P8 = 20 × 60 % = 12 % pour CPUID partiellement implémenté/testé, pas pour des capteurs ou du contrôle matériel.
+
+**P9 — service privilégié (0 %) :** API télémétrie et autorisations (25), IPC/authentification et séparation lecture/écriture (20), collecte/normalisation des sources (15), validation des commandes et journalisation (15), simulation/erreurs et arrêt sûr (15), tests intégration/fuzzing (10). Aucun livrable opérationnel raccordé : 0/100.
+
+**P10 — Control Center (0 %) :** contrat de données et simulation (15), application/coquille et navigation (15), tableau de bord avec données source (20), vues CPU/GPU/RAM/stockage selon disponibilité (15), profils ventilateurs/RGB via P9 (15), diagnostics/benchmarks (10), tests UI/API et reconnexion (10). Les modules listés sont des objectifs, pas des implémentations : 0/100.
 
 ### Audit des chemins d'exécution de la version actuelle
 
@@ -111,6 +155,24 @@ L'ancien dépôt est une base C/C++ x86-64 plus large, mais plus complexe et non
 - **ACPI :** l'ancien `acpi.cpp` sait chercher/analyser des tables firmware, mais son commentaire indique un mapping identité initial très large et il lit des adresses physiques via pointeurs volatils. La version actuelle a un audit de plages firmware plus strict au boot. Ne pas importer l'ancien parseur sans reprendre les validations de taille, checksum, mapping et chevauchement.
 - **Pilotes PCI :** l'ancien `drivers/pci.cpp` est une base de découverte plus développée que le scan bus 0 actuel, mais reste liée aux mécanismes de configuration et à l'architecture. Comparer sa couverture et ses tests avant d'extraire un backend ; ajouter ECAM/ACPI séparément.
 - **Conclusion de portage :** ArchiaOS-old est surtout une **référence de conception et de tests**, pas une dépendance à réintégrer directement. Chaque portage doit être isolé, accompagné de tests hôte, intégré par petites interfaces, puis validé en QEMU avant tout essai matériel.
+
+## Carte des dépendances techniques
+
+| Livrable | Prérequis indispensables | Peut avancer en parallèle | Blocage avant acceptation |
+|---|---|---|---|
+| P1 — BootInfo/PMM | Boot UEFI et carte mémoire stable | Tests hôte du parseur/PMM | Campagne matérielle répétable ; aucun point de validation physique sans journal d'essais. |
+| P2 — scheduler | IDT/interruptions, pile et contexte CPU ; puis timer | Tests de transitions et API tâche | Le scheduler ne commute pas encore entre tâches réelles ; pas de préemption/SMP avant switch intégré et tests multi-tâches. |
+| P3 — processus/utilisateur | VMM, permissions page par page, espace d'adressage, cycle de vie scheduler | Conception ABI et tests hôte ELF | Pas de ring 3/syscall avant séparation mémoire et erreurs démontrées. |
+| P4 — VFS/OpenFS | Contrat bloc, mémoire et synchronisation | Tests de format OpenFS en hôte et outils d'image | OpenFS n'est pas intégré ; pas de montage annoncé avant tests d'E/S et corruption. |
+| P5 — graphique | Framebuffer BootInfo ; pilotes d'entrée pour interaction | Rendu logiciel et UI en hôte | GOP absent/invalide doit laisser un mode console de secours. |
+| P6 — réseau | Allocation DMA sûre, découverte PCI, interruptions/timer, modèle pilote | Parsing de paquets en hôte, fuzzing, benchmarks | Aucun pilote NIC opérationnel ; connectivité à prouver sous QEMU puis matériel. |
+| P7 — distribution/sécurité | P0/P1 stables ; P3 pour isolation ; P4 si installation sur stockage interne | SBOM, reproductibilité, threat model, fuzzing | Parcours installation/mise à jour/récupération complet à tester. |
+| P8 — contrôle matériel | PCI/ECAM, ACPI/SMBIOS, interfaces pilotes et permissions | CPUID/inventaire lecture seule et simulateurs | Aucun accès en écriture avant identification fiable, limites d'actionneur et état sûr. |
+| P9 — service privilégié | API P8, séparation de privilèges P3, journalisation/IPC | Simulation et contrat API | Lecture seule par défaut et refus des commandes non autorisées. |
+| P10 — Control Center | Contrat P9, UI/graphique ou plateforme cible, simulation | Maquettes/UI avec données simulées | Pas de donnée inventée ; traçabilité et perte de service testées. |
+| ARM64 | BootInfo commun, primitives AArch64, MMU/interruptions propres | Tests hôte des contrats communs | Ne pas réutiliser l'assembleur x86-64 ; parité après validation AArch64 séparée. |
+
+Dépendances structurantes : **VMM/MMU → espaces d'adressage → processus/syscalls** ; **IDT/interruptions → timer/acquittement → préemption → synchronisation SMP** ; **pilote bloc → contrat VFS → adaptateur OpenFS** ; **inventaire/permissions pilotes → télémétrie lecture seule → service privilégié → Control Center**. Le rendu logiciel, les tests de format en hôte, la conception ABI et les simulateurs peuvent avancer en parallèle, mais ne remplacent pas les validations de bout en bout.
 
 ## Ordre de travail prioritaire
 
@@ -235,32 +297,56 @@ L'ancien dépôt est une base C/C++ x86-64 plus large, mais plus complexe et non
 
 ### P5 — Affichage et pile graphique — 0 %
 
-- Détecter et valider les informations framebuffer fournies par le firmware.
-- Ajouter une sortie graphique minimale sans dépendance à une résolution particulière.
-- Séparer pilote d'affichage, rendu et interface.
-- Ajouter ensuite événements d'entrée et composition de fenêtres selon les besoins.
+**État : NON COMMENCÉ pour une pile graphique générale.** Le framebuffer UEFI est transmis et un motif de démarrage a été vu physiquement ; cela n'équivaut pas à un pilote graphique général, une gestion d'entrées ou un compositeur.
 
-**Critère de sortie :** affichage contrôlé sur configurations documentées, sans supposer qu'un framebuffer UEFI est disponible partout.
+| Livrable | Poids | Critères d'acceptation / preuves exigées |
+|---|---:|---|
+| Contrat framebuffer et modes de secours | 15 | Valider format, stride, dimensions, taille et overflow ; console série utilisable si framebuffer absent/invalide. |
+| Rendu 2D logiciel | 20 | Primitives, clipping, conversion RGB/BGR, limites et rendu sans dépassement ; tests d'images de référence en hôte. |
+| Pilote et abstraction d'affichage | 15 | Séparer backend framebuffer, rendu et UI ; modes non pris en charge signalés explicitement. |
+| Entrées clavier/souris | 15 | Contrat d'événements, files bornées, touches maintenues/perdues et périphériques absents ; tests virtuels QEMU. |
+| Fenêtres/composition et événements | 20 | Cycle de vie des fenêtres, ordre de rendu, focus, événements et nettoyage ; test d'intégration multi-fenêtres. |
+| Tests et validation plateforme | 15 | Tests hôte clipping/format, QEMU à plusieurs résolutions et appareil documenté ; chemin de secours si GOP manque. |
+| **Total** | **100** | Rendu stable sur les modes déclarés et gestion propre de l'absence de périphérique. |
+
+**Ordre :** contrat framebuffer → rendu logiciel → entrées → composition. Peut avancer en parallèle avec VFS via tests hôte ; les applications isolées finales dépendent de P3. Risques : stride incorrect, accès MMIO invalide, formats propriétaires et absence de GOP. Validation QEMU et matériel pour chaque backend annoncé.
+
 
 ### P6 — Réseau et performances — 0 %
 
-- Définir les abstractions de périphérique réseau et de paquets.
-- Commencer par un pilote et un environnement virtuel reproductible.
-- Implémenter progressivement Ethernet, configuration IP, puis les protocoles nécessaires.
-- Ajouter des benchmarks reproductibles pour mémoire, stockage, réseau et ordonnancement.
-- Publier les méthodes et configurations de test avec les résultats.
+**État : NON COMMENCÉ pour une pile réseau opérationnelle.** Prérequis : allocation DMA/mémoire sûre, découverte PCI, interruptions/timer et modèle de pilote.
 
-**Critère de sortie :** tests de connectivité et de charge répétables ; chiffres de performance accompagnés de leur environnement de mesure.
+| Livrable | Poids | Critères d'acceptation / preuves exigées |
+|---|---:|---|
+| Abstraction NIC, DMA et files de paquets | 20 | API bornée, propriété des buffers, alignement et synchronisation ; tests hôte des transitions et épuisement. |
+| Pilote réseau initial sous QEMU | 20 | Choisir une NIC virtuelle supportée, initialisation/arrêt, RX/TX et erreurs ; trafic reproductible en réseau isolé QEMU. |
+| Ethernet et ARP | 10 | Validation tailles/MAC, trames tronquées et tables ARP bornées ; tests de paquets malformés. |
+| IPv4, ICMP et configuration | 15 | Parsing avec vérification longueurs/checksum, configuration documentée ; ping aller/retour virtuel. |
+| UDP puis TCP selon besoins | 15 | États, timeouts, retransmission et fermeture ; tests pertes, duplications, paquets hors ordre et limites. |
+| Sécurité de parsing et robustesse | 10 | Fuzzing paquets, limites mémoire et erreurs ; aucune panique sur données réseau non fiables. |
+| Benchmarks reproductibles | 10 | Mesures scheduler/mémoire/stockage/réseau avec matériel, build, paramètres et dispersion documentés. |
+| **Total** | **100** | Connectivité reproductible et tests de charge/sécurité passants sur le pilote explicitement pris en charge. |
 
-### P7 — Distribution et sécurité — 0 %
+**Ordre :** abstraction NIC/DMA → pilote QEMU → Ethernet/ARP → IP/ICMP → UDP/TCP → fuzzing et benchmarks. Le parsing peut être testé en hôte sans pilote. Risques : DMA hors plage, interruptions perdues, paquets hostiles et benchmarks non comparables. QEMU d'abord, matériel réseau ensuite.
 
-- Définir le format de l'image, l'installation et la mise à jour.
-- Établir la politique de versions, la provenance des artefacts et la reproductibilité.
-- Auditer les entrées non fiables, les permissions, les débordements et les chemins d'erreur.
-- Exécuter la suite CI sur chaque changement et ajouter des tests de démarrage/installation.
-- Ne déclarer une version stable qu'après les critères de sortie documentés.
 
-**Critère de sortie :** image installable et récupérable, procédures de mise à jour documentées et tests de sécurité ciblés réussis.
+### P7 — Distribution, installation et sécurité — 0 %
+
+**État : NON COMMENCÉ comme produit distribuable stable.** La CI et le package USB de développement ne constituent pas un installateur, une mise à jour sûre ou une politique de sécurité complète.
+
+| Livrable | Poids | Critères d'acceptation / preuves exigées |
+|---|---:|---|
+| Menaces, frontières de confiance et privilèges | 15 | Modèle de menace couvrant chargeur, fichiers, utilisateurs, pilotes, service privilégié et mises à jour ; revue des mitigations. |
+| Build reproductible et provenance | 15 | Toolchain épinglée, artefacts identifiés par SHA, SBOM/inventaire des dépendances et procédure de reproduction. |
+| Image de distribution et installation | 20 | Image versionnée, détection des cibles, confirmation avant destruction, échec sans perte de données non voulue ; test QEMU sur disque jetable. |
+| Mise à jour et retour arrière | 15 | Validation des artefacts, interruption tolérée ou récupération documentée, version précédente restaurable ; test de panne simulée. |
+| Sécurité du noyau et entrées non fiables | 15 | Fuzzing ELF/BootInfo/ACPI/VFS/paquets, tests overflow/permissions, erreurs sans panique ; suivi des vulnérabilités. |
+| Tests d'intégration bout en bout | 10 | Installation → boot → configuration → mise à jour → retour arrière ; artefacts et logs conservés en CI. |
+| Documentation support et récupération | 10 | Matrice matériel, limitations, sauvegarde, diagnostic et récupération d'un boot échoué testés. |
+| **Total** | **100** | Une version stable exige un parcours reproductible et une revue des risques connus, pas seulement une CI verte. |
+
+**Ordre :** threat model et reproductibilité tôt ; installateur après boot/stockage fiables ; mises à jour après versionnement/provenance ; tests de récupération avant publication. Audits parser/fuzzing en parallèle. Risques : écrasement disque, artefacts compromis, échec mise à jour et fuite de privilèges. Validation QEMU puis matériel sur configurations supportées.
+
 
 ## P8 — Fondations noyau pour le logiciel de contrôle matériel — 12 %
 
