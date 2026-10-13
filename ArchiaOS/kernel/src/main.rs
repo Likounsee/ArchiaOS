@@ -136,39 +136,54 @@ fn halt_forever() -> ! {
     loop { unsafe { asm!("cli; hlt", options(nomem, nostack)) }; }
 }
 
-// Temporary bring-up display: until the text renderer is ready, paint a
-// dark background and a bright cyan band so a successful kernel handoff is
-// visible on the physical monitor (kernel diagnostics continue on COM1).
-fn show_framebuffer_boot_status(info: &archiaos_bootloader::bootinfo::BootInfo) -> u8 {
-    // The bootloader maps GOP memory in the low canonical 512 GiB region.
+// Early visual diagnostics use colored framebuffer bands until a text renderer
+// and GOP geometry are part of the boot ABI. Each band is a persistent stage
+// marker; a red band means the corresponding operation failed.
+const FB_BACKGROUND: u32 = 0x0010_1828;
+const FB_ACTIVE: u32 = 0x0050_D8_F0;
+const FB_BOOTINFO_OK: u32 = 0x0000_C050;
+const FB_MEMORY_OK: u32 = 0x00D0_A020;
+const FB_PMM_OK: u32 = 0x0000_80E0;
+const FB_CONTEXT_OK: u32 = 0x00D0_40C0;
+const FB_SCHEDULER_OK: u32 = 0x00E0_E0_E0;
+const FB_FAIL: u32 = 0x0000_3030;
+const FB_PIXELS_PER_STATUS_LINE: usize = 32_768;
+
+fn framebuffer_pixels(info: &archiaos_bootloader::bootinfo::BootInfo) -> Option<(*mut u32, usize)> {
     const MAX_LOW_CANONICAL_ADDRESS: u64 = 1u64 << 39;
-    if info.framebuffer_base == 0 {
-        return 1; // UEFI did not expose a framebuffer.
+    if info.framebuffer_base == 0 || info.framebuffer_size < 4 || info.framebuffer_base % 4 != 0 {
+        return None;
     }
-    if info.framebuffer_size < 4 {
-        return 2; // Reported range cannot contain even one 32-bit pixel.
-    }
-    let Some(end) = info.framebuffer_base.checked_add(info.framebuffer_size) else {
-        return 3; // Malformed/overflowing GOP range.
-    };
+    let end = info.framebuffer_base.checked_add(info.framebuffer_size)?;
     if end > MAX_LOW_CANONICAL_ADDRESS {
-        return 4; // Cannot be reached through the current low-canonical identity map.
+        return None;
     }
-    if info.framebuffer_base % 4 != 0 {
-        return 5; // GOP framebuffer should be at least 32-bit aligned.
-    }
-    let pixels = match usize::try_from(info.framebuffer_size / 4) {
-        Ok(value) => value,
-        Err(_) => return 6,
-    };
-    let framebuffer = info.framebuffer_base as *mut u32;
-    let band_pixels = pixels.min(32_768);
-    // Fill the reported GOP range with a high-contrast probe pattern.
-    for index in 0..pixels {
-        let color = if index < band_pixels { 0x00_50_D8_F0 } else { 0x00_10_18_28 };
+    let pixels = usize::try_from(info.framebuffer_size / 4).ok()?;
+    if pixels == 0 { return None; }
+    Some((info.framebuffer_base as *mut u32, pixels))
+}
+
+fn paint_status_line(info: &archiaos_bootloader::bootinfo::BootInfo, line: usize, color: u32) {
+    let Some((framebuffer, pixels)) = framebuffer_pixels(info) else { return; };
+    let Some(start) = line.checked_mul(FB_PIXELS_PER_STATUS_LINE) else { return; };
+    if start >= pixels { return; }
+    let end = start.saturating_add(FB_PIXELS_PER_STATUS_LINE).min(pixels);
+    for index in start..end {
+        // SAFETY: the index is bounded by the firmware-reported framebuffer range.
         unsafe { ptr::write_volatile(framebuffer.add(index), color) };
     }
-    0 // Probe written.
+}
+
+fn show_framebuffer_boot_status(info: &archiaos_bootloader::bootinfo::BootInfo) -> u8 {
+    let Some((framebuffer, pixels)) = framebuffer_pixels(info) else {
+        return 1;
+    };
+    for index in 0..pixels {
+        // SAFETY: the index is bounded by the firmware-reported framebuffer range.
+        unsafe { ptr::write_volatile(framebuffer.add(index), FB_BACKGROUND) };
+    }
+    paint_status_line(info, 0, FB_ACTIVE);
+    0
 }
 
 #[no_mangle]
