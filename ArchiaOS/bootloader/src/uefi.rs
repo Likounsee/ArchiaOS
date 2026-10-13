@@ -1514,6 +1514,18 @@ fn validated_fdt_prefix_length(header: &[u8]) -> Option<u64> {
     Some(length)
 }
 
+/// Convert a non-empty physical byte range to the complete page allocation it touches.
+/// Returns a half-open (start, end) pair and rejects every arithmetic overflow.
+fn page_rounded_physical_range(start: u64, length: u64) -> Option<(u64, u64)> {
+    if length == 0 {
+        return None;
+    }
+    let end = start.checked_add(length)?;
+    let rounded_start = start & !(EFI_PAGE_SIZE - 1);
+    let rounded_end = end.checked_add(EFI_PAGE_SIZE - 1)? & !(EFI_PAGE_SIZE - 1);
+    (rounded_end > rounded_start).then_some((rounded_start, rounded_end))
+}
+
 /// Conservatively reject overlapping handoff ranges; arithmetic overflow fails closed.
 fn physical_ranges_overlap(first_start: u64, first_length: u64, second_start: u64, second_length: u64) -> bool {
     if first_length == 0 || second_length == 0 {
@@ -2042,14 +2054,9 @@ pub unsafe fn transfer_to_kernel(
                     Err(archiaos_bootloader::elf::ElfError::NotLoadableSegment) => continue,
                     Err(_) => return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ELF segment during framebuffer overlap audit.\r\n\0")),
                 };
-                let segment_end = segment.physical_address
-                    .checked_add(segment.memory_size)
-                    .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF range overflow during framebuffer overlap audit.\r\n\0"))?;
-                let rounded_start = segment.physical_address & !(EFI_PAGE_SIZE - 1);
-                let rounded_end = segment_end
-                    .checked_add(EFI_PAGE_SIZE - 1)
-                    .map(|value| value & !(EFI_PAGE_SIZE - 1))
-                    .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF rounded range overflow during framebuffer overlap audit.\r\n\0"))?;
+                let (rounded_start, rounded_end) =
+                    page_rounded_physical_range(segment.physical_address, segment.memory_size)
+                        .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid or overflowing ELF page range during framebuffer overlap audit.\r\n\0"))?;
                 if framebuffer_conflicts_with(rounded_start, rounded_end - rounded_start) {
                     return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: framebuffer overlaps a loaded kernel segment.\r\n\0"));
                 }
@@ -2119,15 +2126,10 @@ pub unsafe fn transfer_to_kernel(
                 Err(archiaos_bootloader::elf::ElfError::NotLoadableSegment) => continue,
                 Err(_) => return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ELF segment during platform-table overlap audit.\r\n\0")),
             };
-            let segment_end = segment.physical_address
-                .checked_add(segment.memory_size)
-                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF range overflow during platform-table overlap audit.\r\n\0"))?;
-            let rounded_end = segment_end
-                .checked_add(EFI_PAGE_SIZE - 1)
-                .map(|value| value & !(EFI_PAGE_SIZE - 1))
-                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: rounded ELF range overflow during platform-table overlap audit.\r\n\0"))?;
-            let rounded_start = segment.physical_address & !(EFI_PAGE_SIZE - 1);
-            if rounded_end <= rounded_start || handoff_range_count >= handoff_ranges.len() {
+            let (rounded_start, rounded_end) =
+                page_rounded_physical_range(segment.physical_address, segment.memory_size)
+                    .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid or overflowing ELF page range during platform-table overlap audit.\r\n\0"))?;
+            if handoff_range_count >= handoff_ranges.len() {
                 return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid or excessive ELF ranges during platform-table overlap audit.\r\n\0"));
             }
             handoff_ranges[handoff_range_count] = (rounded_start, rounded_end - rounded_start);
@@ -2401,6 +2403,25 @@ mod configuration_table_bounds_tests {
         assert!(!configuration_table_range_is_bounded(0x1000, 0));
         assert!(!configuration_table_range_is_bounded(0x1000, 4097));
         assert!(!configuration_table_range_is_bounded(usize::MAX - 7, 1));
+    }
+}
+
+#[cfg(test)]
+mod page_rounded_physical_range_tests {
+    use super::page_rounded_physical_range;
+
+    #[test]
+    fn rounds_unaligned_ranges_out_to_all_touched_pages() {
+        assert_eq!(page_rounded_physical_range(0x1234, 0x20), Some((0x1000, 0x2000)));
+        assert_eq!(page_rounded_physical_range(0x1ff0, 0x30), Some((0x1000, 0x3000)));
+        assert_eq!(page_rounded_physical_range(0x2000, 0x1000), Some((0x2000, 0x3000)));
+    }
+
+    #[test]
+    fn rejects_empty_and_overflowing_ranges() {
+        assert_eq!(page_rounded_physical_range(0x1000, 0), None);
+        assert_eq!(page_rounded_physical_range(u64::MAX, 1), None);
+        assert_eq!(page_rounded_physical_range(u64::MAX - 0xfff, 0x1000), None);
     }
 }
 
