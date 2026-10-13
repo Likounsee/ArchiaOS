@@ -64,6 +64,9 @@ mod tests {
 
     #[test]
     fn sse41_path_matches_scalar_for_varied_lengths() {
+        if !std::is_x86_feature_detected!("sse4.1") {
+            return;
+        }
         for length in 0..33 {
             let values: [u32; 33] = core::array::from_fn(|i| {
                 (i as u32).wrapping_mul(0x1020_3041).rotate_left((i % 31) as u32)
