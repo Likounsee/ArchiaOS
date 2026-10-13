@@ -27,6 +27,11 @@ jobs:
         run: rustup target add x86_64-unknown-none
       - name: Show toolchain
         run: rustc --version && cargo --version
+      - name: Test pure CPU feature decoding and OS-state gates
+        run: |
+          set -euo pipefail
+          rustc --edition=2021 --test kernel/src/cpu_features.rs -o "$RUNNER_TEMP/archiaos-cpu-feature-tests"
+          "$RUNNER_TEMP/archiaos-cpu-feature-tests"
       - name: Test scheduler state machine on host
         shell: bash
         run: |
@@ -426,6 +431,41 @@ jobs:
           grep -Fq "PMM test: free count restored" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "PMM test: double-free rejected" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "ArchiaOS: UEFI kernel entry validated" "$RUNNER_TEMP/archiaos-production-uefi.log"
+
+          # Exercise the production CPU baseline contract with two explicit QEMU
+          # CPU profiles: one without SSE4.1 must stop before normal init; an
+          # SSE4.1-capable pre-AVX profile must proceed without AVX state.
+          cp "$firmware_vars" "$RUNNER_TEMP/OVMF_VARS_NO_SSE41.fd"
+          set +e
+          timeout 18s qemu-system-x86_64 -machine q35 -cpu qemu64 -m 512M -drive "if=pflash,format=raw,readonly=on,file=$firmware_code" -drive "if=pflash,format=raw,file=$RUNNER_TEMP/OVMF_VARS_NO_SSE41.fd" -drive "file=$RUNNER_TEMP/archiaos-production-uefi.img,format=raw,if=ide" -boot order=c -display none -serial stdio -monitor none -no-reboot -no-shutdown > "$RUNNER_TEMP/archiaos-cpu-no-sse41.log" 2>&1
+          no_sse41_status=$?
+          set -e
+          cat "$RUNNER_TEMP/archiaos-cpu-no-sse41.log"
+          if [[ "$no_sse41_status" -ne 0 && "$no_sse41_status" -ne 124 ]]; then
+            echo "QEMU no-SSE4.1 profile exited unexpectedly with status $no_sse41_status"
+            exit 1
+          fi
+          grep -Fq "ArchiaOS: unsupported CPU: SSE4.1 is required; refusing to continue" "$RUNNER_TEMP/archiaos-cpu-no-sse41.log"
+          if grep -Fq "ArchiaOS: CPU features " "$RUNNER_TEMP/archiaos-cpu-no-sse41.log"; then
+            echo "CPU without SSE4.1 unexpectedly passed the baseline gate" >&2
+            exit 1
+          fi
+          echo "CPU profile without SSE4.1 correctly rejected"
+
+          cp "$firmware_vars" "$RUNNER_TEMP/OVMF_VARS_SSE41_ONLY.fd"
+          set +e
+          timeout 25s qemu-system-x86_64 -machine q35 -cpu Nehalem -m 512M -drive "if=pflash,format=raw,readonly=on,file=$firmware_code" -drive "if=pflash,format=raw,file=$RUNNER_TEMP/OVMF_VARS_SSE41_ONLY.fd" -drive "file=$RUNNER_TEMP/archiaos-production-uefi.img,format=raw,if=ide" -boot order=c -display none -serial stdio -monitor none -no-reboot -no-shutdown > "$RUNNER_TEMP/archiaos-cpu-sse41-only.log" 2>&1
+          sse41_only_status=$?
+          set -e
+          cat "$RUNNER_TEMP/archiaos-cpu-sse41-only.log"
+          if [[ "$sse41_only_status" -ne 0 && "$sse41_only_status" -ne 124 ]]; then
+            echo "QEMU SSE4.1-only profile exited unexpectedly with status $sse41_only_status"
+            exit 1
+          fi
+          grep -Fq "ArchiaOS: CPU features " "$RUNNER_TEMP/archiaos-cpu-sse41-only.log"
+          grep -Eq "SSE4.1=1 .*AVX\(hw/usable\)=0/0" "$RUNNER_TEMP/archiaos-cpu-sse41-only.log"
+          grep -Fq "ArchiaOS: UEFI kernel entry validated" "$RUNNER_TEMP/archiaos-cpu-sse41-only.log"
+          echo "SSE4.1-only / pre-AVX CPU profile passed"
 
 
       - name: Publish production USB image
