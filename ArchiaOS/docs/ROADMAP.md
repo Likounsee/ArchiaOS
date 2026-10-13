@@ -7,7 +7,7 @@
 | Priorité | Domaine | Avancement estimé | État / prochaine preuve attendue |
 |---|---|---:|---|
 | **P0** | Démarrage UEFI maison x86-64 par défaut | **100 % (jalon physique atteint)** | Démarrage depuis la clé USB et premier affichage framebuffer confirmés par l’utilisateur sur le PC physique. Le motif bleu prouve l’écriture dans le framebuffer après le handoff ; il ne constitue pas encore un bureau ni une pile graphique. Un redémarrage à froid n’est pas consigné. |
-| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **97 %** | Le HEAD `abe8d7f` étend l’audit ACPI à la table racine RSDT/XSDT, aux SDT directement référencées et aux pointeurs FADT vers DSDT/FACS. Les checksums SDT, longueurs, signatures, réservations, mapping identité, chevauchements et budget de 64 Mio sont contrôlés ; la capacité des plages protégées couvre le pire cas de 256 entrées racine toutes de type FADT. La CI du commit `0c3569c` avait validé 8/8 contrôles, dont le scénario OVMF multi-cas ; la CI du nouveau code FADT est en cours. Reste : valider ce lot en CI et poursuivre l’audit des plages réservées spécifiques aux plateformes. |
+| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **98 %** | Le HEAD `359c8b8` reporte tout déréférencement du RSDP et du Device Tree jusqu’à l’audit de la carte mémoire finale : découverte UEFI conserve uniquement les adresses, puis l’audit vérifie réservation, mapping identité, limites, checksums/contenu et chevauchements avant parsing. L’audit ACPI couvre aussi RSDT/XSDT, les SDT enfants et les pointeurs FADT vers DSDT/FACS, avec une limite de 256 entrées et 64 Mio. Les contrôles OVMF de production et BootInfo négatif sont verts sur `9cb0e31`; la CI du nouveau changement de sûreté reste à confirmer. Reste : valider ce lot en CI et approfondir les réservations firmware non transmises dans BootInfo. |
 | **P2** | Ordonnanceur et synchronisation | **0 %** | Non implémenté ; définir les primitives de tâches et le changement de contexte avant la préemption. |
 | **P3** | Espace utilisateur et ABI système | **0 %** | Non commencé ; dépend notamment des exceptions, syscalls et mécanismes mémoire isolés. |
 | **P4** | Stockage, VFS et préparation OpenFS | **0 %** | Pas de pilote bloc/VFS fonctionnel ; spécifier d'abord les interfaces. |
@@ -43,9 +43,9 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 
 **Critère de sortie :** build reproductible et tests de démarrage verts sur le HEAD courant, sans déclarer les essais QEMU comme une validation de tout matériel physique.
 
-### P1 — Fiabilité du chargeur et de la mémoire — 97 %
+### P1 — Fiabilité du chargeur et de la mémoire — 98 %
 
-**État : EN COURS — 96 %.** Le HEAD `0c3569c` centralise l’arrondi contrôlé des plages physiques et étend l’audit ACPI du RSDP à la table racine RSDT/XSDT et à toutes ses entrées directes. Chaque SDT est vérifiée avant lecture complète : longueur bornée, réservation UEFI, mapping identité pour le noyau high-half, checksum, absence de chevauchement avec le framebuffer, le DTB, les objets de handoff, la racine et les tables précédentes. L’audit limite le tableau racine à 256 entrées et le total contrôlé à 64 Mio. Les tests parsers, builds x86-64/ARM64, boots AAVMF, boot OVMF de production, rejet BootInfo négatif et paquet USB sont verts sur ce HEAD ; le scénario OVMF multi-cas reste en cours. Reste : auditer les pointeurs indirects FADT vers DSDT/FACS et confirmer la fin du scénario OVMF multi-cas.
+**État : EN COURS — 98 %.** Le HEAD `359c8b8` conserve les adresses des tables de configuration UEFI sans les déréférencer pendant la découverte initiale. Le RSDP et le Device Tree ne sont lus et parsés qu’après validation de la carte mémoire finale, de la réservation, du mapping identité, des tailles et des chevauchements. L’audit ACPI couvre RSDT/XSDT, les SDT enfants et les tables indirectes FADT vers DSDT/FACS ; il est borné à 256 entrées racine et 64 Mio de données. Les démarrages OVMF de production et le rejet BootInfo invalide ont réussi sur le commit `9cb0e31`; la CI du nouveau changement reste à confirmer. Reste : valider le lot en CI et examiner les autres objets firmware non transmis dans BootInfo.
 
 **Objectif :** sécuriser le transfert UEFI → noyau et la gestion de la mémoire physique.
 
@@ -68,7 +68,7 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 - [x] Valider la cohérence et l'absence de débordement de la plage framebuffer dans BootInfo. Le framebuffer GOP est une plage MMIO : elle peut légitimement être absente des descripteurs UEFI ; elle est mappée séparément en uncached et exclue de la RAM allocatable. Les tests de couverture générique rejettent les trous sans imposer à tort que le MMIO soit décrit comme mémoire système.
 - [x] Rejeter les tables ACPI RSDP et Device Tree qui chevauchent les pages physiques allouées aux segments ELF `PT_LOAD` ; l’audit couvre les pages arrondies réellement réservées et des cas de chevauchement partiel ainsi que des plages disjointes (HEAD `c864ae2`).
 - [x] Auditer les pointeurs FADT indirects vers DSDT/FACS : priorité aux pointeurs étendus non nuls, repli sur les champs legacy, signature DSDT obligatoire, FACS contrôlé séparément (signature, longueur, réservation, mapping identité et absence de chevauchement), budget global conservé et capacité de suivi bornée ; tests unitaires de sélection des pointeurs ajoutés (HEAD `abe8d7f`, CI en attente).
-- [ ] Terminer l'audit des autres plages réservées spécifiques à chaque plateforme.
+- [x] Reporter le parsing du RSDP et du Device Tree jusqu'à ce que la carte mémoire finale valide leurs plages complètes : la découverte UEFI ne fait plus que capturer les adresses, et l'audit final vérifie réservation, mapping identité, tailles, checksums/contenu et chevauchements avant tout déréférencement (HEAD `359c8b8`, CI en cours).
 - [x] Étendre les tests de couverture mémoire aux sous-plages non alignées, aux frontières entre descripteurs de types différents et aux trous entre descripteurs ; CI verte sur `1ab767a`.
 - [x] Durcir le calcul des plages PMM réservées : écrêtage à la fenêtre gérée sous 4 Gio avant l'arrondi, sans débordement inutile pour une plage MMIO située hors fenêtre ; auto-vérifications au démarrage pour les limites, les plages non alignées et les longueurs nulles (commit `a8654bf`).
 - [x] Centraliser le calcul du chevauchement entre intervalles de frames et ajouter des auto-vérifications déterministes pour les plages libres, réservées, adjacentes, disjointes, incluses et vides ; validation de démarrage OVMF et tests négatifs BootInfo verts sur le code correspondant (commit `b22d509`).
@@ -79,7 +79,7 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 - [x] Refuser l'allocation lorsque le bitmap ne contient aucune frame à la fois libre et gérée ; la simulation locale teste l'épuisement déterministe.
 - [x] Empêcher la libération des frames qui ne sont pas gérées par le PMM ; tests de frames réservées et de double libération intégrés.
 - [x] Confirmer les contrôles mémoire/PMM existants sur le HEAD `00bcb8c` en CI.
-- [ ] Achever l'audit des autres plages réservées spécifiques aux plateformes et étendre les scénarios matériels.
+- [ ] Achever l'audit des autres objets firmware non transmis dans BootInfo et étendre les scénarios matériels.
 
 **Critère de sortie :** invariants mémoire documentés et testés, sans chevauchement dangereux ni accès hors plage.
 
