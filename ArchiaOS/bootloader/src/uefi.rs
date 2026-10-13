@@ -3038,3 +3038,29 @@ mod gop_mode_metadata_tests {
         assert!(!gop_mode_information_is_supported(u32::MAX));
     }
 }
+
+
+#[cfg(all(test, target_arch = "x86_64"))]
+mod uefi_memory_type_classification_tests {
+    use super::uefi_memory_type_is_ram;
+
+    #[test]
+    fn maps_only_memory_types_explicitly_treated_as_ram() {
+        for memory_type in [1, 2, 3, 4, 5, 6, 7, 9, 10, 14] {
+            assert!(
+                uefi_memory_type_is_ram(memory_type),
+                "UEFI memory type {memory_type} should be mapped as RAM"
+            );
+        }
+    }
+
+    #[test]
+    fn excludes_reserved_unusable_mmio_and_unknown_memory_types() {
+        for memory_type in [0, 8, 11, 12, 13, 15, u32::MAX] {
+            assert!(
+                !uefi_memory_type_is_ram(memory_type),
+                "UEFI memory type {memory_type} must not be mapped as RAM"
+            );
+        }
+    }
+}
