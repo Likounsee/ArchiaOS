@@ -231,6 +231,7 @@ pub extern "C" fn rust_kernel_main(
         5 => { let _ = writeln!(serial, "ArchiaOS: framebuffer probe=rejected (unaligned base)"); }
         _ => { let _ = writeln!(serial, "ArchiaOS: framebuffer probe=rejected (size conversion failed)"); }
     }
+    paint_status_line(info, 1, FB_BOOTINFO_OK);
     let _ = writeln!(serial, "ArchiaOS: boot-stage=early-framebuffer-probe-complete");
 
     // Read-only CPU inventory is the first hardware-telemetry primitive. Keep
@@ -276,10 +277,12 @@ pub extern "C" fn rust_kernel_main(
     let stats = match unsafe { memory::initialize_from_bootinfo(&mut serial, boot_info) } {
         Ok(stats) => stats,
         Err(error) => {
+            paint_status_line(info, 2, FB_FAIL);
             let _ = writeln!(serial, "ArchiaOS: UEFI memory initialization failed: {:?}", error);
             halt_forever();
         }
     };
+    paint_status_line(info, 2, FB_MEMORY_OK);
     let _ = writeln!(serial, "ArchiaOS: UEFI BootInfo validated");
     let info = unsafe { &*boot_info };
     if info.framebuffer_size == 0 {
@@ -297,16 +300,20 @@ pub extern "C" fn rust_kernel_main(
     let _ = writeln!(serial, "ArchiaOS: free physical pages below 4 GiB: {}", stats.free_pages);
 
     if let Err(error) = memory::self_test(&mut serial) {
+        paint_status_line(info, 3, FB_FAIL);
         let _ = writeln!(serial, "ArchiaOS: UEFI PMM self-test failed: {:?}", error);
         halt_forever();
     }
+    paint_status_line(info, 3, FB_PMM_OK);
     let _ = writeln!(serial, "ArchiaOS: UEFI PMM allocation/free self-test passed");
 
     match context::self_test() {
         Ok(()) => {
+            paint_status_line(info, 4, FB_CONTEXT_OK);
             let _ = writeln!(serial, "ArchiaOS: x86-64 task context and initial stack self-test passed");
         }
         Err(()) => {
+            paint_status_line(info, 4, FB_FAIL);
             let _ = writeln!(serial, "ArchiaOS: x86-64 task context self-test failed");
             halt_forever();
         }
@@ -317,9 +324,11 @@ pub extern "C" fn rust_kernel_main(
     // context switch and must not be presented as a working multitasking kernel.
     match scheduler::Scheduler::self_test() {
         Ok(()) => {
+            paint_status_line(info, 5, FB_SCHEDULER_OK);
             let _ = writeln!(serial, "ArchiaOS: cooperative scheduler state self-test passed");
         }
         Err(error) => {
+            paint_status_line(info, 5, FB_FAIL);
             let _ = writeln!(serial, "ArchiaOS: scheduler state self-test failed: {:?}", error);
             halt_forever();
         }
