@@ -4,6 +4,7 @@
 mod memory;
 mod cpu;
 mod cpu_features;
+mod simd;
 mod pci;
 mod scheduler;
 mod context;
@@ -248,6 +249,12 @@ pub extern "C" fn rust_kernel_main(
     // is added to the context ABI.
     unsafe { context::initialize_simd() };
     let _ = writeln!(serial, "ArchiaOS: x87/SSE context state initialized (FXSAVE64/FXRSTOR64)");
+    if simd::sum_u32(&[1, 2, 3, 4, 5], cpu_info.has_sse41) != 15 {
+        paint_status_line(info, 1, FB_FAIL);
+        let _ = writeln!(serial, "ArchiaOS: SSE4.1 optimized integer self-test failed");
+        halt_forever();
+    }
+    let _ = writeln!(serial, "ArchiaOS: SSE4.1 optimized integer self-test passed");
     let vendor = cpu::printable_field(&cpu_info.vendor);
     let brand = cpu::printable_field(&cpu_info.brand);
     let _ = writeln!(serial, "ArchiaOS: CPU vendor: {}", vendor);
