@@ -2097,18 +2097,18 @@ pub unsafe fn transfer_to_kernel(
             ) {
                 Ok(segment) => segment,
                 Err(archiaos_bootloader::elf::ElfError::NotLoadableSegment) => continue,
-                Err(_) => return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ELF segment during platform-table overlap audit.\\r\\n\\0")),
+                Err(_) => return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ELF segment during platform-table overlap audit.\r\n\0")),
             };
             let segment_end = segment.physical_address
                 .checked_add(segment.memory_size)
-                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF range overflow during platform-table overlap audit.\\r\\n\\0"))?;
+                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF range overflow during platform-table overlap audit.\r\n\0"))?;
             let rounded_end = segment_end
                 .checked_add(EFI_PAGE_SIZE - 1)
                 .map(|value| value & !(EFI_PAGE_SIZE - 1))
-                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: rounded ELF range overflow during platform-table overlap audit.\\r\\n\\0"))?;
+                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: rounded ELF range overflow during platform-table overlap audit.\r\n\0"))?;
             let rounded_start = segment.physical_address & !(EFI_PAGE_SIZE - 1);
             if rounded_end <= rounded_start || handoff_range_count >= handoff_ranges.len() {
-                return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid or excessive ELF ranges during platform-table overlap audit.\\r\\n\\0"));
+                return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid or excessive ELF ranges during platform-table overlap audit.\r\n\0"));
             }
             handoff_ranges[handoff_range_count] = (rounded_start, rounded_end - rounded_start);
             handoff_range_count += 1;
