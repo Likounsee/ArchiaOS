@@ -256,4 +256,5 @@ global_asm!(
     ".quad isr_stub_20, isr_stub_21, isr_stub_22, isr_stub_23",
     ".quad isr_stub_24, isr_stub_25, isr_stub_26, isr_stub_27",
     ".quad isr_stub_28, isr_stub_29, isr_stub_30, isr_stub_31",
+    options(att_syntax)
 );
