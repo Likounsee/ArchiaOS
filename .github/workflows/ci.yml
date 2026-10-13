@@ -437,7 +437,7 @@ jobs:
           # SSE4.1-capable pre-AVX profile must proceed without AVX state.
           cp "$firmware_vars" "$RUNNER_TEMP/OVMF_VARS_NO_SSE41.fd"
           set +e
-          timeout 18s qemu-system-x86_64 -machine q35 -cpu qemu64 -m 512M -drive "if=pflash,format=raw,readonly=on,file=$firmware_code" -drive "if=pflash,format=raw,file=$RUNNER_TEMP/OVMF_VARS_NO_SSE41.fd" -drive "file=$RUNNER_TEMP/archiaos-production-uefi.img,format=raw,if=ide" -boot order=c -display none -serial stdio -monitor none -no-reboot -no-shutdown > "$RUNNER_TEMP/archiaos-cpu-no-sse41.log" 2>&1
+          timeout 18s qemu-system-x86_64 -machine q35 -cpu qemu64,-sse4.1 -m 512M -drive "if=pflash,format=raw,readonly=on,file=$firmware_code" -drive "if=pflash,format=raw,file=$RUNNER_TEMP/OVMF_VARS_NO_SSE41.fd" -drive "file=$RUNNER_TEMP/archiaos-production-uefi.img,format=raw,if=ide" -boot order=c -display none -serial stdio -monitor none -no-reboot -no-shutdown > "$RUNNER_TEMP/archiaos-cpu-no-sse41.log" 2>&1
           no_sse41_status=$?
           set -e
           cat "$RUNNER_TEMP/archiaos-cpu-no-sse41.log"
@@ -465,7 +465,7 @@ jobs:
           grep -Fq "ArchiaOS: CPU features " "$RUNNER_TEMP/archiaos-cpu-sse41-only.log"
           grep -Eq "SSE4.1=1 .*AVX\(hw/usable\)=0/0" "$RUNNER_TEMP/archiaos-cpu-sse41-only.log"
           grep -Fq "ArchiaOS: UEFI kernel entry validated" "$RUNNER_TEMP/archiaos-cpu-sse41-only.log"
-          echo "SSE4.1-only / pre-AVX CPU profile passed"
+          echo "SSE4.1-capable pre-AVX CPU profile passed"
 
           cp "$firmware_vars" "$RUNNER_TEMP/OVMF_VARS_AVX.fd"
           set +e
