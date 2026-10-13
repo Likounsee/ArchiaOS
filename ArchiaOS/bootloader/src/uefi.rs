@@ -2921,4 +2921,38 @@ mod configuration_table_lookup_tests {
         assert!(configuration_table(core::ptr::null_mut(), 1, &FIRST_GUID).is_null());
         assert!(configuration_table(entries.as_ptr() as *mut _, 0, &FIRST_GUID).is_null());
     }
+
+    #[test]
+    fn reads_unaligned_configuration_table_entries_safely() {
+        use core::{mem, ptr};
+
+        let first = 0x1234usize as *mut c_void;
+        let second = 0x5678usize as *mut c_void;
+        let entry_count = 2;
+        let byte_count = entry_count * mem::size_of::<ConfigurationTable>();
+        let mut storage = [0u8; 1 + 2 * mem::size_of::<ConfigurationTable>()];
+        // Deliberately offset the table by one byte to exercise unaligned firmware data.
+        let table = unsafe { storage.as_mut_ptr().add(1).cast::<ConfigurationTable>() };
+        unsafe {
+            ptr::write_unaligned(
+                table,
+                ConfigurationTable { vendor_guid: FIRST_GUID, vendor_table: first },
+            );
+            ptr::write_unaligned(
+                table.add(1),
+                ConfigurationTable { vendor_guid: SECOND_GUID, vendor_table: second },
+            );
+        }
+
+        assert_eq!(configuration_table(table, entry_count, &FIRST_GUID), first);
+        assert_eq!(configuration_table(table, entry_count, &SECOND_GUID), second);
+        assert!(byte_count <= storage.len() - 1);
+    }
+
+    #[test]
+    fn rejects_unbounded_configuration_table_counts() {
+        let table = 0x1000usize as *mut ConfigurationTable;
+        assert!(configuration_table(table, 4097, &FIRST_GUID).is_null());
+        assert!(configuration_table(table, usize::MAX, &FIRST_GUID).is_null());
+    }
 }
