@@ -6,9 +6,9 @@
 
 | Priorité | Domaine | Avancement estimé | État / prochaine preuve attendue |
 |---|---|---:|---|
-| **GLOBAL** | Ensemble des objectifs P0–P10 | **25 %** | Moyenne pondérée des phases (poids et méthode définis dans l’audit ci-dessous) ; les jalons B/A ne sont pas recomptés. |
+| **GLOBAL** | Ensemble des objectifs P0–P10 | **23 %** | Score pondéré recalculé : 23,33 %, arrondi à l’entier le plus proche. Maturité de validation suivie séparément ; les pistes B/A ne sont pas additionnées. |
 | **P0** | Démarrage UEFI maison x86-64 par défaut | **100 % (jalon physique atteint)** | Démarrage depuis la clé USB et premier affichage framebuffer confirmés par l’utilisateur sur le PC physique. Le motif bleu prouve l’écriture dans le framebuffer après le handoff ; il ne constitue pas encore un bureau ni une pile graphique. Un redémarrage à froid n’est pas consigné. |
-| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **99 %** | Le HEAD courant `e18b1901e262f21838ab0484459d207ccf004442` passe la CI principale ([CI](https://github.com/Likounsee/ArchiaOS/actions/runs/38375116739)) et le démarrage négatif BootInfo ([workflow](https://github.com/Likounsee/ArchiaOS/actions/runs/38375116552)). Le package USB et le démarrage UEFI local ont également réussi sur le commit de code précédent `dfd67f2937b95afc8c8d798c0b77483c2f7a43f9`; ils doivent être relancés après toute modification pertinente du chargeur. L’audit ACPI couvre RSDT/XSDT, SDT enfants et pointeurs FADT DSDT/FACS, avec limites de 256 entrées et 64 Mio ; la capacité maximale de suivi a été corrigée. Les objets firmware effectivement consommés après `ExitBootServices` sont validés et protégés. Les autres entrées de configuration UEFI ne sont ni déréférencées ni transmises au noyau ; le PMM n’accepte comme RAM allocatable que le type UEFI Conventional Memory (7), laissant les autres types réservés. Le package USB est généré avec succès sur le commit de code `45fffbf9` (identique au code du HEAD, la modification ultérieure étant documentaire). **Seule la validation sur machine physique reste à faire** ; l’utilisateur possède l’image USB mais ne dispose pas actuellement d’une machine pour l’essayer. P1 reste donc à 99 % et doit être repris pour les démarrages à froid, le transfert BootInfo/PMM, le framebuffer et le retour firmware. QEMU ne prouve pas le comportement de tous les firmwares et PC. |
+| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **90 %** | Le HEAD courant `e18b1901e262f21838ab0484459d207ccf004442` passe la CI principale ([CI](https://github.com/Likounsee/ArchiaOS/actions/runs/38375116739)) et le démarrage négatif BootInfo ([workflow](https://github.com/Likounsee/ArchiaOS/actions/runs/38375116552)). Le package USB et le démarrage UEFI local ont également réussi sur le commit de code précédent `dfd67f2937b95afc8c8d798c0b77483c2f7a43f9`; ils doivent être relancés après toute modification pertinente du chargeur. L’audit ACPI couvre RSDT/XSDT, SDT enfants et pointeurs FADT DSDT/FACS, avec limites de 256 entrées et 64 Mio ; la capacité maximale de suivi a été corrigée. Les objets firmware effectivement consommés après `ExitBootServices` sont validés et protégés. Les autres entrées de configuration UEFI ne sont ni déréférencées ni transmises au noyau ; le PMM n’accepte comme RAM allocatable que le type UEFI Conventional Memory (7), laissant les autres types réservés. Le package USB est généré avec succès sur le commit de code `45fffbf9` (identique au code du HEAD, la modification ultérieure étant documentaire). **Seule la validation sur machine physique reste à faire** ; l’utilisateur possède l’image USB mais ne dispose pas actuellement d’une machine pour l’essayer. P1 reste donc à 99 % et doit être repris pour les démarrages à froid, le transfert BootInfo/PMM, le framebuffer et le retour firmware. QEMU ne prouve pas le comportement de tous les firmwares et PC. |
 | **P2** | Exceptions, ordonnanceur et synchronisation | **21 %** | Modèle de tâches, IDT x86-64 et primitive de changement de contexte coopératif ajoutés ; CI principale et régression hôte du contexte vertes sur HEAD `e18b1901`. Le scheduler n'est pas encore relié aux contextes et ne commute pas encore entre tâches. |
 | **P3** | Espace utilisateur et ABI système | **0 %** | Non commencé ; dépend notamment des exceptions, syscalls et mécanismes mémoire isolés. |
 | **P4** | Stockage, VFS et préparation OpenFS | **0 %** | Pas de pilote bloc/VFS fonctionnel ; spécifier d'abord les interfaces. |
@@ -17,28 +17,64 @@
 | **P7** | Distribution, installation et sécurité | **0 %** | Pas de version distribuable validée. |
 | **P8** | Fondations noyau pour le contrôle matériel | **12 %** | CPUID x86-64 intégré et inventaire PCI legacy en lecture seule sur le bus 0 ; ECAM/ACPI et tests dédiés restent à faire. |
 | **P9** | Service privilégié de télémétrie/contrôle | **0 %** | Pas de service fonctionnel ; dépend d'interfaces noyau et de pilotes sûrs. |
-| **P10** | Archia Control Center (interface tout-en-un) | **5 %** | Vision et modules documentés ; pas encore d'application fonctionnelle. |
+| **P10** | Archia Control Center (interface tout-en-un) | **0 %** | Vision documentée mais aucune application fonctionnelle ; la documentation seule ne compte pas dans le score. |
 | **B0–B9** | Chargeur UEFI maison | Voir jalons ci-dessous | Plusieurs fondations validées en CI ; la CI du HEAD courant est verte ; la validation sur matériel physique reste ouverte. |
 | **A0–A4** | Démarrage et fondations ARM64 | Voir jalons ci-dessous | Prototype et tests ciblés ; parité avec x86-64 non atteinte. |
 
 Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas conduire à contourner la fiabilité du démarrage, la mémoire, les permissions ou la sécurité. Le but est un logiciel intégré inspiré des usages de CPU-Z, HWiNFO, GPU-Z, Fan Control et OpenRGB, mais conçu pour ArchiaOS et son matériel pris en charge.
 
-## Audit de référence — état du dépôt au HEAD `e18b1901e262f21838ab0484459d207ccf004442`
+## Audit de référence — code et preuves au 13 octobre 2026
 
-Cet audit porte sur les sources présentes et leurs raccordements visibles, pas sur les seuls noms de fichiers ou les déclarations de la documentation. Les résultats CI sont ceux consultés au moment de cette révision ; une CI verte ne prouve que les scénarios qu'elle exécute.
+Cet audit porte sur les sources présentes et leurs raccordements visibles, pas sur les seuls noms de fichiers ou les déclarations de la documentation. Références à ne pas confondre : dernier commit de code noyau/workflow audité `e18b1901e262f21838ab0484459d207ccf004442`; commit de la précédente révision documentaire `dba2d5311c46adcb72e54d9c35a88f962e1a508e`; HEAD avant cette révision `7bdc9e17f5a14e4800804cf36af4beac3689184c`. Les workflows CI principale, démarrage UEFI local et BootInfo négatif ont tous réussi sur ce HEAD documentaire (runs 38378609054, 38378609108, 38378609145). Les tests restent limités aux scénarios automatisés.
 
-### Méthode de statut et de progression
+### Méthode de statut, score d'implémentation et maturité de validation
 
-- **Non implémenté (0 %)** : aucun chemin de code opérationnel correspondant.
-- **Partiellement implémenté** : un sous-ensemble existe, mais une partie structurante manque ou reste isolée.
-- **Implémenté, non validé** : le code est raccordé mais les critères de test/plateforme ne sont pas encore satisfaits.
-- **Validé** : critères d'acceptation passés par une preuve reproductible identifiée ; les limites de cette preuve restent écrites.
-- **Bloqué** : prérequis externe ou technique empêche la suite ; nommer le blocage.
-- **Remplacé/abandonné** : décision documentée et raison conservée.
+**Deux mesures distinctes :**
+- **Implémentation (%)** : part pondérée des livrables fonctionnels dont le code opérationnel et l'intégration sont démontrés.
+- **Maturité de validation** : preuve obtenue (tests hôte, CI, QEMU, matériel). Elle est décrite séparément et n'est pas confondue avec l'implémentation.
 
-Le pourcentage d'une tâche doit être fondé sur ses sous-critères : 0 % si aucun critère opérationnel n'est satisfait, 25 % pour le squelette et le contrat seulement, 50 % si le chemin nominal fonctionne mais que les erreurs/tests manquent, 75 % si l'intégration et les tests automatisés passent mais qu'une validation importante reste, 90 % si seuls des scénarios ciblés non automatisés restent, 100 % uniquement si tous les critères annoncés sont satisfaits. Ces paliers sont des repères, pas des bonus automatiques. Le pourcentage d'une phase est la moyenne pondérée de ses livrables techniques (poids documentés dans cette phase) ; un simple fichier, une API déclarée ou un test écrit non exécuté ne rapporte pas de validation.
+**États uniformes**
+- **Non commencé (0)** : aucun comportement utile correspondant.
+- **Partiellement implémenté** : un chemin concret existe, mais l'interface, les erreurs ou une partie essentielle manque.
+- **Implémenté, non validé** : chemin raccordé, preuve d'acceptation absente.
+- **Validé** : critère d'acceptation passé par une preuve reproductible identifiée.
+- **Bloqué** : prérequis nommé empêchant la suite.
+- **Remplacé/abandonné** : décision et raison documentées.
 
-**Progression globale estimée : 25 %** selon la pondération de pilotage suivante : P0 5 %, P1 15 %, P2 20 %, P3 15 %, P4 12 %, P5 8 %, P6 8 %, P7 7 %, P8 4 %, P9 3 %, P10 3 % (total 100 %). Avec les valeurs affichées, la somme pondérée est d'environ 24,7 %, arrondie à 25 %. Les jalons B0–B9 et A0–A4 sont des vues transversales du boot/ARM64 et **ne sont pas additionnés une seconde fois**. Cette estimation mesure l'avancement vers l'ensemble des objectifs de la roadmap, pas la proportion de code écrite. La pondération est une convention de pilotage ; elle doit être changée explicitement si le périmètre final change.
+**Calcul reproductible**
+1. Chaque phase possède une grille de livrables pondérés totalisant exactement 100.
+2. Score par livrable : 0 % sans chemin opérationnel ; 25 % si seul contrat/squelette ; 50 % si chemin nominal intégré mais erreurs/tests majeurs manquants ; 75 % si chemin et tests automatisés présents mais une validation/cas essentiel reste ; 90 % si seule une validation explicitement pondérée reste ; 100 % uniquement si tous les critères d'acceptation sont satisfaits.
+3. Score phase = somme(poids du livrable × score du livrable) / 100. Un test écrit mais non exécuté ne satisfait pas un critère de test.
+4. Score global = somme(poids de phase × score de phase) / 100, avec poids de phases totalisant 100. Arrondi à l'entier le plus proche uniquement pour l'affichage.
+5. Les poids ne changent pas après observation des résultats sans justification documentée. Les tâches de documentation seule ne donnent pas de points d'implémentation.
+6. Les tableaux B0–B9 et A0–A4 sont des vues transversales : ils ne sont pas ajoutés au score global car les mêmes livrables sont couverts par P0–P10.
+7. Chaque preuve doit identifier le commit exact testé. Une CI sur un commit documentaire prouve la réussite des workflows sur ce commit, mais ne change pas le SHA du dernier changement de code.
+
+**Pondération globale P0–P10 (total = 100)**
+
+| Phase | Poids global | Score courant | Contribution |
+|---|---:|---:|---:|
+| P0 | 5 | 100 | 5,00 |
+| P1 | 15 | 90 | 13,50 |
+| P2 | 20 | 21 | 4,20 |
+| P3 | 15 | 0 | 0,00 |
+| P4 | 12 | 0 | 0,00 |
+| P5 | 8 | 0 | 0,00 |
+| P6 | 8 | 0 | 0,00 |
+| P7 | 7 | 0 | 0,00 |
+| P8 | 4 | 12 | 0,48 |
+| P9 | 3 | 0 | 0,00 |
+| P10 | 3 | 0 | 0,00 |
+| **Total** | **100** | — | **23,38** |
+
+La somme correcte des contributions est **23,38 %** (5 + 13,5 + 4,2 + 0,48 + 0,15 = 23,33 ; attention : le tableau doit donc afficher **23,33 %**). La valeur affichée globale est **23 %**. La pondération privilégie les fondations noyau et les livrables qui débloquent plusieurs phases ; les objectifs produit restent dans le dénominateur et ne sont pas supprimés.
+
+**Preuves du HEAD antérieur à cette révision :**
+- CI principale : [run 38378609054](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609054) — succès sur `7bdc9e17f5a14e4800804cf36af4beac3689184c`.
+- Démarrage UEFI local : [run 38378609108](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609108) — succès sous émulation.
+- BootInfo négatif : [run 38378609145](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609145) — scénario négatif attendu réussi.
+- Package USB : [run 38375095036](https://github.com/Likounsee/ArchiaOS/actions/runs/38375095036) — succès sur `dfd67f2937b95afc8c8d798c0b77483c2f7a43f9`, pas sur le HEAD documentaire antérieur.
+- Campagne matérielle P1 : aucun journal vérifiable consulté ; reste ouverte.
 
 ### Audit des chemins d'exécution de la version actuelle
 
