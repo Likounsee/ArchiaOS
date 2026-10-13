@@ -21,6 +21,7 @@ pub struct CpuInfo {
     pub has_avx2: bool,
     pub has_avx512f: bool,
     pub has_fma: bool,
+    pub fma_usable: bool,
     pub has_bmi1: bool,
     pub has_bmi2: bool,
     pub has_aesni: bool,
@@ -135,6 +136,7 @@ pub fn detect() -> CpuInfo {
         false
     };
     let avx2_usable = has_avx2 && avx_state_usable;
+    let fma_usable = has_fma && avx_state_usable;
     let avx512f_usable = has_avx512f && avx_state_usable && {
         let low: u32;
         let high: u32;
@@ -166,6 +168,7 @@ pub fn detect() -> CpuInfo {
         has_avx2,
         has_avx512f,
         has_fma,
+        fma_usable,
         has_bmi1,
         has_bmi2,
         has_aesni,
