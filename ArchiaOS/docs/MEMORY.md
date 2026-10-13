@@ -1,15 +1,21 @@
 # Mémoire
 
-## Carte mémoire
+## Carte mémoire UEFI
 
-Le noyau demande la carte mémoire via Limine. Il vérifie la révision du protocole, la présence de la réponse, un nombre d’entrées compris entre 1 et 4096, les pointeurs non nuls, les longueurs non nulles et les débordements. Le total des longueurs utilisables est additionné avec contrôle de débordement.
+Le noyau reçoit le contrat versionné `ARCHIABI BootInfo` du chargeur UEFI ArchiaOS. Il valide l'en-tête avant d'utiliser ses champs, puis parse la carte mémoire UEFI en respectant la taille et le pas des descripteurs. Les plages sont contrôlées contre les débordements et les entrées incohérentes ; une carte vide ou trop grande est rejetée.
+
+Seules les plages `EfiConventionalMemory` deviennent candidates à l'allocation. Les autres types UEFI (chargeur, runtime, ACPI, MMIO et autres réservations) restent indisponibles. Les pages sous 1 Mio sont réservées. Les plages sont bornées à la fenêtre physique gérée par le PMM, actuellement `[0, 4 Gio)`.
 
 ## Allocateur physique expérimental
 
-Un allocateur bitmap suit les frames de 4 Kio situées sous 4 Gio. Un bitmap marque les frames issues des régions utilisables ; un second marque celles qui sont libres. Cette distinction empêche de libérer une frame réservée ou une adresse arbitraire. Les pages sous 1 Mio sont toujours réservées. Les plages non utilisables ont priorité si les entrées de carte se chevauchent. Les plages sont appliquées par mots bitmap, plutôt qu’en parcourant chaque page une par une.
+L'allocateur bitmap gère des frames de 4 Kio sous 4 Gio. Un bitmap marque les frames gérées et un second les frames libres. Une frame n'est allouable que si elle est à la fois gérée et libre ; cela empêche de libérer une adresse arbitraire, une frame réservée, une adresse non alignée ou une frame déjà libérée.
 
-Le smoke test QEMU alloue 130 pages distinctes en traversant plusieurs mots bitmap, vérifie leur alignement et la limite physique, confirme la baisse du compteur libre, libère les pages, vérifie le compteur restauré et exige que les adresses invalides et le double-free soient rejetés.
+Les plages sont appliquées par mots bitmap plutôt qu'en parcourant chaque page individuellement. Le calcul préliminaire vérifie les descripteurs avant de réinitialiser l'état global ; l'allocateur n'est marqué initialisé qu'après le remplissage et la vérification des invariants. Les pages couvrant le framebuffer sont réservées avec arrondi vers l'extérieur, même si le firmware les classait incorrectement comme mémoire conventionnelle.
+
+Le test PMM au démarrage vérifie notamment les calculs de plages utilisables/réservées, les limites et chevauchements du framebuffer, les invariants des bitmaps, l'épuisement simulé, le rejet des libérations invalides, l'absence de libération de frames réservées, ainsi que l'allocation et la libération de 130 pages distinctes à travers plusieurs mots bitmap. Il contrôle que le nombre de pages libres revient à sa valeur initiale après le test.
+
+Le workflow de démarrage local doit aussi exiger le marqueur série `ArchiaOS: UEFI PMM allocation/free self-test passed` et `ArchiaOS: framebuffer probe=written`. Ces marqueurs prouvent que le chemin de test correspondant a été atteint sous OVMF/QEMU ; ils ne remplacent pas la validation sur matériel physique.
 
 ## Limites importantes
 
-L’allocateur est limité à 4 Gio, initialisé une seule fois et non synchronisé pour SMP. Le nombre total d’octets utilisables déclaré par Limine n’est pas égal au nombre de pages gérées : les régions hors limite, les pages partielles et les réservations sont exclues du bitmap. Les réservations et chevauchements doivent encore être audités ; aucun tas ou gestionnaire de mémoire virtuelle général n’existe encore.
+Le PMM est limité à 4 Gio, s'initialise une seule fois et n'est pas synchronisé pour SMP. Le nombre d'octets de mémoire conventionnelle indiqué dans les statistiques est le total géré après exclusion des pages basses et du framebuffer, et non la totalité de la RAM installée. Il n'existe pas encore de tas général ni de gestionnaire complet de mémoire virtuelle. La stabilité des réservations et du démarrage doit encore être confirmée par une campagne matérielle répétable.
