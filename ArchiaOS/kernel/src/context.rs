@@ -45,7 +45,10 @@ impl CpuContext {
     }
 
     pub fn is_initialized(&self) -> bool {
-        self.rsp != 0 && self.rsp % 16 == 0
+        // Saved contexts point at six pushed registers and naturally have
+        // RSP % 16 == 8 at the assembly entry boundary. Only synthetic first-run
+        // frames have the stricter 16-byte alignment checked by self_test().
+        self.rsp != 0
     }
 }
 
@@ -125,7 +128,9 @@ pub fn self_test() -> Result<(), ()> {
             context_test_entry,
         );
 
-        if !(&*core::ptr::addr_of!(TEST_TASK_CONTEXT)).is_initialized() {
+        if !(&*core::ptr::addr_of!(TEST_TASK_CONTEXT)).is_initialized()
+            || (&*core::ptr::addr_of!(TEST_TASK_CONTEXT)).rsp % 16 != 0
+        {
             return Err(());
         }
 
