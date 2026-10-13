@@ -7,7 +7,7 @@
 | Priorité | Domaine | Avancement estimé | État / prochaine preuve attendue |
 |---|---|---:|---|
 | **P0** | Démarrage UEFI maison x86-64 par défaut | **100 % (jalon physique atteint)** | Démarrage depuis la clé USB et premier affichage framebuffer confirmés par l’utilisateur sur le PC physique. Le motif bleu prouve l’écriture dans le framebuffer après le handoff ; il ne constitue pas encore un bureau ni une pile graphique. Un redémarrage à froid n’est pas consigné. |
-| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **94 %** | Le HEAD `5cb86a1` conserve le rejet des alias ACPI/Device Tree vers les plages de handoff et les pages ELF, et vérifie le préfixe RSDP de 20 octets avant d’accéder au champ longueur ACPI 2.0+ de 4 octets. Cela accepte le format ACPI 1.0 sans supposer à tort que 24 octets sont réservés. La CI du HEAD courant reste à confirmer. Reste : terminer l’audit des autres plages réservées spécifiques aux plateformes et étendre la validation matérielle. |
+| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **95 %** | Le HEAD `b075e59` centralise l’arrondi vérifié des plages physiques aux pages pour les audits d’alias noyau/framebuffer et ACPI/Device Tree, avec tests sur plages non alignées, multi-pages, vides et débordantes. Le contrôle RSDP distingue le préfixe ACPI 1.0 de son extension 2.0+. Les workflows CI et de démarrage déclenchés sur le HEAD courant sont en cours. Reste : terminer l’audit des autres plages réservées spécifiques aux plateformes et confirmer les validations automatisées. |
 | **P2** | Ordonnanceur et synchronisation | **0 %** | Non implémenté ; définir les primitives de tâches et le changement de contexte avant la préemption. |
 | **P3** | Espace utilisateur et ABI système | **0 %** | Non commencé ; dépend notamment des exceptions, syscalls et mécanismes mémoire isolés. |
 | **P4** | Stockage, VFS et préparation OpenFS | **0 %** | Pas de pilote bloc/VFS fonctionnel ; spécifier d'abord les interfaces. |
@@ -43,9 +43,9 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 
 **Critère de sortie :** build reproductible et tests de démarrage verts sur le HEAD courant, sans déclarer les essais QEMU comme une validation de tout matériel physique.
 
-### P1 — Fiabilité du chargeur et de la mémoire — 94 %
+### P1 — Fiabilité du chargeur et de la mémoire — 95 %
 
-**État : EN COURS — 94 %.** Le HEAD `5cb86a1` étend l’audit des alias ACPI RSDP/Device Tree aux pages physiques complètes allouées aux segments `PT_LOAD` (plages arrondies à la page) et corrige la validation du RSDP : seuls les 20 octets requis sont présumés présents avant lecture de la révision ; le champ longueur 2.0+ est vérifié séparément avant accès. La fonction d’audit accepte une tranche de taille dynamique. La CI du HEAD courant n’est pas encore confirmée. Reste : terminer l’audit des autres plages spécifiques aux plateformes, vérifier la CI et étendre les scénarios matériels.
+**État : EN COURS — 95 %.** Le HEAD `b075e59` centralise l’arrondi contrôlé des plages physiques à auditer (début arrondi vers le bas, fin vers le haut, rejet des tailles nulles et des débordements) et réutilise cette fonction pour vérifier les chevauchements des segments ELF avec le framebuffer et les tables ACPI/Device Tree. Des tests couvrent les plages non alignées, les limites de page, les plages vides et les débordements. Le contrôle RSDP conserve la distinction ACPI 1.0 / 2.0+. Les workflows CI, boot UEFI et paquet USB du HEAD courant sont en cours. Reste : terminer l’audit des autres plages réservées spécifiques aux plateformes et confirmer les validations automatisées.
 
 **Objectif :** sécuriser le transfert UEFI → noyau et la gestion de la mémoire physique.
 
