@@ -5,6 +5,7 @@ mod memory;
 mod cpu;
 mod pci;
 mod scheduler;
+mod context;
 mod interrupts;
 
 use core::arch::{asm, global_asm};
@@ -285,6 +286,16 @@ pub extern "C" fn rust_kernel_main(
         halt_forever();
     }
     let _ = writeln!(serial, "ArchiaOS: UEFI PMM allocation/free self-test passed");
+
+    match context::self_test() {
+        Ok(()) => {
+            let _ = writeln!(serial, "ArchiaOS: x86-64 task context and initial stack self-test passed");
+        }
+        Err(()) => {
+            let _ = writeln!(serial, "ArchiaOS: x86-64 task context self-test failed");
+            halt_forever();
+        }
+    }
 
     // P2 starts with a bounded, allocation-free task-state machine. This test
     // validates round-robin selection and task transitions; it is not a CPU
