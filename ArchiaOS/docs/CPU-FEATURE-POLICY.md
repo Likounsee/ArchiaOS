@@ -26,7 +26,7 @@ Les optimisations facultatives ne doivent jamais faire planter le démarrage sur
 
 - Le noyau x86-64 vérifie SSE4.1 et s'arrête avec un diagnostic si cette exigence n'est pas satisfaite.
 - Le détecteur CPUID rapporte SSE4.1/SSE4.2, AES-NI, FMA, BMI1/BMI2, AVX, AVX2 et AVX-512F.
-- Les champs AVX/AVX2/AVX-512 distinguent le support matériel de l'état OS actuellement utilisable.
+- Les champs AVX/AVX2/FMA/AVX-512 distinguent le support matériel de l'état OS actuellement utilisable.
 - **À valider par CI** : compilation, démarrage QEMU, refus contrôlé d'un profil CPU sans SSE4.1 et tests unitaires du décodage/dispatch.
 - **Pas encore implémenté** : chemins de calcul réellement optimisés par AVX/AVX2/AVX-512 et sauvegarde/restauration générale de l'état SIMD pour les changements de contexte.
 
