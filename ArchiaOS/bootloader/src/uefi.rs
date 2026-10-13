@@ -1369,6 +1369,11 @@ unsafe fn discover_framebuffer(boot_services: *mut BootServices) -> (u64, u64) {
     // kernel receives only the physical range, so the byte capacity must cover
     // every scan line and the mode must expose a directly addressable pixel format.
     let info = unsafe { &*mode_info };
+    // The structure layout is defined by GOP information version 0. Do not
+    // interpret an unknown future layout using the current field offsets.
+    if !gop_mode_information_is_supported(info.version) {
+        return (0, 0);
+    }
     if !archiaos_bootloader::framebuffer::is_usable(
         base,
         size,
@@ -1386,6 +1391,11 @@ fn gop_mode_metadata_is_valid(max_mode: u32, current_mode: u32, info_size: usize
     max_mode != 0
         && current_mode < max_mode
         && info_size >= core::mem::size_of::<GraphicsOutputModeInformation>()
+}
+
+fn gop_mode_information_is_supported(version: u32) -> bool {
+    // UEFI currently defines only version 0 of this fixed-layout structure.
+    version == 0
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -2995,7 +3005,10 @@ mod loaded_image_range_tests {
 
 #[cfg(test)]
 mod gop_mode_metadata_tests {
-    use super::{gop_mode_metadata_is_valid, GraphicsOutputModeInformation};
+    use super::{
+        gop_mode_information_is_supported, gop_mode_metadata_is_valid,
+        GraphicsOutputModeInformation,
+    };
 
     #[test]
     fn accepts_complete_current_gop_mode_information() {
@@ -3016,5 +3029,12 @@ mod gop_mode_metadata_tests {
         assert!(!gop_mode_metadata_is_valid(0, 0, core::mem::size_of::<GraphicsOutputModeInformation>()));
         assert!(!gop_mode_metadata_is_valid(2, 2, core::mem::size_of::<GraphicsOutputModeInformation>()));
         assert!(!gop_mode_metadata_is_valid(1, 0, core::mem::size_of::<GraphicsOutputModeInformation>() - 1));
+    }
+
+    #[test]
+    fn accepts_only_the_known_gop_information_layout() {
+        assert!(gop_mode_information_is_supported(0));
+        assert!(!gop_mode_information_is_supported(1));
+        assert!(!gop_mode_information_is_supported(u32::MAX));
     }
 }
