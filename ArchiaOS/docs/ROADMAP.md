@@ -15,7 +15,7 @@
 | **P5** | Affichage et pile graphique | **0 %** | Pas de pile graphique de production. |
 | **P6** | Réseau et mesures de performances | **0 %** | Pas de pile réseau complète ni de bancs de performance stabilisés. |
 | **P7** | Distribution, installation et sécurité | **0 %** | Pas de version distribuable validée. |
-| **P8** | Fondations noyau pour le contrôle matériel | **32 %** | CPUID est intégré au démarrage et journalisé ; le scan PCI legacy couvre le bus 0. Les tests dédiés, ECAM/ACPI, capteurs et pilotes contrôlés restent absents. |
+| **P8** | Fondations noyau pour le contrôle matériel | **32 %** | CPUID est intégré au démarrage et journalisé ; le noyau x86-64 impose maintenant SSE4.1 et détecte plusieurs extensions facultatives, en séparant support matériel et état AVX utilisable. CI du nouveau code à vérifier ; tests dédiés CPUID, ECAM/ACPI, capteurs et pilotes contrôlés restent absents. Contrat détaillé dans [CPU-FEATURE-POLICY.md](CPU-FEATURE-POLICY.md). |
 | **P9** | Service privilégié de télémétrie/contrôle | **0 %** | Pas de service fonctionnel ; dépend d'interfaces noyau et de pilotes sûrs. |
 | **P10** | Archia Control Center (interface tout-en-un) | **0 %** | Vision documentée mais aucune application fonctionnelle ; la documentation seule ne compte pas dans le score. |
 | **B0–B9** | Chargeur UEFI maison | Voir jalons ci-dessous | Vue de progression du chargeur ; les preuves doivent être lues avec le SHA du workflow, et la validation sur matériel physique reste ouverte. |
@@ -370,6 +370,8 @@ Dépendances structurantes : **VMM/MMU → espaces d'adressage → processus/sys
 
 ### P8.1 — Identification et inventaire en lecture seule
 - [x] Ajouter un module x86-64 CPUID sans allocation dynamique : fabricant, famille/modèle/stepping, marque CPU si disponible et fonctionnalités pertinentes (commit `bb157c7`).
+- [x] Définir et appliquer SSE4.1 comme minimum x86-64 du noyau ; détecter SSE4.2, AES-NI, FMA, BMI1/BMI2 et AVX/AVX2/AVX-512F avec séparation entre support matériel et état OS utilisable (validation CI en attente).
+- [ ] Ajouter tests du refus CPU sans SSE4.1 et tests de décodage/dispatch SIMD, puis valider sous QEMU.
 - [x] Vérifier les feuilles CPUID maximales avant chaque interrogation et gérer proprement les champs indisponibles.
 - [ ] Ajouter des tests unitaires pour le décodage des champs CPU.
 - [x] Première découverte PCI lecture seule via mécanisme de configuration legacy, limitée au bus 0 et à 32 périphériques / 8 fonctions ; implémentation `kernel/src/pci.rs`, sans test dédié ni couverture de tous les bus.
