@@ -4,6 +4,7 @@
 mod memory;
 mod cpu;
 mod pci;
+mod scheduler;
 
 use core::arch::{asm, global_asm};
 use core::fmt::{self, Write};
@@ -279,6 +280,19 @@ pub extern "C" fn rust_kernel_main(
         halt_forever();
     }
     let _ = writeln!(serial, "ArchiaOS: UEFI PMM allocation/free self-test passed");
+
+    // P2 starts with a bounded, allocation-free task-state machine. This test
+    // validates round-robin selection and task transitions; it is not a CPU
+    // context switch and must not be presented as a working multitasking kernel.
+    match scheduler::Scheduler::self_test() {
+        Ok(()) => {
+            let _ = writeln!(serial, "ArchiaOS: cooperative scheduler state self-test passed");
+        }
+        Err(error) => {
+            let _ = writeln!(serial, "ArchiaOS: scheduler state self-test failed: {:?}", error);
+            halt_forever();
+        }
+    }
     let _ = writeln!(serial, "ArchiaOS: UEFI kernel entry validated");
     halt_forever();
 }
