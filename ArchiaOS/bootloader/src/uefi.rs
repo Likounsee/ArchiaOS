@@ -1318,64 +1318,10 @@ fn configuration_table(system_table: *mut SystemTable, wanted: &Guid) -> *mut c_
     ptr::null_mut()
 }
 
-unsafe fn validated_rsdp(pointer: *mut c_void) -> u64 {
-    if pointer.is_null() {
-        return 0;
-    }
-    let address = pointer.cast::<u8>();
-    // Check the fixed signature before interpreting revision or length fields.
-    // SAFETY: pointer is supplied by the firmware ACPI configuration table.
-    let signature = unsafe { core::slice::from_raw_parts(address, 8) };
-    if !rsdp_signature_is_valid(signature) {
-        return 0;
-    }
-    // SAFETY: the ACPI RSDP contains a fixed legacy prefix of 20 bytes.
-    let legacy = unsafe { core::slice::from_raw_parts(address, 20) };
-    if legacy.get(15).copied() == Some(0) {
-        return if archiaos_bootloader::acpi::parse_rsdp(legacy).is_ok() {
-            pointer as u64
-        } else {
-            0
-        };
-    }
-    // Extended RSDP structures contain at least 36 bytes including their length.
-    // SAFETY: the ACPI 2.0 firmware table entry points to an extended RSDP.
-    let fixed = unsafe { core::slice::from_raw_parts(address, 36) };
-    if fixed.get(15).copied().unwrap_or(0) < 2 {
-        return 0;
-    }
-    let length = u32::from_le_bytes([fixed[20], fixed[21], fixed[22], fixed[23]]) as usize;
-    if !(36..=archiaos_bootloader::acpi::MAX_RSDP_SIZE).contains(&length) {
-        return 0;
-    }
-    // SAFETY: advertised length is bounded and belongs to the firmware table.
-    let complete = unsafe { core::slice::from_raw_parts(address, length) };
-    if archiaos_bootloader::acpi::parse_rsdp(complete).is_ok() {
-        pointer as u64
-    } else {
-        0
-    }
-}
-
-unsafe fn validated_device_tree(pointer: *mut c_void) -> u64 {
-    if pointer.is_null() {
-        return 0;
-    }
-    let address = pointer.cast::<u8>();
-    // SAFETY: pointer is returned by EFI_DTB_TABLE_GUID; the fixed prefix is read
-    // before its advertised total size is trusted.
-    let prefix = unsafe { core::slice::from_raw_parts(address, 8) };
-    let Some(total) = validated_fdt_prefix_length(prefix) else {
-        return 0;
-    };
-    let total = total as usize;
-    // SAFETY: total is bounded by the parser limit and firmware supplied the DTB address.
-    let tree = unsafe { core::slice::from_raw_parts(address, total) };
-    if archiaos_bootloader::device_tree::validate_tree(tree).is_ok() {
-        pointer as u64
-    } else {
-        0
-    }
+/// Capture a firmware table address without dereferencing it before the final memory map
+/// proves that the referenced physical range is reserved, mapped, and disjoint from handoff data.
+fn platform_table_address(pointer: *mut c_void) -> u64 {
+    pointer as u64
 }
 
 /// Return the active GOP framebuffer range when firmware exposes a usable mode.
@@ -2052,14 +1998,17 @@ fn require_identity_mapped_ram(
 fn platform_tables(system_table: *mut SystemTable) -> (u64, u64) {
     let acpi20 = configuration_table(system_table, &ACPI_20_TABLE_GUID);
     let acpi10 = configuration_table(system_table, &ACPI_10_TABLE_GUID);
-    // SAFETY: firmware configuration-table pointers are validated before use.
-    let rsdp20 = unsafe { validated_rsdp(acpi20) };
-    let rsdp10 = unsafe { validated_rsdp(acpi10) };
-    let rsdp = if rsdp20 != 0 { rsdp20 } else { rsdp10 };
+    // Do not dereference firmware-controlled table pointers here: the final memory
+    // map is not available yet. The handoff audit validates every prefix and complete
+    // range before parsing the RSDP or Device Tree.
+    let rsdp = if !acpi20.is_null() {
+        platform_table_address(acpi20)
+    } else {
+        platform_table_address(acpi10)
+    };
 
     let dtb = configuration_table(system_table, &EFI_DTB_TABLE_GUID);
-    // SAFETY: pointer comes from firmware and is fully parsed before being exposed.
-    let dtb = unsafe { validated_device_tree(dtb) };
+    let dtb = platform_table_address(dtb);
     (rsdp, dtb)
 }
 
