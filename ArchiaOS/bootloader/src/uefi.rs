@@ -1854,13 +1854,17 @@ fn audit_platform_table_ranges(
     if let Some((root_address, root_is_xsdt)) = validated_acpi_root {
         const MAX_ACPI_ROOT_ENTRIES: usize = 256;
         const MAX_ACPI_AUDITED_BYTES: u64 = 64 * 1024 * 1024;
-        let mut protected = [(0u64, 0u64); 2];
+        let mut protected = [(0u64, 0u64); 3];
         let mut protected_count = 0usize;
         if let Some(range) = validated_rsdp_range {
             protected[protected_count] = range;
             protected_count += 1;
         }
         if let Some(range) = validated_device_tree_range {
+            protected[protected_count] = range;
+            protected_count += 1;
+        }
+        if let Some(range) = configuration_table_range {
             protected[protected_count] = range;
             protected_count += 1;
         }
