@@ -364,7 +364,7 @@ pub extern "C" fn rust_kernel_main(
     match scheduler::runtime_self_test() {
         Ok(()) => {
             paint_status_line(info, 5, FB_SCHEDULER_OK);
-            let _ = writeln!(serial, "ArchiaOS: two-task cooperative context-switch self-test passed");
+            let _ = writeln!(serial, "ArchiaOS: real task block/wake context-switch self-test passed");
         }
         Err(error) => {
             paint_status_line(info, 5, FB_FAIL);
