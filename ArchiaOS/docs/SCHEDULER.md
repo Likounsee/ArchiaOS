@@ -42,7 +42,7 @@ La politique doit arbitrer entre latence, débit, efficacité énergétique et l
 6. fournir un repli déterministe et sûr si la topologie est partielle ou inconnue ;
 7. fonctionner d'abord en mono-cœur, puis être étendue au SMP seulement après mise en place des primitives de synchronisation et des tests multi-CPU.
 
-Les décisions de placement devront être testées avec des topologies synthétiques, indépendamment de la machine de développement : homogène, P/E, plusieurs CCD avec cache asymétrique, topologie partielle/inconnue et contraintes d'affinité. Les tests sur du matériel réel et les mesures de performance serviront ensuite à calibrer la politique ; ils ne remplaceront pas les tests déterministes.
+Les décisions de placement devront être testées avec des topologies synthétiques, indépendamment de la machine de développement : homogène, P/E, plusieurs CCD avec cache asymétrique, topologie partielle/inconnue et contraintes d'affinité. Les capacités ISA font aussi partie des contraintes : le noyau x86-64 exige SSE4.1, tandis que AVX/AVX2/AVX-512 restent optionnels et ne sont utilisables que si le CPU et l'état système les autorisent. Une tâche utilisant une extension optionnelle ne doit pas migrer vers un cœur qui ne peut pas l'exécuter, sauf si l'état SIMD est correctement géré et que la politique garantit la compatibilité de tous les CPU autorisés. Les tests sur du matériel réel et les mesures de performance serviront ensuite à calibrer la politique ; ils ne remplaceront pas les tests déterministes.
 
 ## Étapes prévues
 
