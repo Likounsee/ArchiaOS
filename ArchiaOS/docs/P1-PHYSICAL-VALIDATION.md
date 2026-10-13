@@ -72,6 +72,18 @@ L’utilisateur rapporte **5 démarrages à froid réussis sur 5**, avec le mêm
 
 Cette observation fait progresser la campagne physique, mais **ne clôt pas encore P1** : l’artefact exact et les autres critères doivent être consignés. Ne pas interpréter la barre blanche comme un journal complet de tous les tests.
 
+### Résultat matériel rapporté — redémarrages à chaud (13 octobre 2026)
+
+L’utilisateur rapporte **5 redémarrages à chaud réussis sur 5**, chacun atteignant le même résultat visuel : la barre blanche finale. Il s’agit d’une observation rapportée par l’utilisateur, et non d’un test exécuté directement par l’assistant.
+
+| Vérification | Résultat rapporté | Statut de preuve |
+|---|---|---|
+| Démarrages à froid | 5/5, barre blanche finale | Rapporté par l’utilisateur |
+| Redémarrages à chaud | **5/5, barre blanche finale** | Rapporté par l’utilisateur |
+| SHA exact du paquet USB testé | Non communiqué | À consigner |
+| Marqueurs série BootInfo et PMM | Non fournis | Non vérifiés |
+| Retour firmware et démarrage du système habituel | Non communiqués | À confirmer |
+
 ## Fiche de résultats
 
 Copier cette fiche pour chaque session :
@@ -86,7 +98,7 @@ Copier cette fiche pour chaque session :
 | Version UEFI/BIOS | À renseigner |
 | Port USB et clé | À renseigner |
 | Démarrages à froid (réussis / 5) | À renseigner |
-| Redémarrages à chaud (réussis / 5) | À renseigner |
+| Redémarrages à chaud (réussis / 5) | **5/5 rapportés, barre blanche finale** (13 octobre 2026) |
 | BootInfo + PMM observés | À renseigner |
 | Motif framebuffer observé | À renseigner |
 | Retour firmware + OS habituel | À renseigner |
