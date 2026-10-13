@@ -28,6 +28,14 @@ pub enum SchedulerError {
     InvariantViolation,
 }
 
+/// Result of asking the scheduler for work when no task is currently running.
+/// `Idle` is a decision for the caller to enter its idle path; it is not a task.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DispatchDecision {
+    Run(TaskId),
+    Idle,
+}
+
 #[derive(Clone, Copy)]
 struct Task {
     state: TaskState,
@@ -78,6 +86,22 @@ impl Scheduler {
             return Err(SchedulerError::InvariantViolation);
         }
         self.select_next()
+    }
+
+    /// Dispatch a runnable task, or explicitly tell the caller to enter its idle path.
+    ///
+    /// Unlike `schedule`, an empty runnable set is not an error for this API:
+    /// all tasks may be blocked or exited. The caller must still provide the
+    /// architecture-specific idle loop/context; this method does not halt the CPU.
+    pub fn dispatch_or_idle(&mut self) -> Result<DispatchDecision, SchedulerError> {
+        if self.current.is_some() {
+            return Err(SchedulerError::InvariantViolation);
+        }
+        match self.select_next() {
+            Ok(id) => Ok(DispatchDecision::Run(id)),
+            Err(SchedulerError::NoRunnableTask) => Ok(DispatchDecision::Idle),
+            Err(error) => Err(error),
+        }
     }
 
     /// Select the next runnable task in deterministic round-robin order.
@@ -396,6 +420,36 @@ mod tests {
         assert_eq!(scheduler.select_next(), Ok(task));
         assert_eq!(scheduler.block_current(), Err(SchedulerError::NoRunnableTask));
         assert_eq!(scheduler.current(), None);
+        assert_eq!(scheduler.check_invariants(), Ok(()));
+    }
+
+    #[test]
+    fn dispatch_returns_idle_when_every_task_is_blocked_then_resumes_after_wake() {
+        let mut scheduler = Scheduler::new();
+        let task = scheduler.create_task().unwrap();
+
+        assert_eq!(scheduler.schedule(), Ok(task));
+        assert_eq!(scheduler.block_current(), Err(SchedulerError::NoRunnableTask));
+        assert_eq!(scheduler.dispatch_or_idle(), Ok(DispatchDecision::Idle));
+        assert_eq!(scheduler.current(), None);
+        assert_eq!(scheduler.state(task), Ok(TaskState::Blocked));
+        assert_eq!(scheduler.check_invariants(), Ok(()));
+
+        scheduler.wake(task).unwrap();
+        assert_eq!(scheduler.dispatch_or_idle(), Ok(DispatchDecision::Run(task)));
+        assert_eq!(scheduler.current(), Some(task));
+        assert_eq!(scheduler.check_invariants(), Ok(()));
+    }
+
+    #[test]
+    fn dispatch_returns_idle_after_all_tasks_exit() {
+        let mut scheduler = Scheduler::new();
+        let task = scheduler.create_task().unwrap();
+
+        assert_eq!(scheduler.schedule(), Ok(task));
+        assert_eq!(scheduler.exit_current(), Err(SchedulerError::NoRunnableTask));
+        assert_eq!(scheduler.dispatch_or_idle(), Ok(DispatchDecision::Idle));
+        assert_eq!(scheduler.state(task), Ok(TaskState::Exited));
         assert_eq!(scheduler.check_invariants(), Ok(()));
     }
 }
