@@ -38,14 +38,32 @@ Critère : 5 démarrages sur 5. Consigner séparément tout comportement différ
 
 ### C. BootInfo, mémoire et framebuffer
 
-Sur chaque démarrage réussi, vérifier les preuves accessibles dans la sortie série ou les diagnostics disponibles :
-- [ ] Le chargeur UEFI maison ouvre et valide l'image noyau ELF.
-- [ ] Le chargeur quitte les services de démarrage UEFI et transfère le contrôle au noyau.
-- [ ] Le noyau confirme `UEFI BootInfo validated`.
-- [ ] Le test PMM annonce `UEFI PMM allocation/free self-test passed`.
-- [ ] Le diagnostic annonce `framebuffer probe=written` et le motif attendu est effectivement visible à l'écran.
+Sur chaque démarrage réussi, recueillir la sortie série si une interface série matérielle est disponible. Le noyau initialise le port legacy COM1 (0x3F8) et y écrit les étapes de démarrage ; le fait que l'écran affiche uniquement des lignes colorées est normal, car aucun rendu de texte n'est implémenté dans le framebuffer à ce stade.
 
-Les marqueurs série prouvent que le chemin correspondant a été atteint, mais pas à eux seuls que toutes les couleurs, résolutions ou configurations framebuffer sont correctes. Si le PC expose un port COM, une capture série peut être réalisée avec un adaptateur série adapté ; ne pas connecter directement un signal TTL à un port RS-232. Si aucune sortie série n'est disponible, consigner explicitement cette limite : une photo de l'écran prouve le motif visible, mais ne prouve pas à elle seule les marqueurs BootInfo/PMM.
+Les marqueurs série à rechercher sont :
+- [ ] Le chargeur UEFI maison ouvre et valide l'image noyau ELF, puis transfère le contrôle au noyau.
+- [ ] `UEFI BootInfo validated`.
+- [ ] `UEFI PMM allocation/free self-test passed`.
+- [ ] `framebuffer probe=written` et le motif attendu est effectivement visible à l'écran.
+
+#### Alternative sans port série accessible : marqueurs framebuffer
+
+Le noyau écrit six bandes de couleur dans un ordre fixe. Photographier l'écran complet pour que la séquence soit visible ; ne pas se contenter d'un recadrage d'une seule bande.
+
+| Ordre | Couleur indicative | Étape marquée |
+|---:|---|---|
+| 1 | Bleu clair / cyan | Entrée dans le chemin de statut framebuffer |
+| 2 | Vert | Validation initiale de BootInfo et sonde framebuffer terminées |
+| 3 | Vert-jaune | Initialisation de la mémoire UEFI terminée |
+| 4 | Bleu | Auto-test PMM d'allocation/libération réussi |
+| 5 | Violet / magenta | Auto-test de contexte x86-64 réussi |
+| 6 | Blanc | Auto-test de l'état du scheduler réussi |
+
+**Interprétation importante :** dans le code noyau actuel, les étapes d'échec BootInfo/mémoire/PMM s'arrêtent avant de peindre les marqueurs des étapes suivantes. Par conséquent, la présence de la bande blanche finale, si elle est bien issue de ce build, indique que l'exécution a dépassé avec succès les auto-tests BootInfo, PMM, contexte et scheduler. Cette preuve visuelle est une preuve d'atteinte du chemin de code, pas un journal texte et pas une preuve exhaustive de correction du noyau.
+
+Si l'écran montre seulement une bande blanche isolée et que les autres bandes ne sont pas visibles, conserver la photo et ne pas déduire la séquence complète sans examiner le framebuffer. Si une sortie série physique est inaccessible, noter cette limite et joindre la photo complète plutôt que d'inventer ou de reconstituer des lignes série.
+
+Pour une capture série réelle, utiliser uniquement une interface électrique adaptée au port exposé par la machine. Ne pas relier directement un signal TTL à un port RS-232 ni connecter des broches au hasard. Un PC sans port série accessible peut nécessiter un adaptateur compatible et un câblage documenté ; une connexion USB seule ne rend pas automatiquement COM1 accessible à l'hôte.
 
 ### D. Retour au firmware et système habituel
 
@@ -63,14 +81,15 @@ L’utilisateur rapporte **5 démarrages à froid réussis sur 5**, avec le mêm
 | Vérification | Résultat rapporté | Statut de preuve |
 |---|---|---|
 | Démarrages à froid | **5/5** | Répétabilité visuelle rapportée |
-| Barre blanche finale | Présente sur les 5 essais | Indice que le dernier auto-test visuel atteint a été marqué ; ne prouve pas à lui seul tous les invariants du noyau |
-| SHA exact du paquet USB testé | Non communiqué | À rattacher avant clôture |
+| Barre blanche finale | Présente sur les 5 essais | Selon l'ordre des marqueurs dans le noyau, indique que les auto-tests précédents ont été franchis si elle provient bien du build testé ; la photo complète reste à conserver |
+| SHA exact du paquet USB testé | `cb5c676a9adbd0a9cf0e7a4ef69224b4a8729ecc` | Confirmé par `BUILD-INFO.txt` et par les SHA-256 identiques de `kernel.elf` et `BOOTX64.EFI` sur l'archive extraite et la clé USB |
 | Modèle de machine / version UEFI | Non consignés dans ce compte rendu | À renseigner |
-| Sortie série BootInfo + PMM | Non fournie | Non vérifiée par cette observation |
-| 5 redémarrages à chaud | Non communiqués | À vérifier séparément |
+| Sortie série BootInfo + PMM | Non fournie | Non disponible dans les preuves actuelles |
+| Marqueur framebuffer final | Barre blanche rapportée | Rapport utilisateur ; photo complète à conserver si disponible |
+| 5 redémarrages à chaud | **5/5 rapportés** | Répétabilité visuelle rapportée |
 | Retour firmware et démarrage du système habituel | Confirmés sans problème par l’utilisateur le 13 octobre 2026 | Rapporté par l’utilisateur |
 
-Cette observation fait progresser la campagne physique, mais **ne clôt pas encore P1** : l’artefact exact et les autres critères doivent être consignés. Ne pas interpréter la barre blanche comme un journal complet de tous les tests.
+La provenance exacte des binaires USB est maintenant rattachée au commit indiqué ci-dessus. Les résultats matériels restent des observations déclarées par l'utilisateur. La bande blanche finale fournit un indice d'atteinte des auto-tests antérieurs selon le flux de contrôle du noyau, mais la campagne reste à compléter par la consignation de la machine/UEFI et des preuves visuelles conservées.
 
 ### Résultat matériel rapporté — redémarrages à chaud (13 octobre 2026)
 
@@ -80,8 +99,8 @@ L’utilisateur rapporte **5 redémarrages à chaud réussis sur 5**, chacun att
 |---|---|---|
 | Démarrages à froid | 5/5, barre blanche finale | Rapporté par l’utilisateur |
 | Redémarrages à chaud | **5/5, barre blanche finale** | Rapporté par l’utilisateur |
-| SHA exact du paquet USB testé | Non communiqué | À consigner |
-| Marqueurs série BootInfo et PMM | Non fournis | Non vérifiés |
+| SHA exact du paquet USB testé | `cb5c676a9adbd0a9cf0e7a4ef69224b4a8729ecc` | Confirmé par BUILD-INFO et concordance SHA-256 des deux binaires |
+| Marqueurs série BootInfo et PMM | Non fournis | La preuve série reste indisponible ; la séquence visuelle constitue une preuve alternative de progression |
 | Retour firmware et démarrage du système habituel | Confirmés sans problème par l’utilisateur le 13 octobre 2026 | Rapporté par l’utilisateur |
 
 ## Fiche de résultats
@@ -91,20 +110,20 @@ Copier cette fiche pour chaque session :
 | Champ | Valeur |
 |---|---|
 | Date et heure | À renseigner |
-| Commit exact ayant produit le paquet USB | À renseigner |
+| Commit exact ayant produit le paquet USB | `cb5c676a9adbd0a9cf0e7a4ef69224b4a8729ecc` (SHA confirmé pour les binaires USB testés) |
 | Nom du ZIP / lien du workflow CI | À renseigner |
 | Machine / carte mère | À renseigner |
 | CPU / RAM | À renseigner |
 | Version UEFI/BIOS | À renseigner |
 | Port USB et clé | À renseigner |
-| Démarrages à froid (réussis / 5) | À renseigner |
+| Démarrages à froid (réussis / 5) | **5/5 rapportés, barre blanche finale** (13 octobre 2026) |
 | Redémarrages à chaud (réussis / 5) | **5/5 rapportés, barre blanche finale** (13 octobre 2026) |
-| BootInfo + PMM observés | À renseigner |
-| Motif framebuffer observé | À renseigner |
-| Retour firmware + OS habituel | À renseigner |
-| Photos / journaux conservés | À renseigner |
+| BootInfo + PMM observés | Indirectement indiqués par la bande blanche finale rapportée ; conserver la photo complète |
+| Motif framebuffer observé | Barre blanche finale rapportée |
+| Retour firmware + OS habituel | Confirmé par l’utilisateur |
+| Photos / journaux conservés | À joindre / renseigner |
 | Anomalies et reproduction | À renseigner |
 
 ## Décision d'acceptation P1
 
-P1 ne passe à 100 % que lorsque les essais ci-dessus sont documentés sur une machine physique identifiée, tous les critères sont réussis, et les preuves sont rattachées au SHA exact ayant produit le paquet testé. Si un essai échoue, conserver les journaux, isoler le défaut, corriger sur la branche `ArchiaOS`, puis relancer la CI et répéter les essais pertinents. Ne pas convertir une réussite QEMU en réussite matérielle.
+P1 ne passe à 100 % que lorsque les essais ci-dessus sont documentés sur une machine physique identifiée, tous les critères sont réussis, et les preuves sont rattachées au SHA exact ayant produit le paquet testé. Les preuves acceptées peuvent être des logs série ou, si aucune interface série n'est disponible, des photos complètes et lisibles de la séquence des marqueurs framebuffer, interprétées selon l'ordre réel du code. Les observations utilisateur doivent rester étiquetées comme rapportées et ne pas être présentées comme des tests exécutés indépendamment. Si un essai échoue, conserver les journaux, isoler le défaut, corriger sur la branche `ArchiaOS`, puis relancer la CI et répéter les essais pertinents. Ne pas convertir une réussite QEMU en réussite matérielle.
