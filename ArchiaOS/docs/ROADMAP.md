@@ -6,7 +6,7 @@
 
 | Priorité | Domaine | Avancement estimé | État / prochaine preuve attendue |
 |---|---|---:|---|
-| **GLOBAL** | Ensemble des objectifs P0–P10 | **24 %** | Score pondéré recalculé : 23,98 %, arrondi à l’entier le plus proche. Maturité de validation suivie séparément ; les pistes B/A ne sont pas additionnées. |
+| **GLOBAL** | Ensemble des objectifs P0–P10 | **28 %** | Score pondéré recalculé après P1 clôturée et P2 à 35 % : 28,28 %, arrondi à l’entier le plus proche. Maturité de validation suivie séparément ; les pistes B/A ne sont pas additionnées. |
 | **P0** | Démarrage UEFI maison x86-64 par défaut | **100 % (jalon physique atteint)** | Démarrage depuis la clé USB et premier affichage framebuffer confirmés par l’utilisateur sur le PC physique. Le motif bleu prouve l’écriture dans le framebuffer après le handoff ; il ne constitue pas encore un bureau ni une pile graphique. L’utilisateur rapporte 5/5 démarrages à froid et 5/5 redémarrages à chaud, tous avec la même barre blanche finale (compte rendu dans [la campagne physique P1](P1-PHYSICAL-VALIDATION.md)); le retour au firmware et le démarrage du système habituel sont confirmés par l’utilisateur ; le SHA du paquet USB testé est confirmé pour `cb5c676a9adbd0a9cf0e7a4ef69224b4a8729ecc` par `BUILD-INFO.txt` et les SHA-256 des deux binaires ; la photo de preuve existante est désormais archivée dans `docs/preuves/` ; le modèle, CPU et RAM sont consignés ; l'utilisateur confirme que la photo est acceptable et que le BIOS/UEFI est à jour selon Lenovo pour ce modèle (numéro exact non relevé). |
 | **P1** | Fiabilité du chargeur, BootInfo et mémoire | **100 % (campagne physique documentée)** | Les contrôles ELF, mappings/protections, BootInfo/ExitBootServices, audit firmware et PMM ont leurs tests automatisés documentés. Le dernier commit de code noyau audité reste `e18b1901e262f21838ab0484459d207ccf004442`. La révision documentaire immédiatement précédente est `7bb1b9d1dd553e5fda68ea206ba3f035197f5751`. Sur ce SHA, [UEFI local, run 38428246398](https://github.com/Likounsee/ArchiaOS/actions/runs/38428246398) et [BootInfo négatif, run 38428246551](https://github.com/Likounsee/ArchiaOS/actions/runs/38428246551) ont réussi ; la [CI principale, run 38428246486](https://github.com/Likounsee/ArchiaOS/actions/runs/38428246486) est encore en cours au dernier contrôle. Les succès automatisés ne prouvent pas une validation matérielle reproductible. La procédure de campagne physique est documentée dans [P1-PHYSICAL-VALIDATION.md](P1-PHYSICAL-VALIDATION.md). Le paquet USB effectivement testé sur matériel correspond au commit `cb5c676a9adbd0a9cf0e7a4ef69224b4a8729ecc` ([workflow](https://github.com/Likounsee/ArchiaOS/actions/runs/38432842691)) : `BUILD-INFO.txt` et les SHA-256 de `kernel.elf` et `BOOTX64.EFI` correspondent exactement à la clé USB. La campagne matérielle est considérée comme acceptée sur la base des confirmations de l’utilisateur : 5/5 démarrages à froid et 5/5 redémarrages à chaud avec barre blanche finale, ainsi que le retour au BIOS/UEFI puis au système habituel sans problème. La provenance du paquet est maintenant confirmée. La photo existante est archivée dans `docs/preuves/` et validée par l'utilisateur. L'utilisateur confirme également utiliser la dernière version BIOS/UEFI publiée par Lenovo pour ce modèle ; le numéro exact n'est pas relevé. La sortie série reste facultative si elle n'est pas matériellement accessible. Les observations physiques restent déclaratives. |
 | **P2** | Exceptions, ordonnanceur et synchronisation | **35 %** | Le modèle d'états, la primitive x86-64 et le nouveau runtime à deux tâches sont raccordés. Deux tâches possèdent chacune un contexte et une pile statique dédiée ; le test fait réellement A → B → A → B → A, puis retourne à la pile de démarrage après la sortie des deux tâches. Le test hôte est intégré au job CI existant ; résultat CI de ce commit à vérifier. Timer/préemption, synchronisation, test contrôlé d'IDT et SMP restent à faire. |
@@ -55,8 +55,8 @@ Cet audit porte sur les sources présentes et leurs raccordements visibles, pas 
 | Phase | Poids global | Score courant | Contribution |
 |---|---:|---:|---:|
 | P0 | 5 | 100 | 5,00 |
-| P1 | 15 | 90 | 13,50 |
-| P2 | 20 | 21 | 4,20 |
+| P1 | 15 | 100 | 15,00 |
+| P2 | 20 | 35 | 7,00 |
 | P3 | 15 | 0 | 0,00 |
 | P4 | 12 | 0 | 0,00 |
 | P5 | 8 | 0 | 0,00 |
@@ -65,9 +65,9 @@ Cet audit porte sur les sources présentes et leurs raccordements visibles, pas 
 | P8 | 4 | 32 | 1,28 |
 | P9 | 3 | 0 | 0,00 |
 | P10 | 3 | 0 | 0,00 |
-| **Total** | **100** | — | **23,98** |
+| **Total** | **100** | — | **28,28** |
 
-La somme des contributions est **23,98 %** (5 + 13,5 + 4,2 + 1,28 = 23,98), affichée **24 %** après arrondi. La pondération privilégie les fondations noyau et les livrables qui débloquent plusieurs phases ; les objectifs produit restent dans le dénominateur et ne sont pas supprimés.
+La somme des contributions est **28,28 %** (5 + 15 + 7 + 1,28 = 28,28), affichée **28 %** après arrondi. La pondération privilégie les fondations noyau et les livrables qui débloquent plusieurs phases ; les objectifs produit restent dans le dénominateur et ne sont pas supprimés.
 
 **Preuves CI exactes du HEAD documentaire de référence `4c0bfa4f4c752c5f0385d3a0913eec4159e31757` :**
 - CI principale : [run 38422476186](https://github.com/Likounsee/ArchiaOS/actions/runs/38422476186) — succès.
