@@ -11,7 +11,7 @@ Cette procédure collecte des preuves répétables pour la fiabilité du démarr
 - [ ] Vérifier que le paquet ZIP a été produit par GitHub Actions pour le SHA consigné et conserver le ZIP ainsi que le lien du workflow.
 - [ ] Utiliser une clé USB dédiée, sauvegarder son contenu puis la préparer en FAT32 si nécessaire (le formatage efface les données de la clé).
 - [ ] Extraire le ZIP et copier le dossier `EFI` à la racine de la clé FAT32. **Ne pas écrire le ZIP comme une image disque** : ce workflow ne produit pas d'image brute.
-- [ ] Vérifier le modèle de machine, le processeur, la quantité de RAM, la version UEFI/BIOS et le port USB utilisé.
+- [x] Modèle, processeur et RAM consignés d'après les informations de l'utilisateur : Lenovo LOQ 15IAX9, Intel Core i5-12450HX, 24 Go DDR5 ; GPU dédié RTX 4050 utilisé selon l'utilisateur. La version UEFI/BIOS et le port USB restent à consigner.
 - [ ] Désactiver temporairement le démarrage rapide si cela empêche de faire un vrai démarrage à froid ; ne pas changer d'autres paramètres firmware entre les essais.
 - [ ] Prévoir un moyen de revenir au système habituel via le menu de démarrage UEFI.
 
@@ -81,15 +81,15 @@ L’utilisateur rapporte **5 démarrages à froid réussis sur 5**, avec le mêm
 | Vérification | Résultat rapporté | Statut de preuve |
 |---|---|---|
 | Démarrages à froid | **5/5** | Répétabilité visuelle rapportée |
-| Barre blanche finale | Présente sur les 5 essais | Selon l'ordre des marqueurs dans le noyau, indique que les auto-tests précédents ont été franchis si elle provient bien du build testé ; la photo complète reste à conserver |
+| Barre blanche finale | Présente sur les 5 essais | Selon l'ordre des marqueurs dans le noyau, indique que les auto-tests précédents ont été franchis si elle provient bien du build testé ; la photo de preuve est désormais archivée dans [docs/preuves](preuves/README.md) ; sa lisibilité complète reste à confirmer |
 | SHA exact du paquet USB testé | `cb5c676a9adbd0a9cf0e7a4ef69224b4a8729ecc` | Confirmé par `BUILD-INFO.txt` et par les SHA-256 identiques de `kernel.elf` et `BOOTX64.EFI` sur l'archive extraite et la clé USB |
-| Modèle de machine / version UEFI | Non consignés dans ce compte rendu | À renseigner |
+| Modèle de machine / version UEFI | Lenovo LOQ 15IAX9 ; version UEFI/BIOS non relevée | Modèle consigné d'après l'utilisateur ; firmware à relever |
 | Sortie série BootInfo + PMM | Non fournie | Non disponible dans les preuves actuelles |
 | Marqueur framebuffer final | Barre blanche rapportée | Rapport utilisateur ; photo complète à conserver si disponible |
 | 5 redémarrages à chaud | **5/5 rapportés** | Répétabilité visuelle rapportée |
 | Retour firmware et démarrage du système habituel | Confirmés sans problème par l’utilisateur le 13 octobre 2026 | Rapporté par l’utilisateur |
 
-La provenance exacte des binaires USB est maintenant rattachée au commit indiqué ci-dessus. Les résultats matériels restent des observations déclarées par l'utilisateur. La bande blanche finale fournit un indice d'atteinte des auto-tests antérieurs selon le flux de contrôle du noyau, mais la campagne reste à compléter par la consignation de la machine/UEFI et des preuves visuelles conservées.
+La provenance exacte des binaires USB est maintenant rattachée au commit indiqué ci-dessus. Les résultats matériels restent des observations déclarées par l'utilisateur. La bande blanche finale fournit un indice d'atteinte des auto-tests antérieurs selon le flux de contrôle du noyau, mais la campagne reste à compléter par la consignation de la version UEFI/BIOS et la vérification de lisibilité de la photo archivée.
 
 ### Résultat matériel rapporté — redémarrages à chaud (13 octobre 2026)
 
@@ -112,8 +112,8 @@ Copier cette fiche pour chaque session :
 | Date et heure | À renseigner |
 | Commit exact ayant produit le paquet USB | `cb5c676a9adbd0a9cf0e7a4ef69224b4a8729ecc` (SHA confirmé pour les binaires USB testés) |
 | Nom du ZIP / lien du workflow CI | À renseigner |
-| Machine / carte mère | À renseigner |
-| CPU / RAM | À renseigner |
+| Machine / carte mère | Lenovo LOQ 15IAX9 (modèle communiqué par l'utilisateur) |
+| CPU / RAM | Intel Core i5-12450HX / 24 Go DDR5 |
 | Version UEFI/BIOS | À renseigner |
 | Port USB et clé | À renseigner |
 | Démarrages à froid (réussis / 5) | **5/5 rapportés, barre blanche finale** (13 octobre 2026) |
@@ -121,7 +121,7 @@ Copier cette fiche pour chaque session :
 | BootInfo + PMM observés | Indirectement indiqués par la bande blanche finale rapportée ; conserver la photo complète |
 | Motif framebuffer observé | Barre blanche finale rapportée |
 | Retour firmware + OS habituel | Confirmé par l’utilisateur |
-| Photos / journaux conservés | À joindre / renseigner |
+| Photos / journaux conservés | [Photo archivée dans docs/preuves](preuves/README.md) | Photo archivée ; vérifier que la séquence complète est lisible |
 | Anomalies et reproduction | À renseigner |
 
 ## Décision d'acceptation P1
