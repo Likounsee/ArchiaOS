@@ -1350,7 +1350,15 @@ unsafe fn discover_framebuffer(boot_services: *mut BootServices) -> (u64, u64) {
     if mode.is_null() {
         return (0, 0);
     }
-    // SAFETY: a valid GOP mode carries its mode information and framebuffer range.
+    // Reject inconsistent mode metadata before interpreting the firmware-provided
+    // GraphicsOutputModeInformation pointer as a complete structure.
+    let max_mode = unsafe { (*mode).max_mode };
+    let current_mode = unsafe { (*mode).mode };
+    let info_size = unsafe { (*mode).size_of_info };
+    if !gop_mode_metadata_is_valid(max_mode, current_mode, info_size) {
+        return (0, 0);
+    }
+    // SAFETY: the current GOP mode reports enough bytes for the full information structure.
     let mode_info = unsafe { (*mode).info };
     let base = unsafe { (*mode).framebuffer_base };
     let size = unsafe { (*mode).framebuffer_size } as u64;
@@ -1372,6 +1380,12 @@ unsafe fn discover_framebuffer(boot_services: *mut BootServices) -> (u64, u64) {
         return (0, 0);
     }
     (base, size)
+}
+
+fn gop_mode_metadata_is_valid(max_mode: u32, current_mode: u32, info_size: usize) -> bool {
+    max_mode != 0
+        && current_mode < max_mode
+        && info_size >= core::mem::size_of::<GraphicsOutputModeInformation>()
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -2976,5 +2990,31 @@ mod loaded_image_range_tests {
         assert_eq!(rounded_loader_image_range(0x1000, 0), None);
         assert_eq!(rounded_loader_image_range(u64::MAX - 0x10, 0x20), None);
         assert_eq!(rounded_loader_image_range((1u64 << 39) - 0x1000, 0x1001), None);
+    }
+}
+
+#[cfg(test)]
+mod gop_mode_metadata_tests {
+    use super::{gop_mode_metadata_is_valid, GraphicsOutputModeInformation};
+
+    #[test]
+    fn accepts_complete_current_gop_mode_information() {
+        assert!(gop_mode_metadata_is_valid(
+            1,
+            0,
+            core::mem::size_of::<GraphicsOutputModeInformation>()
+        ));
+        assert!(gop_mode_metadata_is_valid(
+            4,
+            3,
+            core::mem::size_of::<GraphicsOutputModeInformation>() + 8
+        ));
+    }
+
+    #[test]
+    fn rejects_invalid_mode_indices_and_truncated_information() {
+        assert!(!gop_mode_metadata_is_valid(0, 0, core::mem::size_of::<GraphicsOutputModeInformation>()));
+        assert!(!gop_mode_metadata_is_valid(2, 2, core::mem::size_of::<GraphicsOutputModeInformation>()));
+        assert!(!gop_mode_metadata_is_valid(1, 0, core::mem::size_of::<GraphicsOutputModeInformation>() - 1));
     }
 }
