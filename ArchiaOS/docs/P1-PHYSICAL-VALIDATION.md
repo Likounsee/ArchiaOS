@@ -56,6 +56,22 @@ Les marqueurs série prouvent que le chemin correspondant a été atteint, mais 
 
 Critère : retour firmware et démarrage du système habituel réussis après les essais.
 
+## Résultat matériel rapporté — 13 octobre 2026
+
+L’utilisateur rapporte **5 démarrages à froid réussis sur 5**, avec le même résultat à chaque fois : l’écran atteint la **barre blanche finale**. Ce résultat est consigné comme une observation physique répétée, déclarée par l’utilisateur ; il n’a pas été exécuté ni observé directement par l’assistant.
+
+| Vérification | Résultat rapporté | Statut de preuve |
+|---|---|---|
+| Démarrages à froid | **5/5** | Répétabilité visuelle rapportée |
+| Barre blanche finale | Présente sur les 5 essais | Indice que le dernier auto-test visuel atteint a été marqué ; ne prouve pas à lui seul tous les invariants du noyau |
+| SHA exact du paquet USB testé | Non communiqué | À rattacher avant clôture |
+| Modèle de machine / version UEFI | Non consignés dans ce compte rendu | À renseigner |
+| Sortie série BootInfo + PMM | Non fournie | Non vérifiée par cette observation |
+| 5 redémarrages à chaud | Non communiqués | À vérifier séparément |
+| Retour firmware et démarrage du système habituel | Non communiqués | À vérifier séparément |
+
+Cette observation fait progresser la campagne physique, mais **ne clôt pas encore P1** : l’artefact exact et les autres critères doivent être consignés. Ne pas interpréter la barre blanche comme un journal complet de tous les tests.
+
 ## Fiche de résultats
 
 Copier cette fiche pour chaque session :
