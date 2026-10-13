@@ -1556,39 +1556,59 @@ fn audit_platform_table_ranges(
     // Preserve the fully validated RSDP range to prevent aliasing platform-table formats.
     let mut validated_rsdp_range: Option<(u64, u64)> = None;
     if acpi_rsdp != 0 {
-        // Prove the fixed prefix is retained and readable in the kernel's active
-        // mapping before dereferencing firmware-controlled length/revision fields.
-        const RSDP_FIXED_PREFIX: u64 = 24;
-        if !memory_map.range_is_fully_reserved(acpi_rsdp, RSDP_FIXED_PREFIX)
+        // ACPI 1.0 RSDP is only 20 bytes. Validate that prefix first so a valid
+        // legacy table at a descriptor boundary is not forced to reserve 24 bytes.
+        const RSDP_V1_PREFIX: u64 = 20;
+        if !memory_map.range_is_fully_reserved(acpi_rsdp, RSDP_V1_PREFIX)
             .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: malformed RSDP prefix in final memory map.\r\n\0"))?
         {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI RSDP prefix is not fully reserved in the final memory map.\r\n\0"));
         }
         #[cfg(target_arch = "x86_64")]
         if high_half_image
-            && !range_is_identity_mapped_ram(memory_map, acpi_rsdp, RSDP_FIXED_PREFIX)?
+            && !range_is_identity_mapped_ram(memory_map, acpi_rsdp, RSDP_V1_PREFIX)?
         {
             return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: ACPI RSDP prefix is outside identity-mapped RAM for the high-half kernel.\r\n\0"));
         }
-        if physical_ranges_overlap(acpi_rsdp, RSDP_FIXED_PREFIX, framebuffer_base, framebuffer_size) {
+        if physical_ranges_overlap(acpi_rsdp, RSDP_V1_PREFIX, framebuffer_base, framebuffer_size) {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI RSDP overlaps the GOP framebuffer.\r\n\0"));
         }
-        if platform_range_overlaps_handoff_storage(acpi_rsdp, RSDP_FIXED_PREFIX, handoff_ranges) {
+        if platform_range_overlaps_handoff_storage(acpi_rsdp, RSDP_V1_PREFIX, handoff_ranges) {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI RSDP prefix overlaps handoff storage.\r\n\0"));
         }
 
         let rsdp = acpi_rsdp as *const u8;
-        // SAFETY: the fixed prefix is covered by reserved RAM and (for high-half
-        // x86-64) the identity map, as checked above.
+        // SAFETY: the 20-byte legacy prefix is reserved and mapped, as checked above.
         let signature = unsafe { core::slice::from_raw_parts(rsdp, 8) };
         if !rsdp_signature_is_valid(signature) {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ACPI RSDP signature during final memory-map audit.\r\n\0"));
         }
         let revision = unsafe { ptr::read(rsdp.add(15)) };
         let length = if revision < 2 {
-            20
+            RSDP_V1_PREFIX
         } else {
-            // SAFETY: revision >= 2 means the validated fixed prefix includes length.
+            // The ACPI 2.0+ length field occupies bytes 20..24. Prove this
+            // extension is safe before reading it; do not assume v1 tables have it.
+            let length_field_start = acpi_rsdp.checked_add(RSDP_V1_PREFIX)
+                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: RSDP length-field address overflow.\r\n\0"))?;
+            if !memory_map.range_is_fully_reserved(length_field_start, 4)
+                .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: malformed RSDP length field in final memory map.\r\n\0"))?
+            {
+                return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI RSDP length field is not fully reserved in the final memory map.\r\n\0"));
+            }
+            #[cfg(target_arch = "x86_64")]
+            if high_half_image
+                && !range_is_identity_mapped_ram(memory_map, length_field_start, 4)?
+            {
+                return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: ACPI RSDP length field is outside identity-mapped RAM for the high-half kernel.\r\n\0"));
+            }
+            if physical_ranges_overlap(length_field_start, 4, framebuffer_base, framebuffer_size) {
+                return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI RSDP length field overlaps the GOP framebuffer.\r\n\0"));
+            }
+            if platform_range_overlaps_handoff_storage(length_field_start, 4, handoff_ranges) {
+                return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI RSDP length field overlaps handoff storage.\r\n\0"));
+            }
+            // SAFETY: bytes 20..24 are separately proven reserved and mapped above.
             let field = unsafe { core::slice::from_raw_parts(rsdp.add(20), 4) };
             u32::from_le_bytes([field[0], field[1], field[2], field[3]]) as u64
         };
