@@ -91,3 +91,37 @@ fn invalid_wake_does_not_mutate_task_state() {
     assert_eq!(scheduler.state(runnable), Ok(TaskState::Running));
     assert_eq!(scheduler.check_invariants(), Ok(()));
 }
+
+#[test]
+fn blocked_task_requires_one_wake_and_then_resumes_by_round_robin() {
+    let mut scheduler = Scheduler::new();
+    let blocked = scheduler.create_task().expect("first task slot");
+    let other = scheduler.create_task().expect("second task slot");
+
+    assert_eq!(scheduler.schedule(), Ok(blocked));
+    assert_eq!(scheduler.block_current(), Ok(other));
+    assert_eq!(scheduler.state(blocked), Ok(TaskState::Blocked));
+    assert_eq!(scheduler.current(), Some(other));
+
+    assert_eq!(scheduler.wake(blocked), Ok(()));
+    assert_eq!(scheduler.wake(blocked), Err(SchedulerError::TaskNotBlocked));
+    assert_eq!(scheduler.state(blocked), Ok(TaskState::Runnable));
+    assert_eq!(scheduler.yield_current(), Ok(blocked));
+    assert_eq!(scheduler.current(), Some(blocked));
+    assert_eq!(scheduler.check_invariants(), Ok(()));
+}
+
+#[test]
+fn exited_slots_are_not_reused_for_new_task_ids() {
+    let mut scheduler = Scheduler::new();
+    let exited = scheduler.create_task().expect("first task slot");
+    assert_eq!(scheduler.schedule(), Ok(exited));
+    assert_eq!(scheduler.exit_current(), Err(SchedulerError::NoRunnableTask));
+    assert_eq!(scheduler.state(exited), Ok(TaskState::Exited));
+
+    let later = scheduler.create_task().expect("next empty slot");
+    assert_ne!(later, exited);
+    assert_eq!(scheduler.state(exited), Ok(TaskState::Exited));
+    assert_eq!(scheduler.state(later), Ok(TaskState::Runnable));
+    assert_eq!(scheduler.check_invariants(), Ok(()));
+}
