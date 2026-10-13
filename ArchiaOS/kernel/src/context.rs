@@ -36,12 +36,19 @@ impl TaskStack {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 #[repr(C, align(16))]
 struct FxState([u8; 512]);
 
 impl FxState {
     const fn empty() -> Self {
         Self([0; 512])
+    }
+}
+
+impl Default for FxState {
+    fn default() -> Self {
+        Self::empty()
     }
 }
 
