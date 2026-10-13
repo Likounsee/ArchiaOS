@@ -8,7 +8,7 @@
 |---|---|---:|---|
 | **GLOBAL** | Ensemble des objectifs P0–P10 | **23 %** | Score pondéré recalculé : 23,42 %, arrondi à l’entier le plus proche. Maturité de validation suivie séparément ; les pistes B/A ne sont pas additionnées. |
 | **P0** | Démarrage UEFI maison x86-64 par défaut | **100 % (jalon physique atteint)** | Démarrage depuis la clé USB et premier affichage framebuffer confirmés par l’utilisateur sur le PC physique. Le motif bleu prouve l’écriture dans le framebuffer après le handoff ; il ne constitue pas encore un bureau ni une pile graphique. Un redémarrage à froid n’est pas consigné. |
-| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **90 %** | Les contrôles ELF, mappings/protections, BootInfo/ExitBootServices, audit firmware et PMM ont leurs tests automatisés documentés. Le dernier commit de code audité est `e18b1901e262f21838ab0484459d207ccf004442`. Les trois workflows de référence ont réussi sur le HEAD documentaire `8b5ff8dbcc91cded600c03a98157bba428b86d6f` : [CI principale, run 38379995664](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995664), [UEFI local, run 38379995825](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995825), [BootInfo négatif, run 38379995687](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995687). Le package USB est uniquement prouvé sur `dfd67f2937b95afc8c8d798c0b77483c2f7a43f9` ([workflow](https://github.com/Likounsee/ArchiaOS/actions/runs/38375095036)) ; il n'est pas validé sur le HEAD actuel. Les 10 points restants correspondent à la campagne matérielle répétable non consignée ; QEMU ne prouve pas le comportement de tous les PC/firmwares. |
+| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **90 %** | Les contrôles ELF, mappings/protections, BootInfo/ExitBootServices, audit firmware et PMM ont leurs tests automatisés documentés. Le dernier commit de code audité est `e18b1901e262f21838ab0484459d207ccf004442`. Les trois workflows ont aussi été relancés sur le HEAD documentaire précédent `8e5cb6276395516685e3a7e8fb6662c362ace32b` : [CI principale, run 38421778545](https://github.com/Likounsee/ArchiaOS/actions/runs/38421778545) (en cours au dernier contrôle), [UEFI local, run 38421778130](https://github.com/Likounsee/ArchiaOS/actions/runs/38421778130) (réussi) et [BootInfo négatif, run 38421778262](https://github.com/Likounsee/ArchiaOS/actions/runs/38421778262) (réussi). Les runs du SHA `8b5ff8d…` restent des preuves historiques, pas des preuves du HEAD actuel. Le package USB est uniquement prouvé sur `dfd67f2937b95afc8c8d798c0b77483c2f7a43f9` ([workflow](https://github.com/Likounsee/ArchiaOS/actions/runs/38375095036)) ; il n'est pas validé sur le HEAD actuel. Les 10 points restants correspondent à la campagne matérielle répétable non consignée ; QEMU ne prouve pas le comportement de tous les PC/firmwares. |
 | **P2** | Exceptions, ordonnanceur et synchronisation | **21 %** | Modèle de tâches, IDT x86-64 et primitive de changement de contexte coopératif ajoutés ; CI principale et régression hôte du contexte vertes sur HEAD `e18b1901`. Le scheduler n'est pas encore relié aux contextes et ne commute pas encore entre tâches. |
 | **P3** | Espace utilisateur et ABI système | **0 %** | Non commencé ; dépend notamment des exceptions, syscalls et mécanismes mémoire isolés. |
 | **P4** | Stockage, VFS et préparation OpenFS | **0 %** | Pas de pilote bloc/VFS fonctionnel ; spécifier d'abord les interfaces. |
@@ -25,7 +25,7 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 
 ## Audit de référence — code et preuves au 13 octobre 2026
 
-Cet audit porte sur les sources présentes et leurs raccordements visibles, pas sur les seuls noms de fichiers ou les déclarations de la documentation. Références à ne pas confondre : dernier commit de code noyau/workflow audité `e18b1901e262f21838ab0484459d207ccf004442`; HEAD documentaire de référence `8b5ff8dbcc91cded600c03a98157bba428b86d6f` ; parent documentaire de ce lot `124aea557de5164d132ceafddc843973d835cfdd`. Les workflows CI principale, démarrage UEFI local et BootInfo négatif ont réussi sur `8b5ff8dbcc91cded600c03a98157bba428b86d6f` (runs 38379995664, 38379995825, 38379995687). Les tests restent limités aux scénarios automatisés.
+Cet audit porte sur les sources présentes et leurs raccordements visibles, pas sur les seuls noms de fichiers ou les déclarations de la documentation. Références distinctes : dernier commit de code noyau/workflow audité `e18b1901e262f21838ab0484459d207ccf004442`; HEAD documentaire avant cette révision `8e5cb6276395516685e3a7e8fb6662c362ace32b`; commit documentaire précédent `124aea557de5164d132ceafddc843973d835cfdd`. Sur `8e5cb6276395516685e3a7e8fb6662c362ace32b`, le boot UEFI local et le test négatif BootInfo ont réussi (runs 38421778130 et 38421778262), tandis que la CI principale était encore en cours (run 38421778545). Les résultats du SHA `8b5ff8d…` sont conservés comme historique et ne sont pas présentés comme des validations du HEAD le plus récent. Les tests restent limités aux scénarios automatisés.
 
 ### Méthode de statut, score d'implémentation et maturité de validation
 
@@ -43,7 +43,7 @@ Cet audit porte sur les sources présentes et leurs raccordements visibles, pas 
 
 **Calcul reproductible**
 1. Chaque phase possède une grille de livrables pondérés totalisant exactement 100.
-2. Le score de chaque livrable est calculé à partir de ses critères d'acceptation : score = poids des critères effectivement démontrés / poids total des critères. Quand aucun sous-poids n'est indiqué, appliquer les paliers uniformes suivants : 0 % (aucun chemin utile), 25 % (contrat/squelette), 50 % (chemin nominal intégré mais erreurs/tests majeurs manquants), 75 % (chemin et tests automatisés présents, validation/cas essentiel restant), 90 % (seule une validation explicitement pondérée reste), 100 % (tous les critères satisfaits). Toute valeur intermédiaire, comme 60 % ou 30 %, doit être justifiée par une liste explicite de critères cochés et non par intuition.
+2. Chaque livrable est évalué avec des critères observables. Si les critères sont pondérés, score = poids des critères démontrés / poids total des critères. Sinon, utiliser seulement les paliers suivants : 0 % = aucun comportement utile ; 25 % = contrat ou squelette seulement ; 50 % = chemin nominal raccordé mais erreurs/tests essentiels manquants ; 75 % = chemin et tests automatisés présents, avec validation/cas essentiel restant ; 90 % = seule une validation explicitement pondérée reste ; 100 % = tous les critères d'acceptation sont satisfaits. Un score intermédiaire (par exemple 30 % ou 60 %) est interdit sans sous-critères nommés, cochables et pondérés dans la grille de la phase. Un fichier présent, une API déclarée ou un test seulement écrit ne suffisent pas à cocher un critère.
 3. Score phase = somme(poids du livrable × score du livrable) / 100. Un test écrit mais non exécuté ne satisfait pas un critère de test.
 4. Score global = somme(poids de phase × score de phase) / 100, avec poids de phases totalisant 100. Arrondi à l'entier le plus proche uniquement pour l'affichage.
 5. Les poids ne changent pas après observation des résultats sans justification documentée. Les tâches de documentation seule ne donnent pas de points d'implémentation.
@@ -114,7 +114,7 @@ Le 100 % P0 porte sur le jalon limité « démarrage maison par défaut et premi
 | Tests QEMU et matériel par modèle | 10 | 0 |
 | **Total** | **100** | **18 %** |
 
-Le scan PCI legacy du bus 0 existe dans le code mais reste partiel et sans tests dédiés : score provisoire de 30 % pour ce livrable. P8 = 20 × 60 % + 20 × 30 % = 18 %. Aucun point n'est attribué aux capteurs, à ECAM ou au contrôle matériel.
+Le scan PCI legacy du bus 0 existe mais reste partiel et sans tests dédiés. Les scores précédents de 60 % pour CPUID et de 30 % pour PCI étaient insuffisamment décomposés : ils sont donc des estimations provisoires, pas des scores strictement reproductibles. Pour qu'ils soient conservés, la prochaine révision doit lister les critères cochés et leur poids (par exemple : bornes CPUID vérifiées, champs décodés, tests de décodage exécutés ; puis lecture d'identifiants PCI, limites de parcours, absence d'écriture sur les périphériques, tests dédiés). À défaut de preuves détaillées, appliquer le palier conservateur justifié par le code audité. La formule P8 reste : 20 × score CPUID + 20 × score PCI, divisés par 100 ; aucun point n'est attribué aux capteurs, à ECAM ou au contrôle matériel.
 
 **P9 — service privilégié (0 %) :** API télémétrie et autorisations (25), IPC/authentification et séparation lecture/écriture (20), collecte/normalisation des sources (15), validation des commandes et journalisation (15), simulation/erreurs et arrêt sûr (15), tests intégration/fuzzing (10). Aucun livrable opérationnel raccordé : 0/100.
 
@@ -138,9 +138,12 @@ Le scan PCI legacy du bus 0 existe dans le code mais reste partiel et sans tests
 
 | Vérification | Commit réellement testé | Résultat | Portée |
 |---|---|---|---|
-| CI principale (inclut tests hôte ciblés, builds x86-64/UEFI/ARM64 et smoke test AArch64) | `8b5ff8dbcc91cded600c03a98157bba428b86d6f` | **Réussie** — [run 38379995664](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995664) | Confirme uniquement les étapes du workflow exécutées sur ce SHA ; ne prouve pas les fonctions non couvertes. |
-| Démarrage UEFI local du noyau de production | `8b5ff8dbcc91cded600c03a98157bba428b86d6f` | **Réussi** — [run 38379995825](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995825) | Démarrage sous OVMF/QEMU ; ne remplace pas une validation physique. |
-| BootInfo invalide | `8b5ff8dbcc91cded600c03a98157bba428b86d6f` | **Réussi** — [run 38379995687](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995687) | Valide uniquement le scénario négatif configuré. |
+| CI principale (tests hôte ciblés, builds x86-64/UEFI/ARM64 et smoke test AArch64) | `8e5cb6276395516685e3a7e8fb6662c362ace32b` | **En cours au dernier contrôle** — [run 38421778545](https://github.com/Likounsee/ArchiaOS/actions/runs/38421778545) | Ne pas annoncer de réussite avant la conclusion finale du run. La réussite historique sur `8b5ff8d…` est conservée séparément ci-dessous. |
+| Démarrage UEFI local du noyau de production | `8e5cb6276395516685e3a7e8fb6662c362ace32b` | **Réussi** — [run 38421778130](https://github.com/Likounsee/ArchiaOS/actions/runs/38421778130) | Démarrage sous OVMF/QEMU ; ne remplace pas une validation physique. |
+| BootInfo invalide | `8e5cb6276395516685e3a7e8fb6662c362ace32b` | **Réussi** — [run 38421778262](https://github.com/Likounsee/ArchiaOS/actions/runs/38421778262) | Valide uniquement le scénario négatif configuré. |
+| Référence historique : CI principale | `8b5ff8dbcc91cded600c03a98157bba428b86d6f` | **Réussie** — [run 38379995664](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995664) | Résultat historique, pas une preuve du HEAD plus récent. |
+| Référence historique : démarrage UEFI local | `8b5ff8dbcc91cded600c03a98157bba428b86d6f` | **Réussi** — [run 38379995825](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995825) | Résultat historique sous OVMF/QEMU. |
+| Référence historique : BootInfo invalide | `8b5ff8dbcc91cded600c03a98157bba428b86d6f` | **Réussi** — [run 38379995687](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995687) | Résultat historique du scénario négatif. |
 | Package USB x86-64 | `dfd67f2937b95afc8c8d798c0b77483c2f7a43f9` | **Réussi** — [run 38375095036](https://github.com/Likounsee/ArchiaOS/actions/runs/38375095036) | Plus ancien que le HEAD actuel ; package non revalidé sur le HEAD documentaire. |
 | Campagne matérielle P1 | Aucun commit/résultat consigné | **Non validée** | Démarrages à froid, transfert BootInfo/PMM, framebuffer, redémarrage et retour firmware à consigner. |
 | Tests hors des jobs ci-dessus | Selon le module | **Couverture partielle** | Absence de test CI ne signifie ni réussite ni échec. |
@@ -455,6 +458,19 @@ Grille A0–A4 : A0 entrée (10 %), A1 transfert UEFI (20 %), A2 mémoire/MMU (2
 - **Lecture seule avant écriture.** Les identifiants matériels ne suffisent pas à autoriser l'écriture dans un registre.
 - La sécurité thermique et les mécanismes de protection firmware priment sur les profils utilisateur.
 - OpenFS reste un dépôt distinct : vérifier son état et son API réelle avant toute intégration.
+
+## Prochain lot recommandé — scheduler réellement raccordé
+
+**Objectif :** faire passer P2 du modèle de tâches à un premier multitâche coopératif réel, sans prétendre encore à la préemption ou au SMP.
+
+1. **Audit ciblé :** relire `kernel/src/scheduler.rs`, `kernel/src/context.rs` et les interfaces d'interruptions ; confirmer les chemins d'appel avant modification.
+2. **Cycle de vie minimal :** définir une tâche qui possède son contexte et sa pile, avec des règles explicites de création, d'état, de terminaison et de libération.
+3. **Raccordement :** intégrer le changement de contexte au scheduler, préserver les registres requis par l'ABI et définir clairement le chemin de retour.
+4. **Démonstration :** ajouter un test déterministe où deux tâches coopératives rendent la main à tour de rôle, puis une preuve de démarrage QEMU montrant le résultat attendu.
+5. **Critères d'acceptation :** alternance reproductible, aucune reprise sur une pile libérée, états cohérents après chaque switch, tests de régression exécutés et preuves liées au SHA exact.
+6. **Hors périmètre :** timer, préemption, synchronisation concurrente et SMP restent des lots ultérieurs, après validation du switch coopératif.
+
+**Fichiers cibles à confirmer après audit :** `kernel/src/scheduler.rs`, `kernel/src/context.rs` et les tests associés. Ne pas supposer les chemins exacts avant vérification et ne pas augmenter P2 avant démonstration des critères.
 
 ## Règle de mise à jour de la feuille de route
 
