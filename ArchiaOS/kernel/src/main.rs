@@ -243,6 +243,11 @@ pub extern "C" fn rust_kernel_main(
         let _ = writeln!(serial, "ArchiaOS: unsupported CPU: SSE4.1 is required; refusing to continue");
         halt_forever();
     }
+    // Context switching must preserve the legacy x87/SSE state before any
+    // task is dispatched. AVX execution remains unavailable until XSAVE state
+    // is added to the context ABI.
+    unsafe { context::initialize_simd() };
+    let _ = writeln!(serial, "ArchiaOS: x87/SSE context state initialized (FXSAVE64/FXRSTOR64)");
     let vendor = cpu::printable_field(&cpu_info.vendor);
     let brand = cpu::printable_field(&cpu_info.brand);
     let _ = writeln!(serial, "ArchiaOS: CPU vendor: {}", vendor);
