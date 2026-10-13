@@ -1551,6 +1551,79 @@ fn platform_range_overlaps_handoff_storage(
     })
 }
 
+/// Validate one ACPI SDT range before reading its advertised size or checksum.
+fn audit_acpi_sdt_range(
+    memory_map: &UefiMemoryMap<'_>,
+    address: u64,
+    high_half_image: bool,
+    framebuffer_base: u64,
+    framebuffer_size: u64,
+    protected_ranges: &[(u64, u64)],
+    handoff_ranges: &[(u64, u64)],
+    max_table_length: u64,
+) -> Result<([u8; 4], u64), BootError> {
+    const HEADER_SIZE: u64 = archiaos_bootloader::acpi::SDT_HEADER_SIZE as u64;
+    const MAX_TABLE_SIZE: u64 = archiaos_bootloader::acpi::MAX_SDT_SIZE as u64;
+    #[cfg(target_arch = "aarch64")]
+    let _ = high_half_image;
+
+    let overlaps_protected_storage = |length: u64| {
+        physical_ranges_overlap(address, length, framebuffer_base, framebuffer_size)
+            || protected_ranges.iter().any(|&(start, size)| {
+                physical_ranges_overlap(address, length, start, size)
+            })
+            || platform_range_overlaps_handoff_storage(address, length, handoff_ranges)
+    };
+
+    if address == 0 {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI table has a null physical address.\r\n\0"));
+    }
+    if !memory_map.range_is_fully_reserved(address, HEADER_SIZE)
+        .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: malformed ACPI table header range in final memory map.\r\n\0"))?
+    {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI table header is not fully reserved in the final memory map.\r\n\0"));
+    }
+    #[cfg(target_arch = "x86_64")]
+    if high_half_image && !range_is_identity_mapped_ram(memory_map, address, HEADER_SIZE)? {
+        return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: ACPI table header is outside identity-mapped RAM for the high-half kernel.\r\n\0"));
+    }
+    if overlaps_protected_storage(HEADER_SIZE) {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI table header overlaps framebuffer, platform metadata, or handoff storage.\r\n\0"));
+    }
+
+    // SAFETY: the fixed SDT header is reserved, mapped where required, and
+    // disjoint from every range that must remain independently readable.
+    let header = unsafe {
+        core::slice::from_raw_parts(address as *const u8, HEADER_SIZE as usize)
+    };
+    let length = u32::from_le_bytes([header[4], header[5], header[6], header[7]]) as u64;
+    if !(HEADER_SIZE..=MAX_TABLE_SIZE).contains(&length) || length > max_table_length {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI table length is invalid or exceeds the bounded handoff audit budget.\r\n\0"));
+    }
+    if !memory_map.range_is_fully_reserved(address, length)
+        .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: malformed ACPI table range in final memory map.\r\n\0"))?
+    {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI table is not fully reserved in the final memory map.\r\n\0"));
+    }
+    #[cfg(target_arch = "x86_64")]
+    if high_half_image && !range_is_identity_mapped_ram(memory_map, address, length)? {
+        return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: ACPI table is outside identity-mapped RAM for the high-half kernel.\r\n\0"));
+    }
+    if overlaps_protected_storage(length) {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI table overlaps framebuffer, platform metadata, or handoff storage.\r\n\0"));
+    }
+
+    // SAFETY: the complete advertised table range is bounded, reserved, mapped
+    // where required, and disjoint from protected storage as checked above.
+    let complete = unsafe { core::slice::from_raw_parts(address as *const u8, length as usize) };
+    let info = archiaos_bootloader::acpi::parse_sdt_header(complete)
+        .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ACPI table header or checksum during final memory-map audit.\r\n\0"))?;
+    if info.length as u64 != length {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: inconsistent ACPI table length during final memory-map audit.\r\n\0"));
+    }
+    Ok((info.signature, length))
+}
+
 /// Ensure firmware platform-table storage remains reserved in the final handoff map.
 /// These pointers are consumed after ExitBootServices, so they must never be reclassified
 /// as conventional RAM that the physical allocator could hand to another subsystem.
@@ -1565,8 +1638,11 @@ fn audit_platform_table_ranges(
 ) -> Result<(), BootError> {
     #[cfg(target_arch = "aarch64")]
     let _ = high_half_image;
-    // Preserve the fully validated RSDP range to prevent aliasing platform-table formats.
+    // The kernel may follow the ACPI root table after ExitBootServices, so retain
+    // and audit its address separately from the RSDP that points to it.
+    let mut validated_acpi_root: Option<(u64, bool)> = None;
     let mut validated_rsdp_range: Option<(u64, u64)> = None;
+    let mut validated_device_tree_range: Option<(u64, u64)> = None;
     if acpi_rsdp != 0 {
         // ACPI 1.0 RSDP is only 20 bytes. Validate that prefix first so a valid
         // legacy table at a descriptor boundary is not forced to reserve 24 bytes.
@@ -1650,6 +1726,18 @@ fn audit_platform_table_ranges(
         if !rsdp_checksums_are_valid(complete, revision, length) {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ACPI RSDP checksum during final memory-map audit.\r\n\0"));
         }
+        let rsdp_info = archiaos_bootloader::acpi::parse_rsdp(complete)
+            .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ACPI root pointer metadata during final memory-map audit.\r\n\0"))?;
+        let (root_address, root_is_xsdt) = if rsdp_info.xsdt_address != 0 {
+            (rsdp_info.xsdt_address, true)
+        } else {
+            (rsdp_info.rsdt_address as u64, false)
+        };
+        if root_address == 0 {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI RSDP does not reference an RSDT or XSDT.
+ "));
+        }
+        validated_acpi_root = Some((root_address, root_is_xsdt));
         validated_rsdp_range = Some((acpi_rsdp, length));
     }
 
@@ -1709,6 +1797,95 @@ fn audit_platform_table_ranges(
         };
         if archiaos_bootloader::device_tree::validate_tree(complete_tree).is_err() {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid Device Tree contents during final memory-map audit.\r\n\0"));
+        }
+        validated_device_tree_range = Some((device_tree, length));
+    }
+
+    // ACPI consumers can follow the RSDT/XSDT and its child SDTs long after
+    // firmware services end. Audit every directly referenced table so none can
+    // be reclaimed as conventional RAM or alias another retained handoff object.
+    if let Some((root_address, root_is_xsdt)) = validated_acpi_root {
+        const MAX_ACPI_ROOT_ENTRIES: usize = 256;
+        const MAX_ACPI_AUDITED_BYTES: u64 = 64 * 1024 * 1024;
+        let mut protected = [(0u64, 0u64); 2];
+        let mut protected_count = 0usize;
+        if let Some(range) = validated_rsdp_range {
+            protected[protected_count] = range;
+            protected_count += 1;
+        }
+        if let Some(range) = validated_device_tree_range {
+            protected[protected_count] = range;
+            protected_count += 1;
+        }
+
+        let (root_signature, root_length) = audit_acpi_sdt_range(
+            memory_map,
+            root_address,
+            high_half_image,
+            framebuffer_base,
+            framebuffer_size,
+            &protected[..protected_count],
+            handoff_ranges,
+            MAX_ACPI_AUDITED_BYTES,
+        )?;
+        let expected_signature = if root_is_xsdt { *b"XSDT" } else { *b"RSDT" };
+        if root_signature != expected_signature {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI root table signature does not match the RSDP pointer.
+ "));
+        }
+
+        // SAFETY: audit_acpi_sdt_range validated the complete root table range
+        // and checksum before any entry is read.
+        let root_table = unsafe {
+            core::slice::from_raw_parts(root_address as *const u8, root_length as usize)
+        };
+        let entry_size = if root_is_xsdt { 8usize } else { 4usize };
+        let entries_bytes = root_table.len() - archiaos_bootloader::acpi::SDT_HEADER_SIZE;
+        if entries_bytes % entry_size != 0 {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI root table has a truncated entry array.
+ "));
+        }
+        let entry_count = entries_bytes / entry_size;
+        if entry_count > MAX_ACPI_ROOT_ENTRIES {
+            return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: ACPI root table contains too many entries for a bounded handoff audit.
+ "));
+        }
+
+        let mut audited_bytes = root_length;
+        for entry_index in 0..entry_count {
+            let offset = archiaos_bootloader::acpi::SDT_HEADER_SIZE + entry_index * entry_size;
+            let table_address = if root_is_xsdt {
+                u64::from_le_bytes([
+                    root_table[offset], root_table[offset + 1],
+                    root_table[offset + 2], root_table[offset + 3],
+                    root_table[offset + 4], root_table[offset + 5],
+                    root_table[offset + 6], root_table[offset + 7],
+                ])
+            } else {
+                u32::from_le_bytes([
+                    root_table[offset], root_table[offset + 1],
+                    root_table[offset + 2], root_table[offset + 3],
+                ]) as u64
+            };
+            let mut child_protected = [(0u64, 0u64); 3];
+            child_protected[..protected_count].copy_from_slice(&protected[..protected_count]);
+            child_protected[protected_count] = (root_address, root_length);
+            let remaining_budget = MAX_ACPI_AUDITED_BYTES.checked_sub(audited_bytes)
+                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI audit byte budget underflow.
+ "))?;
+            let (_, child_length) = audit_acpi_sdt_range(
+                memory_map,
+                table_address,
+                high_half_image,
+                framebuffer_base,
+                framebuffer_size,
+                &child_protected[..protected_count + 1],
+                handoff_ranges,
+                remaining_budget,
+            )?;
+            audited_bytes = audited_bytes.checked_add(child_length)
+                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI audited table size overflow.
+ "))?;
         }
     }
     Ok(())
