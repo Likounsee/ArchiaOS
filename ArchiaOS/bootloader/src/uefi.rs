@@ -1528,6 +1528,17 @@ fn physical_ranges_overlap(first_start: u64, first_length: u64, second_start: u6
     first_start < second_end && second_start < first_end
 }
 
+/// Reject platform tables that alias any loader-owned range retained across the handoff.
+fn platform_range_overlaps_handoff_storage(
+    start: u64,
+    length: u64,
+    handoff_ranges: &[(u64, u64); 4],
+) -> bool {
+    handoff_ranges.iter().any(|&(reserved_start, reserved_length)| {
+        physical_ranges_overlap(start, length, reserved_start, reserved_length)
+    })
+}
+
 /// Ensure firmware platform-table storage remains reserved in the final handoff map.
 /// These pointers are consumed after ExitBootServices, so they must never be reclassified
 /// as conventional RAM that the physical allocator could hand to another subsystem.
@@ -1538,6 +1549,7 @@ fn audit_platform_table_ranges(
     high_half_image: bool,
     framebuffer_base: u64,
     framebuffer_size: u64,
+    handoff_ranges: &[(u64, u64); 4],
 ) -> Result<(), BootError> {
     #[cfg(target_arch = "aarch64")]
     let _ = high_half_image;
@@ -1560,6 +1572,9 @@ fn audit_platform_table_ranges(
         }
         if physical_ranges_overlap(acpi_rsdp, RSDP_FIXED_PREFIX, framebuffer_base, framebuffer_size) {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI RSDP overlaps the GOP framebuffer.\r\n\0"));
+        }
+        if platform_range_overlaps_handoff_storage(acpi_rsdp, RSDP_FIXED_PREFIX, handoff_ranges) {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI RSDP prefix overlaps handoff storage.\r\n\0"));
         }
 
         let rsdp = acpi_rsdp as *const u8;
@@ -1594,6 +1609,9 @@ fn audit_platform_table_ranges(
         if physical_ranges_overlap(acpi_rsdp, length, framebuffer_base, framebuffer_size) {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI RSDP overlaps the GOP framebuffer.\r\n\0"));
         }
+        if platform_range_overlaps_handoff_storage(acpi_rsdp, length, handoff_ranges) {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI RSDP overlaps handoff storage.\r\n\0"));
+        }
         // SAFETY: the complete length is bounded, reserved, and identity-mapped
         // where required, as checked above.
         let complete = unsafe { core::slice::from_raw_parts(rsdp, length as usize) };
@@ -1619,6 +1637,9 @@ fn audit_platform_table_ranges(
         if physical_ranges_overlap(device_tree, FDT_FIXED_PREFIX, framebuffer_base, framebuffer_size) {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: Device Tree header overlaps the GOP framebuffer.\r\n\0"));
         }
+        if platform_range_overlaps_handoff_storage(device_tree, FDT_FIXED_PREFIX, handoff_ranges) {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: Device Tree header overlaps handoff storage.\r\n\0"));
+        }
 
         let dtb = device_tree as *const u8;
         // SAFETY: the fixed prefix is reserved and mapped, as checked above.
@@ -1643,6 +1664,9 @@ fn audit_platform_table_ranges(
         }
         if physical_ranges_overlap(device_tree, length, framebuffer_base, framebuffer_size) {
             return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: Device Tree overlaps the GOP framebuffer.\r\n\0"));
+        }
+        if platform_range_overlaps_handoff_storage(device_tree, length, handoff_ranges) {
+            return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: Device Tree overlaps handoff storage.\r\n\0"));
         }
         // Firmware data may have changed since initial discovery. Re-parse the
         // entire bounded tree while its full range is still proven readable.
@@ -2037,6 +2061,27 @@ pub unsafe fn transfer_to_kernel(
         // framebuffer-overlapping page from its ordinary RAM identity map, and the
         // kernel PMM independently reserves those frames before publishing alloc_page().
 
+        let mut handoff_ranges = [
+            (info_storage_start, core::mem::size_of::<BootInfo>() as u64),
+            (map_storage_start, MAX_MEMORY_MAP_SIZE as u64),
+            (0, 0),
+            (0, 0),
+        ];
+        #[cfg(target_arch = "x86_64")]
+        if let Some((loader_start, loader_end)) = loader_image_range {
+            handoff_ranges[2] = (
+                loader_start,
+                loader_end.checked_sub(loader_start)
+                    .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: inverted loader range during platform-table audit.\r\n\0"))?,
+            );
+        }
+        #[cfg(target_arch = "x86_64")]
+        if let Some(arena) = page_table_arena.as_ref() {
+            let arena_bytes = (PAGE_TABLE_ARENA_PAGES as u64)
+                .checked_mul(EFI_PAGE_SIZE)
+                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: page-table arena size overflow during platform-table audit.\r\n\0"))?;
+            handoff_ranges[3] = (arena.physical_base, arena_bytes);
+        }
         audit_platform_table_ranges(
             &parsed_map,
             acpi_rsdp,
@@ -2044,6 +2089,7 @@ pub unsafe fn transfer_to_kernel(
             image_uses_highhalf(_elf),
             framebuffer_base,
             framebuffer_size,
+            &handoff_ranges,
         )?;
 
         // Stop tracking the two pool buffers before the first EBS call, so no
