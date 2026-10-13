@@ -1929,7 +1929,7 @@ fn audit_platform_table_ranges(
         // Protect already-audited child tables too, so duplicate pointers and
         // partial table aliases are rejected before dereferencing the next one.
         // Each root entry can add one SDT, and a FADT can add a DSDT plus a FACS.
-        let mut child_protected = [(0u64, 0u64); MAX_ACPI_ROOT_ENTRIES * 3 + 3];
+        let mut child_protected = [(0u64, 0u64); MAX_ACPI_ROOT_ENTRIES * 3 + 4];
         child_protected[..protected_count].copy_from_slice(&protected[..protected_count]);
         child_protected[protected_count] = (root_address, root_length);
         let mut child_protected_count = protected_count + 1;
