@@ -7,8 +7,8 @@
 | Priorité | Domaine | Avancement estimé | État / prochaine preuve attendue |
 |---|---|---:|---|
 | **P0** | Démarrage UEFI maison x86-64 par défaut | **100 % (jalon physique atteint)** | Démarrage depuis la clé USB et premier affichage framebuffer confirmés par l’utilisateur sur le PC physique. Le motif bleu prouve l’écriture dans le framebuffer après le handoff ; il ne constitue pas encore un bureau ni une pile graphique. Un redémarrage à froid n’est pas consigné. |
-| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **99 %** | Le HEAD `e563bab342056ee32e7d41da062664b2c0fa12b9` passe la CI complète ([CI](https://github.com/Likounsee/ArchiaOS/actions/runs/38369633471), [démarrage UEFI local](https://github.com/Likounsee/ArchiaOS/actions/runs/38369633426), [test négatif BootInfo](https://github.com/Likounsee/ArchiaOS/actions/runs/38369633506)). L’audit ACPI couvre RSDT/XSDT, SDT enfants et pointeurs FADT DSDT/FACS, avec limites de 256 entrées et 64 Mio ; la capacité maximale de suivi a été corrigée. Les objets firmware effectivement consommés après `ExitBootServices` sont validés et protégés. Les autres entrées de configuration UEFI ne sont ni déréférencées ni transmises au noyau ; le PMM n’accepte comme RAM allocatable que le type UEFI Conventional Memory (7), laissant les autres types réservés. Le package USB est généré avec succès sur le commit de code `45fffbf9` (identique au code du HEAD, la modification ultérieure étant documentaire). **Seule la validation sur machine physique reste à faire** ; l’utilisateur possède l’image USB mais ne dispose pas actuellement d’une machine pour l’essayer. P1 reste donc à 99 % et doit être repris pour les démarrages à froid, le transfert BootInfo/PMM, le framebuffer et le retour firmware. QEMU ne prouve pas le comportement de tous les firmwares et PC. |
-| **P2** | Exceptions, ordonnanceur et synchronisation | **15 %** | Modèle de tâches à capacité fixe et diagnostics d’exceptions x86-64 (IDT vecteurs 0–31, codes d’erreur normalisés, adresse CR2 sur page fault) ajoutés ; tests hôte et validation du nouveau HEAD en cours. Aucun changement de contexte CPU, timer, préemption ou SMP à ce stade. |
+| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **99 %** | Le HEAD courant `e18b1901e262f21838ab0484459d207ccf004442` passe la CI principale ([CI](https://github.com/Likounsee/ArchiaOS/actions/runs/38375116739)) et le démarrage négatif BootInfo ([workflow](https://github.com/Likounsee/ArchiaOS/actions/runs/38375116552)). Le package USB et le démarrage UEFI local ont également réussi sur le commit de code précédent `dfd67f2937b95afc8c8d798c0b77483c2f7a43f9`; ils doivent être relancés après toute modification pertinente du chargeur. L’audit ACPI couvre RSDT/XSDT, SDT enfants et pointeurs FADT DSDT/FACS, avec limites de 256 entrées et 64 Mio ; la capacité maximale de suivi a été corrigée. Les objets firmware effectivement consommés après `ExitBootServices` sont validés et protégés. Les autres entrées de configuration UEFI ne sont ni déréférencées ni transmises au noyau ; le PMM n’accepte comme RAM allocatable que le type UEFI Conventional Memory (7), laissant les autres types réservés. Le package USB est généré avec succès sur le commit de code `45fffbf9` (identique au code du HEAD, la modification ultérieure étant documentaire). **Seule la validation sur machine physique reste à faire** ; l’utilisateur possède l’image USB mais ne dispose pas actuellement d’une machine pour l’essayer. P1 reste donc à 99 % et doit être repris pour les démarrages à froid, le transfert BootInfo/PMM, le framebuffer et le retour firmware. QEMU ne prouve pas le comportement de tous les firmwares et PC. |
+| **P2** | Exceptions, ordonnanceur et synchronisation | **21 %** | Modèle de tâches, IDT x86-64 et primitive de changement de contexte coopératif ajoutés ; CI principale et régression hôte du contexte vertes sur HEAD `e18b1901`. Le scheduler n'est pas encore relié aux contextes et ne commute pas encore entre tâches. |
 | **P3** | Espace utilisateur et ABI système | **0 %** | Non commencé ; dépend notamment des exceptions, syscalls et mécanismes mémoire isolés. |
 | **P4** | Stockage, VFS et préparation OpenFS | **0 %** | Pas de pilote bloc/VFS fonctionnel ; spécifier d'abord les interfaces. |
 | **P5** | Affichage et pile graphique | **0 %** | Pas de pile graphique de production. |
@@ -21,6 +21,49 @@
 | **A0–A4** | Démarrage et fondations ARM64 | Voir jalons ci-dessous | Prototype et tests ciblés ; parité avec x86-64 non atteinte. |
 
 Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas conduire à contourner la fiabilité du démarrage, la mémoire, les permissions ou la sécurité. Le but est un logiciel intégré inspiré des usages de CPU-Z, HWiNFO, GPU-Z, Fan Control et OpenRGB, mais conçu pour ArchiaOS et son matériel pris en charge.
+
+## Audit de référence — état du dépôt au HEAD `e18b1901e262f21838ab0484459d207ccf004442`
+
+Cet audit porte sur les sources présentes et leurs raccordements visibles, pas sur les seuls noms de fichiers ou les déclarations de la documentation. Les résultats CI sont ceux consultés au moment de cette révision ; une CI verte ne prouve que les scénarios qu'elle exécute.
+
+### Méthode de statut et de progression
+
+- **Non implémenté (0 %)** : aucun chemin de code opérationnel correspondant.
+- **Partiellement implémenté** : un sous-ensemble existe, mais une partie structurante manque ou reste isolée.
+- **Implémenté, non validé** : le code est raccordé mais les critères de test/plateforme ne sont pas encore satisfaits.
+- **Validé** : critères d'acceptation passés par une preuve reproductible identifiée ; les limites de cette preuve restent écrites.
+- **Bloqué** : prérequis externe ou technique empêche la suite ; nommer le blocage.
+- **Remplacé/abandonné** : décision documentée et raison conservée.
+
+Le pourcentage d'une tâche doit être fondé sur ses sous-critères : 0 % si aucun critère opérationnel n'est satisfait, 25 % pour le squelette et le contrat seulement, 50 % si le chemin nominal fonctionne mais que les erreurs/tests manquent, 75 % si l'intégration et les tests automatisés passent mais qu'une validation importante reste, 90 % si seuls des scénarios ciblés non automatisés restent, 100 % uniquement si tous les critères annoncés sont satisfaits. Ces paliers sont des repères, pas des bonus automatiques. Le pourcentage d'une phase est la moyenne pondérée de ses livrables techniques (poids documentés dans cette phase) ; un simple fichier, une API déclarée ou un test écrit non exécuté ne rapporte pas de validation.
+
+**Progression globale estimée : 25 %** selon la pondération de pilotage suivante : P0 5 %, P1 15 %, P2 20 %, P3 15 %, P4 12 %, P5 8 %, P6 8 %, P7 7 %, P8 4 %, P9 3 %, P10 3 % (total 100 %). Avec les valeurs affichées, la somme pondérée est d'environ 24,7 %, arrondie à 25 %. Les jalons B0–B9 et A0–A4 sont des vues transversales du boot/ARM64 et **ne sont pas additionnés une seconde fois**. Cette estimation mesure l'avancement vers l'ensemble des objectifs de la roadmap, pas la proportion de code écrite. La pondération est une convention de pilotage ; elle doit être changée explicitement si le périmètre final change.
+
+### Audit des chemins d'exécution de la version actuelle
+
+| Domaine | Ce que le code fait réellement | Limite / statut à refléter |
+|---|---|---|
+| Boot x86-64 | Entrée ELF, pile noyau propre, console série, passage BootInfo, écriture framebuffer et chemin UEFI maison ; workflows OVMF/CI et package USB. | P0 : premier démarrage physique signalé ; P1 reste à 99 % car les essais physiques de répétition/redémarrage ne sont pas consignés. |
+| Mémoire physique | `memory.rs` utilise deux bitmaps (frames gérées et libres), limite la fenêtre gérée à 4 Gio, filtre la carte UEFI et réserve les plages critiques ; auto-tests allocation/libération, doubles libérations et épuisement simulé. | Pas de VMM général, de gestion des espaces d'adressage par processus ni de mapping dynamique complet ; PMM actuel n'est pas un substitut à ces composants. |
+| Pagination / isolation | Les mappings de boot et permissions ELF sont construits par le chargeur ; le noyau démarre avec son environnement de mapping initial. | Pas de gestionnaire de tables de pages général côté noyau, pas de séparation fiable noyau/utilisateur ni de changement de CR3 par processus démontré. |
+| Exceptions / tâches | `interrupts.rs` fournit IDT x86-64 0–31 et handlers fatals ; `scheduler.rs` modélise les états ; `context.rs` sait faire un transfert x86-64 sur pile dédiée testé en hôte. | Le scheduler ne possède pas les contextes/piles et n'appelle pas le switch ; pas de timer, préemption, livraison d'exception aux tâches ou SMP activé. |
+| Pilotes / bus | `cpu.rs` lit CPUID et `pci.rs` parcourt les fonctions PCI du bus 0 via mécanisme de configuration legacy, en lecture seule pour les registres des périphériques. | Pas de PCIe ECAM/MCFG, de découverte générale des bus, de pilote bloc/USB/stockage ni de capteurs en direct. L'écriture du sélecteur CF8 est un accès d'adressage, pas une preuve d'inventaire complet. |
+| Système de fichiers | Aucun VFS ou pilote bloc connecté au chemin de démarrage actuel ; OpenFS est un projet distinct. | P4 reste à 0 % pour l'intégration actuelle ; ne pas confondre les sources OpenFS historiques dans ArchiaOS-old avec un FS utilisable par le noyau actuel. |
+| Syscalls / espace utilisateur | Pas d'ABI syscall active, d'exécution de binaire utilisateur isolé ni de gestion de processus dans le noyau Rust actuel. | P3 reste à 0 % ; les composants de l'ancien dépôt sont une référence de conception, pas une fonctionnalité portée. |
+| ARM64 | Un chemin de démarrage/prototype séparé et un PMM initial existent, avec tests de compilation/émulation selon workflows. | Pas de parité avec x86-64 : MMU/espaces d'adressage, interruptions, SMP et pilotes ne doivent pas être supposés équivalents. |
+| Tests et CI | CI principale verte au HEAD ; test hôte du scheduler/context switch et workflows de boot négatif présents. | Vérifier les jobs individuellement après chaque modification ; la CI hôte ne remplace pas le boot QEMU, et QEMU ne remplace pas le matériel physique. |
+
+### Comparaison du code avec `Likounsee/ArchiaOS-old`
+
+L'ancien dépôt est une base C/C++ x86-64 plus large, mais plus complexe et non équivalente à une implémentation de production validée. Ses composants ne sont pas raccordés automatiquement à la version Rust actuelle.
+
+- **Scheduler et SMP :** l'ancien `cpu/scheduler.cpp` contient des tables par CPU, des piles statiques par tâche, un bootstrap de tâches et une intégration au LAPIC ; `cpu/smp.cpp` contient le démarrage d'AP via trampoline, initialisation GDT/TSS/IDT et attente de mise en ligne. C'est une référence utile pour les structures par CPU et le cycle de vie, mais l'ancienne logique dépend de LAPIC, TSS, GDT, IDT et de détails d'assemblage fortement couplés. Réutiliser les invariants et tests, pas copier en bloc.
+- **Mémoire :** l'ancien code sépare PMM, paging, VMM, heap et `AddressSpace`, avec tests PMM/paging dédiés et refus explicite de mappings utilisateur dans certaines API du VMM noyau. Il offre des pistes pour un futur VMM et les espaces d'adressage, mais les bitmaps/limites, l'API C++ et les conventions de mapping doivent être audités et adaptés à BootInfo et au modèle Rust actuel. La gestion mémoire actuelle est plus simple et mieux bornée, mais nettement moins complète.
+- **Processus / IPC / ring 3 :** l'ancien `process.cpp` inclut tables de PID, chargement ELF, piles utilisateur et entrée ring 3 ; `ipc.cpp` offre une couche IPC. Cela indique un écart fonctionnel majeur avec la version actuelle, mais chaque chemin doit être ré-audité pour isolation, validations ELF, permissions de pages, durée de vie et gestion des erreurs avant portage.
+- **VFS / OpenFS :** l'ancien code comprend un VFS, un adaptateur OpenFS, un test OpenFS et une pile OpenFS C (bitmap, allocation, extents, inode, répertoires, liens, transactions, journal et fsck), ainsi que des abstractions bloc/GPT. C'est la source historique la plus concrète pour préparer P4. Avant réutilisation : isoler les appels disque, tester les erreurs E/S et les corruptions, vérifier les limites d'intégrité/journal et les formats on-disk, et écrire un contrat bloc/VFS stable. La présence de ces sources ne prouve ni que tous les chemins sont exécutés ni que le FS est sûr sur un disque réel.
+- **ACPI :** l'ancien `acpi.cpp` sait chercher/analyser des tables firmware, mais son commentaire indique un mapping identité initial très large et il lit des adresses physiques via pointeurs volatils. La version actuelle a un audit de plages firmware plus strict au boot. Ne pas importer l'ancien parseur sans reprendre les validations de taille, checksum, mapping et chevauchement.
+- **Pilotes PCI :** l'ancien `drivers/pci.cpp` est une base de découverte plus développée que le scan bus 0 actuel, mais reste liée aux mécanismes de configuration et à l'architecture. Comparer sa couverture et ses tests avant d'extraire un backend ; ajouter ECAM/ACPI séparément.
+- **Conclusion de portage :** ArchiaOS-old est surtout une **référence de conception et de tests**, pas une dépendance à réintégrer directement. Chaque portage doit être isolé, accompagné de tests hôte, intégré par petites interfaces, puis validé en QEMU avant tout essai matériel.
 
 ## Ordre de travail prioritaire
 
@@ -85,26 +128,30 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 
 **Critère de sortie :** invariants mémoire documentés et testés, sans chevauchement dangereux ni accès hors plage.
 
-### P2 — Exceptions, ordonnanceur et synchronisation — 15 %
+### P2 — Exceptions, ordonnanceur et synchronisation — 21 %
 
-**Objectif :** exécuter plusieurs tâches de façon contrôlée avant de bâtir un espace utilisateur complet.
+**État : PARTIELLEMENT IMPLÉMENTÉ — 21 % (HEAD `e18b1901e262f21838ab0484459d207ccf004442`).** La CI principale et le test de démarrage négatif BootInfo sont verts sur ce HEAD. Le test de contexte CPU est désormais exécuté par le job hôte du scheduler. Cela valide un transfert x86-64 vers une pile de tâche synthétique et le retour vers le contexte appelant ; cela **ne valide pas encore un ordonnanceur qui commute entre plusieurs tâches réelles**. Le module `scheduler.rs` reste un modèle d'états isolé : les tâches ne possèdent ni pile ni contexte CPU et ses transitions ne déclenchent pas `context::switch`. L'IDT x86-64 couvre les vecteurs 0–31 avec stubs et diagnostic fatal, mais l'installation et les handlers ne disposent pas encore d'un test d'exception contrôlé démontré dans la CI. Les interruptions restent désactivées au démarrage ; pas de timer, de préemption ni de SMP activé. La synchronisation multi-cœur n'existe pas encore dans la version actuelle.
 
-**État actuel :** le modèle d’ordonnanceur de `kernel/src/scheduler.rs` est intégré au démarrage et exécuté par auto-test avant le halt final. Une première couche d’exceptions est ajoutée dans `kernel/src/interrupts.rs` : IDT pour les vecteurs 0–31, stubs séparant les exceptions avec/sans code d’erreur, diagnostics série fatals et lecture de CR2 pour les page faults. Cette couche vient d’être ajoutée et doit encore être validée par la CI et des tests de déclenchement dédiés. Le planificateur est à capacité fixe (8 tâches), sans allocation dynamique ; il modélise les états `Empty`, `Runnable`, `Running`, `Blocked` et `Exited`, la sélection round-robin coopérative, le blocage/réveil, la sortie de tâche, les erreurs de transition et un contrôle d’invariants. Une méthode publique `schedule()` permet désormais la première sélection ainsi que la reprise après réveil, et refuse de remplacer une tâche déjà en cours. Les tests d’intégration hôte dans `kernel/tests/scheduler.rs` couvrent le démarrage, la protection contre une double sélection, le blocage/réveil et la non-réactivation d’une tâche terminée ; un job CI dédié les lance. **C’est toujours uniquement le modèle d’état : aucune pile par tâche ni aucun changement de contexte CPU n’est encore implémenté.** Le jalon physique P1 reste ouvert séparément, faute de machine disponible pour l’utilisateur.
+**Implémenté et vérifié**
+- [x] Modèle d'ordonnanceur borné sans allocation dynamique : états `Empty`, `Runnable`, `Running`, `Blocked`, `Exited`, sélection round-robin, blocage/réveil, sortie et invariants.
+- [x] Tests hôte des transitions et cas d'erreur du scheduler, exécutés par un job CI dédié.
+- [x] Primitive x86-64 de sauvegarde/restauration des registres callee-saved et de RSP, avec pile initiale alignée et entrée de tâche.
+- [x] Test hôte de transfert réel vers la pile dédiée et de retour au contexte initial ; CI principale verte sur le HEAD cité ci-dessus.
+- [x] Première IDT x86-64 pour les exceptions 0–31, normalisation des codes d'erreur et diagnostic CR2 pour page fault ; le comportement fatal reste volontaire.
 
-- [x] Ajouter un modèle d’ordonnanceur sans allocation dynamique et à capacité bornée.
-- [x] Vérifier les transitions de tâches, le round-robin, le blocage/réveil, la sortie, la capacité et les invariants.
-- [x] Exécuter l’auto-test de l’ordonnanceur au démarrage du noyau et produire un diagnostic série explicite.
-- [x] Ajouter un test d’intégration hôte dédié et un job CI pour les régressions de l’ordonnanceur (résultat CI du nouveau HEAD à confirmer).
-- [ ] Valider en CI l’installation de l’IDT et ajouter un test contrôlé de déclenchement d’exception.
-- [ ] Stabiliser les handlers d'exceptions et les diagnostics de faute.
-- [ ] Définir le contexte CPU d'une tâche et une pile par tâche.
-- [ ] Implémenter un changement de contexte coopératif réel et le tester.
-- [ ] Ajouter une file d'exécution formelle et primitives de synchronisation.
-- [ ] Introduire une source d'interruption/timer adaptée à la plateforme.
-- [ ] Ajouter la préemption seulement après validation du changement de contexte.
-- [ ] Définir la stratégie SMP et protéger les structures partagées avant d'activer plusieurs cœurs.
+**À faire — ordre de dépendance**
+- [ ] Tester explicitement l'IDT chargée, la validité des sélecteurs et le chemin de diagnostic par déclenchement contrôlé d'exceptions bénignes puis de fautes isolées sous QEMU.
+- [ ] Définir l'API de cycle de vie des tâches (entrée, argument, sortie, destruction) et la propriété des piles/contexte ; garder les piles dans une réserve statique ou une allocation dédiée, pas dans un gros objet local sur la pile de démarrage.
+- [ ] Relier les identifiants du scheduler aux contextes CPU et piles, avec gestion atomique de la tâche sortante/entrante et rollback si aucune tâche exécutable n'existe.
+- [ ] Ajouter un test à deux puis plusieurs tâches qui cèdent réellement le CPU, reprennent après suspension et terminent sans réutilisation prématurée de pile.
+- [ ] Définir la convention d'appel et l'état sauvegardé par architecture ; documenter explicitement que la primitive actuelle est x86-64/System V et ne constitue pas une abstraction ARM64.
+- [ ] Ajouter une file d'attente/primitives de synchronisation avec tests d'interleavings, de blocage/réveil et de perte de réveil.
+- [ ] Configurer un timer fiable et son acquittement, d'abord en mode coopératif puis avec préemption après validation de l'état complet sauvegardé.
+- [ ] Ajouter GDT/TSS/IST et piles dédiées aux exceptions critiques ; tester double fault et stack fault sans dépendre de la pile fautive.
+- [ ] Définir la stratégie SMP, les données par CPU, les verrous/atomiques et les règles d'ordre mémoire avant de réveiller un second cœur.
+- [ ] Ajouter tests de stress et régression sous QEMU, puis validation matérielle pour les chemins d'interruptions/timer.
 
-**Critère de sortie :** tests reproductibles de création, exécution, blocage et reprise des tâches avec changement de contexte réel ; pas de préemption ni de SMP annoncés avant leur implémentation.
+**Critères de sortie P2 :** plusieurs tâches indépendantes commutent réellement et de façon reproductible ; leurs piles/contextes restent valides ; exceptions attendues et fautes fatales produisent un diagnostic stable ; timer et synchronisation sont testés ; toute activation SMP est couverte par des tests multi-CPU. Une primitive de switch testée seule ne suffit pas.
 
 ### P3 — Espace utilisateur et ABI — 0 %
 
