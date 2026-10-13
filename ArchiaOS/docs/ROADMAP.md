@@ -6,7 +6,7 @@
 
 | Priorité | Domaine | Avancement estimé | État / prochaine preuve attendue |
 |---|---|---:|---|
-| **GLOBAL** | Ensemble des objectifs P0–P10 | **24 %** | Score pondéré recalculé : 23,82 %, arrondi à l’entier le plus proche. Maturité de validation suivie séparément ; les pistes B/A ne sont pas additionnées. |
+| **GLOBAL** | Ensemble des objectifs P0–P10 | **24 %** | Score pondéré recalculé : 23,98 %, arrondi à l’entier le plus proche. Maturité de validation suivie séparément ; les pistes B/A ne sont pas additionnées. |
 | **P0** | Démarrage UEFI maison x86-64 par défaut | **100 % (jalon physique atteint)** | Démarrage depuis la clé USB et premier affichage framebuffer confirmés par l’utilisateur sur le PC physique. Le motif bleu prouve l’écriture dans le framebuffer après le handoff ; il ne constitue pas encore un bureau ni une pile graphique. Un redémarrage à froid n’est pas consigné. |
 | **P1** | Fiabilité du chargeur, BootInfo et mémoire | **90 %** | Les contrôles ELF, mappings/protections, BootInfo/ExitBootServices, audit firmware et PMM ont leurs tests automatisés documentés. Le dernier commit de code noyau audité reste `e18b1901e262f21838ab0484459d207ccf004442`. Le dernier HEAD documentaire ayant les trois workflows terminés avec succès est `4c0bfa4f4c752c5f0385d3a0913eec4159e31757` : [CI principale, run 38422476186](https://github.com/Likounsee/ArchiaOS/actions/runs/38422476186), [UEFI local, run 38422476688](https://github.com/Likounsee/ArchiaOS/actions/runs/38422476688) et [BootInfo négatif, run 38422476325](https://github.com/Likounsee/ArchiaOS/actions/runs/38422476325). Ces résultats prouvent les étapes automatisées de ces workflows, pas une validation matérielle reproductible. Les workflows déclenchés par la révision documentaire en cours doivent être considérés séparément tant qu'ils ne sont pas terminés. Le package USB est uniquement prouvé sur `dfd67f2937b95afc8c8d798c0b77483c2f7a43f9` ([workflow](https://github.com/Likounsee/ArchiaOS/actions/runs/38375095036)) ; il n'est pas validé sur le HEAD courant. Les 10 points restants correspondent à la campagne matérielle répétable non consignée. |
 | **P2** | Exceptions, ordonnanceur et synchronisation | **21 %** | Le modèle d'états et la primitive de contexte ont des tests hôte ; la dernière CI complète terminée a réussi sur le HEAD documentaire `4c0bfa4f`. Le code de scheduler reste un modèle séparé : il ne possède pas les contextes/piles et ne commute pas réellement entre tâches. |
@@ -359,7 +359,7 @@ Dépendances structurantes : **VMM/MMU → espaces d'adressage → processus/sys
 **Ordre :** threat model et reproductibilité tôt ; installateur après boot/stockage fiables ; mises à jour après versionnement/provenance ; tests de récupération avant publication. Audits parser/fuzzing en parallèle. Risques : écrasement disque, artefacts compromis, échec mise à jour et fuite de privilèges. Validation QEMU puis matériel sur configurations supportées.
 
 
-## P8 — Fondations noyau pour le logiciel de contrôle matériel — 18 %
+## P8 — Fondations noyau pour le logiciel de contrôle matériel — 32 %
 
 **But produit :** fournir au futur logiciel une source de télémétrie cohérente et, à terme, un accès contrôlé aux ventilateurs, à l'éclairage RGB et aux fonctions prises en charge des cartes mères et périphériques.
 
@@ -466,19 +466,36 @@ Grille A0–A4 : A0 entrée (10 %), A1 transfert UEFI (20 %), A2 mémoire/MMU (2
 - La sécurité thermique et les mécanismes de protection firmware priment sur les profils utilisateur.
 - OpenFS reste un dépôt distinct : vérifier son état et son API réelle avant toute intégration.
 
-## Prochain lot recommandé — scheduler réellement raccordé
+## Prochaine priorité recommandée — clôture de P1
 
-**Objectif :** faire passer P2 du modèle de tâches à un premier multitâche coopératif réel, sans prétendre encore à la préemption ou au SMP.
+**Priorité immédiate : terminer la validation restante de P1 avant de déclarer P1 achevée ou de faire passer officiellement P2 au rang de phase prioritaire.** Le dernier livrable de P1 vaut 10 points et exige une campagne sur machine physique. Les succès GitHub Actions, QEMU/OVMF et les tests hôte ne peuvent pas remplacer cette preuve matérielle.
 
-1. **Audit ciblé :** relire `kernel/src/scheduler.rs`, `kernel/src/context.rs` et les interfaces d'interruptions ; confirmer les chemins d'appel avant modification.
-2. **Cycle de vie minimal :** définir une tâche qui possède son contexte et sa pile, avec des règles explicites de création, d'état, de terminaison et de libération.
-3. **Raccordement :** intégrer le changement de contexte au scheduler, préserver les registres requis par l'ABI et définir clairement le chemin de retour.
-4. **Démonstration :** ajouter un test déterministe où deux tâches coopératives rendent la main à tour de rôle, puis une preuve de démarrage QEMU montrant le résultat attendu.
-5. **Critères d'acceptation :** alternance reproductible, aucune reprise sur une pile libérée, états cohérents après chaque switch, tests de régression exécutés et preuves liées au SHA exact.
-6. **Hors périmètre :** timer, préemption, synchronisation concurrente et SMP restent des lots ultérieurs, après validation du switch coopératif.
+### Lot P1 — campagne matérielle
 
-**Fichiers cibles à confirmer après audit :** `kernel/src/scheduler.rs`, `kernel/src/context.rs` et les tests associés. Ne pas supposer les chemins exacts avant vérification et ne pas augmenter P2 avant démonstration des critères.
+1. **Identifier l’artefact exact :** utiliser le package USB x86-64 produit depuis le commit candidat, consigner son SHA et le commit source. Le succès historique du package sur un autre commit ne valide pas le candidat actuel.
+2. **Réaliser plusieurs démarrages à froid :** consigner le modèle de machine et le firmware, le périphérique de démarrage, le résultat et les éventuels blocages ; conserver la sortie série quand elle est disponible.
+3. **Vérifier le transfert UEFI → noyau :** confirmer que BootInfo et la carte mémoire sont cohérents, que le PMM s’initialise et que les réservations préservent le framebuffer.
+4. **Vérifier la fin du cycle de démarrage :** confirmer l’affichage framebuffer, redémarrer et vérifier le retour au firmware.
+5. **Archiver la preuve :** conserver les journaux, le résultat par essai, le SHA de l’artefact et le commit exact testé dans le dépôt.
 
-## Règle de mise à jour de la feuille de route
+**Critères de sortie P1 :** campagne complète et reproductible documentée, artefact traçable, démarrages à froid réussis et comportement BootInfo/PMM/framebuffer/retour firmware vérifié. Si un essai échoue, corriger le défaut et répéter les vérifications concernées ; ne pas attribuer les 10 points sur la seule base d’un premier démarrage.
 
-Après chaque lot de travail, actualiser les pourcentages seulement si du code ou des tests ont réellement avancé, indiquer la preuve (commit, test ou CI) et noter les blocages. Ne pas augmenter un pourcentage pour une intention ou une documentation seule.
+**Limite opérationnelle :** cette campagne exige un accès physique à la machine et ne peut pas être accomplie uniquement avec les outils GitHub. Tant que ses résultats ne sont pas fournis, P1 reste à 90 %.
+
+### Préparation suivante — P2, sans la déclarer prioritaire avant la clôture de P1
+
+Une fois P1 validée, reprendre le scheduler coopératif réellement raccordé :
+
+1. Auditer `kernel/src/scheduler.rs`, `kernel/src/context.rs` et les interfaces d’interruptions avant toute modification.
+2. Définir le cycle de vie des tâches, la propriété de leurs piles et contextes, ainsi que les règles de terminaison.
+3. Relier les identifiants du scheduler aux contextes et piles et intégrer le changement de contexte x86-64.
+4. Démontrer l’alternance déterministe d’au moins deux tâches, puis leur terminaison sans reprise sur une pile libérée.
+5. Exécuter les tests de régression et une preuve QEMU ; rattacher les résultats au SHA exact.
+
+**Critères d’acceptation P2 pour ce lot :** deux tâches indépendantes alternent réellement, les états restent cohérents après chaque commutation, les piles restent valides, les tests existants passent et le chemin intégré est démontré sous QEMU.
+
+**Hors périmètre de ce premier lot :** préemption par timer, synchronisation concurrente et SMP. Ces éléments restent dépendants de la validation du switch coopératif.
+
+### Règle de priorité
+
+L’ordre officiel reste P0 → P1 → P2 : ne pas déclarer une phase prioritaire terminée sans ses preuves d’acceptation. La préparation ou l’audit de P2 peut être effectué sans modifier le code pendant l’attente de la campagne physique, mais l’avancement de P2 ne remplace pas la clôture de P1.
