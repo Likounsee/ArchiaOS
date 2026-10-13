@@ -27,6 +27,8 @@ jobs:
         run: rustup target add x86_64-unknown-none
       - name: Show toolchain
         run: rustc --version && cargo --version
+      - name: Test scheduler state machine on host
+        run: cargo test --test scheduler --target x86_64-unknown-linux-gnu
       - name: Install QEMU for the UEFI smoke-test jobs
         run: sudo apt-get update && sudo apt-get install -y qemu-system-x86
       - name: Reject operational Limine dependencies
