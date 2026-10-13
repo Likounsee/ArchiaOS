@@ -233,4 +233,15 @@ mod tests {
     fn context_starts_uninitialized() {
         assert!(!CpuContext::empty().is_initialized());
     }
+
+    #[test]
+    fn fxsave_area_is_512_bytes_and_16_byte_aligned_at_abi_offset() {
+        let context = CpuContext::empty();
+        let base = &context as *const CpuContext as usize;
+        let area = &context.simd as *const FxState as usize;
+        assert_eq!(core::mem::size_of::<FxState>(), 512);
+        assert_eq!(base % 16, 0);
+        assert_eq!(area % 16, 0);
+        assert_eq!(area - base, 16);
+    }
 }
