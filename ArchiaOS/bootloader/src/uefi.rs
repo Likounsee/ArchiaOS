@@ -1624,6 +1624,99 @@ fn audit_acpi_sdt_range(
     Ok((info.signature, length))
 }
 
+/// Read the FADT's indirect pointers after its SDT checksum and length were validated.
+fn acpi_fadt_indirect_pointers(table: &[u8]) -> Result<(u64, u64), ()> {
+    if table.len() < 44 || table.get(0..4) != Some(&b"FACP"[..]) {
+        return Err(());
+    }
+    let legacy_facs = u32::from_le_bytes([table[36], table[37], table[38], table[39]]) as u64;
+    let legacy_dsdt = u32::from_le_bytes([table[40], table[41], table[42], table[43]]) as u64;
+    let extended_facs = if table.len() >= 140 {
+        u64::from_le_bytes([
+            table[132], table[133], table[134], table[135],
+            table[136], table[137], table[138], table[139],
+        ])
+    } else {
+        0
+    };
+    let extended_dsdt = if table.len() >= 148 {
+        u64::from_le_bytes([
+            table[140], table[141], table[142], table[143],
+            table[144], table[145], table[146], table[147],
+        ])
+    } else {
+        0
+    };
+    let facs = if extended_facs != 0 { extended_facs } else { legacy_facs };
+    let dsdt = if extended_dsdt != 0 { extended_dsdt } else { legacy_dsdt };
+    if dsdt == 0 {
+        return Err(());
+    }
+    Ok((facs, dsdt))
+}
+
+/// Validate an ACPI FACS range. Unlike an SDT, FACS has no checksum or 36-byte header.
+fn audit_acpi_facs_range(
+    memory_map: &UefiMemoryMap<'_>,
+    address: u64,
+    high_half_image: bool,
+    framebuffer_base: u64,
+    framebuffer_size: u64,
+    protected_ranges: &[(u64, u64)],
+    handoff_ranges: &[(u64, u64)],
+    max_table_length: u64,
+) -> Result<u64, BootError> {
+    const FACS_HEADER_SIZE: u64 = 8;
+    const FACS_MIN_SIZE: u64 = 64;
+    const FACS_MAX_SIZE: u64 = archiaos_bootloader::acpi::MAX_SDT_SIZE as u64;
+    let overlaps_protected_storage = |length: u64| {
+        physical_ranges_overlap(address, length, framebuffer_base, framebuffer_size)
+            || protected_ranges.iter().any(|&(start, size)| {
+                physical_ranges_overlap(address, length, start, size)
+            })
+            || platform_range_overlaps_handoff_storage(address, length, handoff_ranges)
+    };
+
+    if address == 0 {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: FADT references a null FACS address.\r\n\0"));
+    }
+    if !memory_map.range_is_fully_reserved(address, FACS_HEADER_SIZE)
+        .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: malformed FACS header range in final memory map.\r\n\0"))?
+    {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: FACS header is not fully reserved in the final memory map.\r\n\0"));
+    }
+    #[cfg(target_arch = "x86_64")]
+    if high_half_image && !range_is_identity_mapped_ram(memory_map, address, FACS_HEADER_SIZE)? {
+        return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: FACS header is outside identity-mapped RAM for the high-half kernel.\r\n\0"));
+    }
+    if overlaps_protected_storage(FACS_HEADER_SIZE) {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: FACS header overlaps framebuffer, platform metadata, or handoff storage.\r\n\0"));
+    }
+
+    // SAFETY: the prefix is reserved, mapped where required, and disjoint from protected ranges.
+    let header = unsafe { core::slice::from_raw_parts(address as *const u8, FACS_HEADER_SIZE as usize) };
+    if header[0..4] != *b"FACS" {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: FADT FACS pointer has an invalid signature.\r\n\0"));
+    }
+    let length = u32::from_le_bytes([header[4], header[5], header[6], header[7]]) as u64;
+    if !(FACS_MIN_SIZE..=FACS_MAX_SIZE).contains(&length) || length > max_table_length {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: FACS length is invalid or exceeds the bounded handoff audit budget.\r\n\0"));
+    }
+    if !memory_map.range_is_fully_reserved(address, length)
+        .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: malformed FACS range in final memory map.\r\n\0"))?
+    {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: FACS is not fully reserved in the final memory map.\r\n\0"));
+    }
+    #[cfg(target_arch = "x86_64")]
+    if high_half_image && !range_is_identity_mapped_ram(memory_map, address, length)? {
+        return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: FACS is outside identity-mapped RAM for the high-half kernel.\r\n\0"));
+    }
+    if overlaps_protected_storage(length) {
+        return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: FACS overlaps framebuffer, platform metadata, or another ACPI table.\r\n\0"));
+    }
+    Ok(length)
+}
+
 /// Ensure firmware platform-table storage remains reserved in the final handoff map.
 /// These pointers are consumed after ExitBootServices, so they must never be reclassified
 /// as conventional RAM that the physical allocator could hand to another subsystem.
@@ -1854,7 +1947,8 @@ fn audit_platform_table_ranges(
         let mut audited_bytes = root_length;
         // Protect already-audited child tables too, so duplicate pointers and
         // partial table aliases are rejected before dereferencing the next one.
-        let mut child_protected = [(0u64, 0u64); MAX_ACPI_ROOT_ENTRIES + 3];
+        // Each root entry can add one SDT, and a FADT can add a DSDT plus a FACS.
+        let mut child_protected = [(0u64, 0u64); MAX_ACPI_ROOT_ENTRIES + 5];
         child_protected[..protected_count].copy_from_slice(&protected[..protected_count]);
         child_protected[protected_count] = (root_address, root_length);
         let mut child_protected_count = protected_count + 1;
@@ -1875,7 +1969,7 @@ fn audit_platform_table_ranges(
             };
             let remaining_budget = MAX_ACPI_AUDITED_BYTES.checked_sub(audited_bytes)
                 .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI audit byte budget underflow.\r\n\0"))?;
-            let (_, child_length) = audit_acpi_sdt_range(
+            let (child_signature, child_length) = audit_acpi_sdt_range(
                 memory_map,
                 table_address,
                 high_half_image,
@@ -1885,10 +1979,58 @@ fn audit_platform_table_ranges(
                 handoff_ranges,
                 remaining_budget,
             )?;
+            // Protect the FADT itself before following any of its firmware-controlled pointers.
             child_protected[child_protected_count] = (table_address, child_length);
             child_protected_count += 1;
             audited_bytes = audited_bytes.checked_add(child_length)
                 .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI audited table size overflow.\r\n\0"))?;
+
+            if child_signature == *b"FACP" {
+                // SAFETY: the FADT SDT has already passed reservation, mapping,
+                // bounds, checksum, and overlap validation.
+                let fadt = unsafe { core::slice::from_raw_parts(table_address as *const u8, child_length as usize) };
+                let (facs_address, dsdt_address) = acpi_fadt_indirect_pointers(fadt)
+                    .map_err(|_| error(EFI_LOAD_ERROR, b"ArchiaOS: FADT has no valid DSDT pointer or a truncated pointer field.\r\n\0"))?;
+
+                let remaining_budget = MAX_ACPI_AUDITED_BYTES.checked_sub(audited_bytes)
+                    .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI audit byte budget underflow before DSDT.\r\n\0"))?;
+                let (dsdt_signature, dsdt_length) = audit_acpi_sdt_range(
+                    memory_map,
+                    dsdt_address,
+                    high_half_image,
+                    framebuffer_base,
+                    framebuffer_size,
+                    &child_protected[..child_protected_count],
+                    handoff_ranges,
+                    remaining_budget,
+                )?;
+                if dsdt_signature != *b"DSDT" {
+                    return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: FADT DSDT pointer does not reference a DSDT.\r\n\0"));
+                }
+                child_protected[child_protected_count] = (dsdt_address, dsdt_length);
+                child_protected_count += 1;
+                audited_bytes = audited_bytes.checked_add(dsdt_length)
+                    .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI audited table size overflow after DSDT.\r\n\0"))?;
+
+                if facs_address != 0 {
+                    let remaining_budget = MAX_ACPI_AUDITED_BYTES.checked_sub(audited_bytes)
+                        .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI audit byte budget underflow before FACS.\r\n\0"))?;
+                    let facs_length = audit_acpi_facs_range(
+                        memory_map,
+                        facs_address,
+                        high_half_image,
+                        framebuffer_base,
+                        framebuffer_size,
+                        &child_protected[..child_protected_count],
+                        handoff_ranges,
+                        remaining_budget,
+                    )?;
+                    child_protected[child_protected_count] = (facs_address, facs_length);
+                    child_protected_count += 1;
+                    audited_bytes = audited_bytes.checked_add(facs_length)
+                        .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI audited table size overflow after FACS.\r\n\0"))?;
+                }
+            }
         }
     }
     Ok(())
@@ -2684,5 +2826,51 @@ mod physical_range_overlap_tests {
     fn treats_wrapping_ranges_as_conflicting() {
         assert!(physical_ranges_overlap(u64::MAX - 3, 8, 0x1000, 0x1000));
         assert!(physical_ranges_overlap(0x1000, 0x1000, u64::MAX - 3, 8));
+    }
+}
+
+#[cfg(test)]
+mod acpi_fadt_indirect_pointer_tests {
+    use super::acpi_fadt_indirect_pointers;
+
+    fn put_u32(bytes: &mut [u8], offset: usize, value: u32) {
+        bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+    }
+
+    fn put_u64(bytes: &mut [u8], offset: usize, value: u64) {
+        bytes[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
+    }
+
+    #[test]
+    fn reads_legacy_facs_and_dsdt_pointers() {
+        let mut fadt = [0u8; 44];
+        fadt[0..4].copy_from_slice(b"FACP");
+        put_u32(&mut fadt, 36, 0x1234_0000);
+        put_u32(&mut fadt, 40, 0x1234_1000);
+        assert_eq!(acpi_fadt_indirect_pointers(&fadt), Ok((0x1234_0000, 0x1234_1000)));
+    }
+
+    #[test]
+    fn prefers_nonzero_extended_pointers_and_falls_back_individually() {
+        let mut fadt = [0u8; 148];
+        fadt[0..4].copy_from_slice(b"FACP");
+        put_u32(&mut fadt, 36, 0x1000);
+        put_u32(&mut fadt, 40, 0x2000);
+        put_u64(&mut fadt, 132, 0x1_0000_1000);
+        put_u64(&mut fadt, 140, 0);
+        assert_eq!(acpi_fadt_indirect_pointers(&fadt), Ok((0x1_0000_1000, 0x2000)));
+        put_u64(&mut fadt, 140, 0x1_0000_2000);
+        assert_eq!(acpi_fadt_indirect_pointers(&fadt), Ok((0x1_0000_1000, 0x1_0000_2000)));
+    }
+
+    #[test]
+    fn rejects_truncated_fadt_wrong_signature_and_missing_dsdt() {
+        assert!(acpi_fadt_indirect_pointers(&[0u8; 43]).is_err());
+        let mut fadt = [0u8; 44];
+        assert!(acpi_fadt_indirect_pointers(&fadt).is_err());
+        fadt[0..4].copy_from_slice(b"FACP");
+        assert!(acpi_fadt_indirect_pointers(&fadt).is_err());
+        put_u32(&mut fadt, 40, 0x2000);
+        assert_eq!(acpi_fadt_indirect_pointers(&fadt), Ok((0, 0x2000)));
     }
 }
