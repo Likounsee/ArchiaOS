@@ -1852,6 +1852,12 @@ fn audit_platform_table_ranges(
         }
 
         let mut audited_bytes = root_length;
+        // Protect already-audited child tables too, so duplicate pointers and
+        // partial table aliases are rejected before dereferencing the next one.
+        let mut child_protected = [(0u64, 0u64); MAX_ACPI_ROOT_ENTRIES + 3];
+        child_protected[..protected_count].copy_from_slice(&protected[..protected_count]);
+        child_protected[protected_count] = (root_address, root_length);
+        let mut child_protected_count = protected_count + 1;
         for entry_index in 0..entry_count {
             let offset = archiaos_bootloader::acpi::SDT_HEADER_SIZE + entry_index * entry_size;
             let table_address = if root_is_xsdt {
@@ -1867,25 +1873,22 @@ fn audit_platform_table_ranges(
                     root_table[offset + 2], root_table[offset + 3],
                 ]) as u64
             };
-            let mut child_protected = [(0u64, 0u64); 3];
-            child_protected[..protected_count].copy_from_slice(&protected[..protected_count]);
-            child_protected[protected_count] = (root_address, root_length);
             let remaining_budget = MAX_ACPI_AUDITED_BYTES.checked_sub(audited_bytes)
-                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI audit byte budget underflow.
- "))?;
+                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI audit byte budget underflow.\r\n\0"))?;
             let (_, child_length) = audit_acpi_sdt_range(
                 memory_map,
                 table_address,
                 high_half_image,
                 framebuffer_base,
                 framebuffer_size,
-                &child_protected[..protected_count + 1],
+                &child_protected[..child_protected_count],
                 handoff_ranges,
                 remaining_budget,
             )?;
+            child_protected[child_protected_count] = (table_address, child_length);
+            child_protected_count += 1;
             audited_bytes = audited_bytes.checked_add(child_length)
-                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI audited table size overflow.
- "))?;
+                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ACPI audited table size overflow.\r\n\0"))?;
         }
     }
     Ok(())
