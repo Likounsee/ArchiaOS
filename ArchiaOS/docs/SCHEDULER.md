@@ -2,7 +2,7 @@
 
 ## État actuel
 
-Le modèle d'états est borné et sans allocation dynamique. Il gère les états `Empty`, `Runnable`, `Running`, `Blocked` et `Exited`, avec sélection round-robin. Le runtime x86-64 de validation relie actuellement deux tâches à deux contextes et deux piles statiques dédiées, effectue de vraies commutations coopératives et retourne à la pile de démarrage après la sortie des deux tâches. Chaque contexte préserve maintenant les registres callee-saved, RSP et l'état x87/SSE via un bloc FXSAVE64 de 512 octets aligné sur 16 octets. Les registres YMM/ZMM ne sont pas encore sauvegardés : l'exécution AVX/AVX-512 dans les tâches reste interdite jusqu'à l'intégration XSAVE/XRSTOR.
+Le modèle d'états est borné et sans allocation dynamique. Il gère les états `Empty`, `Runnable`, `Running`, `Blocked` et `Exited`, avec sélection round-robin. Le runtime x86-64 de validation utilise deux contextes et deux piles statiques distinctes. Son scénario réel vérifie désormais : A se bloque, B réveille A puis cède le processeur, A reprend et termine, puis B reprend et termine avant le retour à la pile de démarrage. La CI exige le marqueur correspondant. Chaque contexte préserve les registres callee-saved, RSP et l'état x87/SSE via FXSAVE64/FXRSTOR64. Les registres YMM/ZMM ne sont pas sauvegardés : AVX/AVX-512 restent hors du chemin du scheduler tant que l'état étendu n'est pas correctement géré et testé.
 
 **Ce runtime n'est pas encore un ordonnanceur général de production.** Il n'a pas encore de temporisateur/préemption, de SMP actif, de politique de placement multi-cœur, ni de découverte complète de la topologie et des asymétries du processeur. Le round-robin actuel ne connaît pas les P-cores/E-cores ou les domaines de cache.
 
