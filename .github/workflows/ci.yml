@@ -467,6 +467,21 @@ jobs:
           grep -Fq "ArchiaOS: UEFI kernel entry validated" "$RUNNER_TEMP/archiaos-cpu-sse41-only.log"
           echo "SSE4.1-only / pre-AVX CPU profile passed"
 
+          cp "$firmware_vars" "$RUNNER_TEMP/OVMF_VARS_AVX.fd"
+          set +e
+          timeout 25s qemu-system-x86_64 -machine q35 -cpu Haswell -m 512M -drive "if=pflash,format=raw,readonly=on,file=$firmware_code" -drive "if=pflash,format=raw,file=$RUNNER_TEMP/OVMF_VARS_AVX.fd" -drive "file=$RUNNER_TEMP/archiaos-production-uefi.img,format=raw,if=ide" -boot order=c -display none -serial stdio -monitor none -no-reboot -no-shutdown > "$RUNNER_TEMP/archiaos-cpu-avx.log" 2>&1
+          avx_status=$?
+          set -e
+          cat "$RUNNER_TEMP/archiaos-cpu-avx.log"
+          if [[ "$avx_status" -ne 0 && "$avx_status" -ne 124 ]]; then
+            echo "QEMU AVX profile exited unexpectedly with status $avx_status"
+            exit 1
+          fi
+          grep -Fq "ArchiaOS: CPU features " "$RUNNER_TEMP/archiaos-cpu-avx.log"
+          grep -Eq "AVX\(hw/usable\)=1/[01]" "$RUNNER_TEMP/archiaos-cpu-avx.log"
+          grep -Fq "ArchiaOS: UEFI kernel entry validated" "$RUNNER_TEMP/archiaos-cpu-avx.log"
+          echo "AVX-capable CPU profile passed; hardware support is logged separately from OS usability"
+
 
       - name: Publish production USB image
         if: success()
