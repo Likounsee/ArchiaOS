@@ -8,7 +8,7 @@
 |---|---|---:|---|
 | **GLOBAL** | Ensemble des objectifs P0–P10 | **23 %** | Score pondéré recalculé : 23,42 %, arrondi à l’entier le plus proche. Maturité de validation suivie séparément ; les pistes B/A ne sont pas additionnées. |
 | **P0** | Démarrage UEFI maison x86-64 par défaut | **100 % (jalon physique atteint)** | Démarrage depuis la clé USB et premier affichage framebuffer confirmés par l’utilisateur sur le PC physique. Le motif bleu prouve l’écriture dans le framebuffer après le handoff ; il ne constitue pas encore un bureau ni une pile graphique. Un redémarrage à froid n’est pas consigné. |
-| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **90 %** | Le HEAD courant `e18b1901e262f21838ab0484459d207ccf004442` passe la CI principale ([CI](https://github.com/Likounsee/ArchiaOS/actions/runs/38375116739)) et le démarrage négatif BootInfo ([workflow](https://github.com/Likounsee/ArchiaOS/actions/runs/38375116552)). Le package USB et le démarrage UEFI local ont également réussi sur le commit de code précédent `dfd67f2937b95afc8c8d798c0b77483c2f7a43f9`; ils doivent être relancés après toute modification pertinente du chargeur. L’audit ACPI couvre RSDT/XSDT, SDT enfants et pointeurs FADT DSDT/FACS, avec limites de 256 entrées et 64 Mio ; la capacité maximale de suivi a été corrigée. Les objets firmware effectivement consommés après `ExitBootServices` sont validés et protégés. Les autres entrées de configuration UEFI ne sont ni déréférencées ni transmises au noyau ; le PMM n’accepte comme RAM allocatable que le type UEFI Conventional Memory (7), laissant les autres types réservés. Le package USB est généré avec succès sur le commit de code `45fffbf9` (identique au code du HEAD, la modification ultérieure étant documentaire). **Seule la validation sur machine physique reste à faire** ; l’utilisateur possède l’image USB mais ne dispose pas actuellement d’une machine pour l’essayer. P1 reste donc à 99 % et doit être repris pour les démarrages à froid, le transfert BootInfo/PMM, le framebuffer et le retour firmware. QEMU ne prouve pas le comportement de tous les firmwares et PC. |
+| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **90 %** | Les contrôles ELF, mappings/protections, BootInfo/ExitBootServices, audit firmware et PMM ont leurs tests automatisés documentés. Le dernier commit de code audité est `e18b1901e262f21838ab0484459d207ccf004442`. La CI, le boot UEFI local et BootInfo négatif ont réussi sur le HEAD documentaire antérieur `7bdc9e17f5a14e4800804cf36af4beac3689184c` ([CI](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609054), [UEFI](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609108), [BootInfo négatif](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609145)). Le package USB est uniquement prouvé sur `dfd67f29` ([workflow](https://github.com/Likounsee/ArchiaOS/actions/runs/38375095036)). Les 10 points restants correspondent à la campagne matérielle répétable non consignée ; QEMU ne prouve pas le comportement de tous les PC/firmwares. |
 | **P2** | Exceptions, ordonnanceur et synchronisation | **21 %** | Modèle de tâches, IDT x86-64 et primitive de changement de contexte coopératif ajoutés ; CI principale et régression hôte du contexte vertes sur HEAD `e18b1901`. Le scheduler n'est pas encore relié aux contextes et ne commute pas encore entre tâches. |
 | **P3** | Espace utilisateur et ABI système | **0 %** | Non commencé ; dépend notamment des exceptions, syscalls et mécanismes mémoire isolés. |
 | **P4** | Stockage, VFS et préparation OpenFS | **0 %** | Pas de pilote bloc/VFS fonctionnel ; spécifier d'abord les interfaces. |
@@ -18,7 +18,7 @@
 | **P8** | Fondations noyau pour le contrôle matériel | **18 %** | CPUID et scan PCI legacy lecture seule existent ; CPUID et inventaire restent partiellement testés, et ECAM/ACPI/capteurs/pilotes contrôlés sont absents. |
 | **P9** | Service privilégié de télémétrie/contrôle | **0 %** | Pas de service fonctionnel ; dépend d'interfaces noyau et de pilotes sûrs. |
 | **P10** | Archia Control Center (interface tout-en-un) | **0 %** | Vision documentée mais aucune application fonctionnelle ; la documentation seule ne compte pas dans le score. |
-| **B0–B9** | Chargeur UEFI maison | Voir jalons ci-dessous | Plusieurs fondations validées en CI ; la CI du HEAD courant est verte ; la validation sur matériel physique reste ouverte. |
+| **B0–B9** | Chargeur UEFI maison | Voir jalons ci-dessous | Vue de progression du chargeur ; les preuves doivent être lues avec le SHA du workflow, et la validation sur matériel physique reste ouverte. |
 | **A0–A4** | Démarrage et fondations ARM64 | Voir jalons ci-dessous | Prototype et tests ciblés ; parité avec x86-64 non atteinte. |
 
 Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas conduire à contourner la fiabilité du démarrage, la mémoire, les permissions ou la sécurité. Le but est un logiciel intégré inspiré des usages de CPU-Z, HWiNFO, GPU-Z, Fan Control et OpenRGB, mais conçu pour ArchiaOS et son matériel pris en charge.
@@ -198,7 +198,7 @@ Dépendances structurantes : **VMM/MMU → espaces d'adressage → processus/sys
 
 ### P1 — Fiabilité du chargeur et de la mémoire — 90 %
 
-**État : IMPLÉMENTATION AUTOMATISÉE AVANCÉE, VALIDATION MATÉRIELLE OUVERTE — 90 %.** La campagne physique vaut 10 points : elle n'est pas un détail résiduel. Le dernier commit de code noyau/workflow examiné est `e18b1901e262f21838ab0484459d207ccf004442`. Le HEAD avant cette révision documentaire est `d731af02c4d6601d63afe9318dda98d372fec1aa` (révision de documentation intermédiaire) ; la CI principale, le boot UEFI local et le test négatif BootInfo ont réussi sur le HEAD précédent `7bdc9e17f5a14e4800804cf36af4beac3689184c`. Le package USB le plus récent observé a réussi sur `dfd67f2937b95afc8c8d798c0b77483c2f7a43f9`, pas sur ce HEAD.
+**État : IMPLÉMENTATION AUTOMATISÉE AVANCÉE, VALIDATION MATÉRIELLE OUVERTE — 90 %.** La campagne physique vaut 10 points : elle n'est pas un détail résiduel. Le dernier commit de code noyau/workflow examiné est `e18b1901e262f21838ab0484459d207ccf004442`. Le HEAD de branche au début de cette révision était `7bdc9e17f5a14e4800804cf36af4beac3689184c` ; la CI principale, le boot UEFI local et le test négatif BootInfo ont réussi sur ce commit. Le package USB le plus récent observé a réussi sur `dfd67f2937b95afc8c8d798c0b77483c2f7a43f9`, pas sur ce HEAD.
 
 **Objectif :** sécuriser le transfert UEFI → noyau et la gestion de la mémoire physique.
 
@@ -237,7 +237,7 @@ Dépendances structurantes : **VMM/MMU → espaces d'adressage → processus/sys
 
 ### P2 — Exceptions, ordonnanceur et synchronisation — 21 %
 
-**État : PARTIELLEMENT IMPLÉMENTÉ — 21 % (HEAD `e18b1901e262f21838ab0484459d207ccf004442`).** La CI principale et le test de démarrage négatif BootInfo sont verts sur ce HEAD. Le test de contexte CPU est désormais exécuté par le job hôte du scheduler. Cela valide un transfert x86-64 vers une pile de tâche synthétique et le retour vers le contexte appelant ; cela **ne valide pas encore un ordonnanceur qui commute entre plusieurs tâches réelles**. Le module `scheduler.rs` reste un modèle d'états isolé : les tâches ne possèdent ni pile ni contexte CPU et ses transitions ne déclenchent pas `context::switch`. L'IDT x86-64 couvre les vecteurs 0–31 avec stubs et diagnostic fatal, mais l'installation et les handlers ne disposent pas encore d'un test d'exception contrôlé démontré dans la CI. Les interruptions restent désactivées au démarrage ; pas de timer, de préemption ni de SMP activé. La synchronisation multi-cœur n'existe pas encore dans la version actuelle.
+**État : PARTIELLEMENT IMPLÉMENTÉ — 21 %.** Le dernier commit de code qui touche le contexte/scheduler est `e18b1901e262f21838ab0484459d207ccf004442`; la CI principale et le test négatif BootInfo ont réussi sur le HEAD documentaire `7bdc9e17f5a14e4800804cf36af4beac3689184c`, qui contient ce même code. Cela valide un transfert x86-64 vers une pile de tâche synthétique et le retour vers le contexte appelant ; cela **ne valide pas encore un ordonnanceur qui commute entre plusieurs tâches réelles**. Le module `scheduler.rs` reste un modèle d'états isolé : les tâches ne possèdent ni pile ni contexte CPU et ses transitions ne déclenchent pas `context::switch`. L'IDT x86-64 couvre les vecteurs 0–31 avec stubs et diagnostic fatal, mais l'installation et les handlers ne disposent pas encore d'un test d'exception contrôlé démontré dans la CI. Les interruptions restent désactivées au démarrage ; pas de timer, de préemption ni de SMP activé. La synchronisation multi-cœur n'existe pas encore dans la version actuelle.
 
 **Implémenté et vérifié**
 - [x] Modèle d'ordonnanceur borné sans allocation dynamique : états `Empty`, `Runnable`, `Running`, `Blocked`, `Exited`, sélection round-robin, blocage/réveil, sortie et invariants.
@@ -349,7 +349,7 @@ Dépendances structurantes : **VMM/MMU → espaces d'adressage → processus/sys
 **Ordre :** threat model et reproductibilité tôt ; installateur après boot/stockage fiables ; mises à jour après versionnement/provenance ; tests de récupération avant publication. Audits parser/fuzzing en parallèle. Risques : écrasement disque, artefacts compromis, échec mise à jour et fuite de privilèges. Validation QEMU puis matériel sur configurations supportées.
 
 
-## P8 — Fondations noyau pour le logiciel de contrôle matériel — 12 %
+## P8 — Fondations noyau pour le logiciel de contrôle matériel — 18 %
 
 **But produit :** fournir au futur logiciel une source de télémétrie cohérente et, à terme, un accès contrôlé aux ventilateurs, à l'éclairage RGB et aux fonctions prises en charge des cartes mères et périphériques.
 
@@ -397,7 +397,7 @@ Dépendances structurantes : **VMM/MMU → espaces d'adressage → processus/sys
 
 **Critère de sortie :** service testable sans privilèges d'écriture par défaut, API stable et modes dégradés sûrs.
 
-## P10 — Archia Control Center, application tout-en-un — 5 %
+## P10 — Archia Control Center, application tout-en-un — 0 %
 
 La vision est une seule application avec des modules cohérents, pas une simple liste de capteurs. Les objectifs documentés ne constituent pas une implémentation ; le score P10 reste donc à 0 % jusqu'à ce qu'une application fonctionnelle existe. L'interface ne doit jamais accéder directement aux ports, registres ou protocoles fabricants : elle passe par le service privilégié.
 
@@ -436,7 +436,9 @@ La vision est une seule application avec des modules cohérents, pas une simple 
 - **B8 — Noyau x86-64 de production via le chargeur maison : validé en CI antérieure.** OVMF/QEMU, validation BootInfo et test PMM de 130 allocations/libérations.
 - **B9 — Démarrage maison par défaut : bascule du code effectuée ; CI complète verte sur `0094090`, validation sur matériel physique encore en attente.** Lié directement à P0.
 
-### ARM64
+### ARM64 — progression séparée estimée : 46 % (non ajoutée au global)
+
+Grille A0–A4 : A0 entrée (10 %), A1 transfert UEFI (20 %), A2 mémoire/MMU (25 %), A3 exceptions/interruptions (20 %), A4 interfaces communes/parité (25 %). Scores courants estimés sur les preuves listées : A0 100, A1 100, A2 35, A3 25, A4 10, soit 46,25 % → **46 %**. A2/A3/A4 sont des prototypes partiels, pas une parité avec x86-64.
 
 - **A0 — Entrée noyau ARM64 : implémentée.** Entrée AArch64, pile dédiée et console PL011 pour QEMU `virt`.
 - **A1 — Transfert UEFI ARM64 : validé sur AAVMF/QEMU.** Copie des segments identité, synchronisation I-cache, BootInfo et découverte console via ACPI SPCR sur le firmware testé.
