@@ -66,10 +66,11 @@ for marker in \
   "ArchiaOS Bootloader: exiting UEFI boot services" \
   "ArchiaOS: custom UEFI bootloader entered production kernel" \
   "ArchiaOS: UEFI BootInfo validated" \
+  "ArchiaOS: framebuffer probe=written" \
   "ArchiaOS: UEFI PMM allocation/free self-test passed" \
   "ArchiaOS: UEFI kernel entry validated"; do
   grep -Fq "$marker" "$LOG" || { echo "BOOT ÉCHOUÉ : marqueur absent : $marker (voir $LOG)" >&2; exit 1; }
 done
-echo "BOOT VALIDÉ : le noyau de production a atteint le dernier marqueur P0."
+echo "BOOT VALIDÉ : handoff, BootInfo, écriture framebuffer, PMM et marqueur final confirmés."
 echo "Image : $IMAGE"
 echo "Journal série : $LOG"
