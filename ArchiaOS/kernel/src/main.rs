@@ -237,6 +237,11 @@ pub extern "C" fn rust_kernel_main(
     // Read-only CPU inventory is the first hardware-telemetry primitive. Keep
     // it allocation-free and independent of sensor or device-driver support.
     let cpu_info = cpu::detect();
+    if !cpu_info.has_sse41 {
+        paint_status_line(info, 1, FB_FAIL);
+        let _ = writeln!(serial, "ArchiaOS: unsupported CPU: SSE4.1 is required; refusing to continue");
+        halt_forever();
+    }
     let vendor = cpu::printable_field(&cpu_info.vendor);
     let brand = cpu::printable_field(&cpu_info.brand);
     let _ = writeln!(serial, "ArchiaOS: CPU vendor: {}", vendor);
@@ -252,13 +257,23 @@ pub extern "C" fn rust_kernel_main(
     );
     let _ = writeln!(
         serial,
-        "ArchiaOS: CPU features TSC={} SSE2={} AES={} XSAVE={} AVX={} AVX2={} (hardware flags only)",
+        "ArchiaOS: CPU features TSC={} SSE2={} SSE4.1={} SSE4.2={} AES={} XSAVE={} OSXSAVE={} AVX(hw/usable)={}/{} AVX2(hw/usable)={}/{} AVX512F(hw/usable)={}/{} FMA={} BMI1={} BMI2={}",
         cpu_info.has_tsc as u8,
         cpu_info.has_sse2 as u8,
+        cpu_info.has_sse41 as u8,
+        cpu_info.has_sse42 as u8,
         cpu_info.has_aesni as u8,
         cpu_info.has_xsave as u8,
+        cpu_info.has_osxsave as u8,
         cpu_info.has_avx as u8,
-        cpu_info.has_avx2 as u8
+        cpu_info.avx_state_usable as u8,
+        cpu_info.has_avx2 as u8,
+        cpu_info.avx2_usable as u8,
+        cpu_info.has_avx512f as u8,
+        cpu_info.avx512f_usable as u8,
+        cpu_info.has_fma as u8,
+        cpu_info.has_bmi1 as u8,
+        cpu_info.has_bmi2 as u8
     );
     let _ = writeln!(
         serial,
