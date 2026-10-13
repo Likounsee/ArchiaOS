@@ -15,7 +15,7 @@
 | **P5** | Affichage et pile graphique | **0 %** | Pas de pile graphique de production. |
 | **P6** | Réseau et mesures de performances | **0 %** | Pas de pile réseau complète ni de bancs de performance stabilisés. |
 | **P7** | Distribution, installation et sécurité | **0 %** | Pas de version distribuable validée. |
-| **P8** | Fondations noyau pour le contrôle matériel | **32 %** | CPUID est intégré au démarrage ; les décodeurs purs et tests de profils CPU sont écrits, et la CI ajoute des boots QEMU sans SSE4.1, SSE4.1 seul/pré-AVX et AVX. Ces nouvelles vérifications ne comptent pas avant réussite sur le commit exact. ECAM/ACPI, capteurs et pilotes contrôlés restent absents. Contrat détaillé dans [CPU-FEATURE-POLICY.md](CPU-FEATURE-POLICY.md). |
+| **P8** | Fondations noyau pour le contrôle matériel | **32 %** | CPUID est intégré au démarrage ; les décodeurs purs sont testés en hôte, un noyau SSE4.1 vectorisé avec repli scalaire est raccordé, et la CI ajoute des boots QEMU sans SSE4.1, pré-AVX et AVX. Ces nouvelles vérifications ne comptent pas avant réussite sur le commit exact. ECAM/ACPI, capteurs et pilotes contrôlés restent absents. Contrat détaillé dans [CPU-FEATURE-POLICY.md](CPU-FEATURE-POLICY.md). |
 | **P9** | Service privilégié de télémétrie/contrôle | **0 %** | Pas de service fonctionnel ; dépend d'interfaces noyau et de pilotes sûrs. |
 | **P10** | Archia Control Center (interface tout-en-un) | **0 %** | Vision documentée mais aucune application fonctionnelle ; la documentation seule ne compte pas dans le score. |
 | **B0–B9** | Chargeur UEFI maison | Voir jalons ci-dessous | Vue de progression du chargeur ; les preuves doivent être lues avec le SHA du workflow, et la validation sur matériel physique reste ouverte. |
@@ -371,7 +371,7 @@ Dépendances structurantes : **VMM/MMU → espaces d'adressage → processus/sys
 ### P8.1 — Identification et inventaire en lecture seule
 - [x] Ajouter un module x86-64 CPUID sans allocation dynamique : fabricant, famille/modèle/stepping, marque CPU si disponible et fonctionnalités pertinentes (commit `bb157c7`).
 - [x] Définir et appliquer SSE4.1 comme minimum x86-64 du noyau ; détecter SSE4.2, AES-NI, FMA, BMI1/BMI2 et AVX/AVX2/AVX-512F avec séparation entre support matériel et état OS utilisable (validation CI en attente).
-- [x] Ajouter des tests unitaires synthétiques pour les profils sans SSE4.1, SSE4.1 seul, AVX, OSXSAVE/XCR0 incomplets et AVX-512 ; l'exécution CI reste à confirmer.\n- [x] Ajouter des boots QEMU du noyau de production sans SSE4.1 (refus attendu), SSE4.1 seul/pré-AVX et AVX ; réussite du workflow en attente.
+- [x] Ajouter des tests unitaires synthétiques pour les profils sans SSE4.1, SSE4.1 seul, AVX, OSXSAVE/XCR0 incomplets et AVX-512, plus le repli scalaire et la somme vectorisée SSE4.1 ; l'exécution CI reste à confirmer.\n- [x] Ajouter des boots QEMU du noyau de production sans SSE4.1 (refus attendu), SSE4.1 seul/pré-AVX et AVX ; réussite du workflow en attente.
 - [x] Vérifier les feuilles CPUID maximales avant chaque interrogation et gérer proprement les champs indisponibles.
 - [ ] Ajouter des tests unitaires pour le décodage des champs CPU.
 - [x] Première découverte PCI lecture seule via mécanisme de configuration legacy, limitée au bus 0 et à 32 périphériques / 8 fonctions ; implémentation `kernel/src/pci.rs`, sans test dédié ni couverture de tous les bus.
