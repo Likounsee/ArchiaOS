@@ -2929,7 +2929,6 @@ mod configuration_table_lookup_tests {
         let first = 0x1234usize as *mut c_void;
         let second = 0x5678usize as *mut c_void;
         let entry_count = 2;
-        let byte_count = entry_count * mem::size_of::<ConfigurationTable>();
         let mut storage = [0u8; 1 + 2 * mem::size_of::<ConfigurationTable>()];
         // Deliberately offset the table by one byte to exercise unaligned firmware data.
         let table = unsafe { storage.as_mut_ptr().add(1).cast::<ConfigurationTable>() };
@@ -2939,14 +2938,13 @@ mod configuration_table_lookup_tests {
                 ConfigurationTable { vendor_guid: FIRST_GUID, vendor_table: first },
             );
             ptr::write_unaligned(
-                table.add(1),
+                table.cast::<u8>().add(mem::size_of::<ConfigurationTable>()).cast::<ConfigurationTable>(),
                 ConfigurationTable { vendor_guid: SECOND_GUID, vendor_table: second },
             );
         }
 
         assert_eq!(configuration_table(table, entry_count, &FIRST_GUID), first);
         assert_eq!(configuration_table(table, entry_count, &SECOND_GUID), second);
-        assert!(byte_count <= storage.len() - 1);
     }
 
     #[test]
