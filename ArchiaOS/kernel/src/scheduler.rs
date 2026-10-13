@@ -68,6 +68,18 @@ impl Scheduler {
         self.current.map(TaskId)
     }
 
+    /// Start scheduling when no task is currently running.
+    ///
+    /// This is the public entry point for the first dispatch and for restarting
+    /// after all runnable tasks were blocked. It deliberately refuses to replace
+    /// an active task; real CPU context switching is implemented separately.
+    pub fn schedule(&mut self) -> Result<TaskId, SchedulerError> {
+        if self.current.is_some() {
+            return Err(SchedulerError::InvariantViolation);
+        }
+        self.select_next()
+    }
+
     /// Select the next runnable task in deterministic round-robin order.
     /// The outgoing running task becomes runnable (cooperative yield).
     pub fn yield_current(&mut self) -> Result<TaskId, SchedulerError> {
