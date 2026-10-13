@@ -886,7 +886,6 @@ fn rounded_loader_image_range(image_base: u64, image_size: u64) -> Option<(u64, 
     }
     Some((start, end))
 }
-}
 
 #[cfg(target_arch = "x86_64")]
 struct PageTableArena {
