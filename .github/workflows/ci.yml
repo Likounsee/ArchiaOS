@@ -28,7 +28,22 @@ jobs:
       - name: Show toolchain
         run: rustc --version && cargo --version
       - name: Test scheduler state machine on host
-        run: cargo test --test scheduler --target x86_64-unknown-linux-gnu
+        shell: bash
+        run: |
+          set -euo pipefail
+          harness="$RUNNER_TEMP/archiaos-scheduler-tests"
+          mkdir -p "$harness/src" "$harness/tests"
+          cp kernel/src/scheduler.rs "$harness/src/scheduler.rs"
+          cp kernel/tests/scheduler.rs "$harness/tests/scheduler.rs"
+          cat > "$harness/Cargo.toml" <<'EOF'
+          [package]
+          name = "archiaos-scheduler-host-tests"
+          version = "0.1.0"
+          edition = "2021"
+
+          [dependencies]
+          EOF
+          cargo test --manifest-path "$harness/Cargo.toml" --target x86_64-unknown-linux-gnu
       - name: Install QEMU for the UEFI smoke-test jobs
         run: sudo apt-get update && sudo apt-get install -y qemu-system-x86
       - name: Reject operational Limine dependencies
