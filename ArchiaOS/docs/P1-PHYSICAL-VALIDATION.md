@@ -82,7 +82,7 @@ L’utilisateur rapporte **5 redémarrages à chaud réussis sur 5**, chacun att
 | Redémarrages à chaud | **5/5, barre blanche finale** | Rapporté par l’utilisateur |
 | SHA exact du paquet USB testé | Non communiqué | À consigner |
 | Marqueurs série BootInfo et PMM | Non fournis | Non vérifiés |
-| Retour firmware et démarrage du système habituel | Non communiqués | À confirmer |
+| Retour firmware et démarrage du système habituel | Confirmés sans problème par l’utilisateur le 13 octobre 2026 | Rapporté par l’utilisateur |
 
 ## Fiche de résultats
 
