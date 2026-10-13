@@ -6,6 +6,7 @@
 
 | Priorité | Domaine | Avancement estimé | État / prochaine preuve attendue |
 |---|---|---:|---|
+| **GLOBAL** | Ensemble des objectifs P0–P10 | **25 %** | Moyenne pondérée des phases (poids et méthode définis dans l’audit ci-dessous) ; les jalons B/A ne sont pas recomptés. |
 | **P0** | Démarrage UEFI maison x86-64 par défaut | **100 % (jalon physique atteint)** | Démarrage depuis la clé USB et premier affichage framebuffer confirmés par l’utilisateur sur le PC physique. Le motif bleu prouve l’écriture dans le framebuffer après le handoff ; il ne constitue pas encore un bureau ni une pile graphique. Un redémarrage à froid n’est pas consigné. |
 | **P1** | Fiabilité du chargeur, BootInfo et mémoire | **99 %** | Le HEAD courant `e18b1901e262f21838ab0484459d207ccf004442` passe la CI principale ([CI](https://github.com/Likounsee/ArchiaOS/actions/runs/38375116739)) et le démarrage négatif BootInfo ([workflow](https://github.com/Likounsee/ArchiaOS/actions/runs/38375116552)). Le package USB et le démarrage UEFI local ont également réussi sur le commit de code précédent `dfd67f2937b95afc8c8d798c0b77483c2f7a43f9`; ils doivent être relancés après toute modification pertinente du chargeur. L’audit ACPI couvre RSDT/XSDT, SDT enfants et pointeurs FADT DSDT/FACS, avec limites de 256 entrées et 64 Mio ; la capacité maximale de suivi a été corrigée. Les objets firmware effectivement consommés après `ExitBootServices` sont validés et protégés. Les autres entrées de configuration UEFI ne sont ni déréférencées ni transmises au noyau ; le PMM n’accepte comme RAM allocatable que le type UEFI Conventional Memory (7), laissant les autres types réservés. Le package USB est généré avec succès sur le commit de code `45fffbf9` (identique au code du HEAD, la modification ultérieure étant documentaire). **Seule la validation sur machine physique reste à faire** ; l’utilisateur possède l’image USB mais ne dispose pas actuellement d’une machine pour l’essayer. P1 reste donc à 99 % et doit être repris pour les démarrages à froid, le transfert BootInfo/PMM, le framebuffer et le retour firmware. QEMU ne prouve pas le comportement de tous les firmwares et PC. |
 | **P2** | Exceptions, ordonnanceur et synchronisation | **21 %** | Modèle de tâches, IDT x86-64 et primitive de changement de contexte coopératif ajoutés ; CI principale et régression hôte du contexte vertes sur HEAD `e18b1901`. Le scheduler n'est pas encore relié aux contextes et ne commute pas encore entre tâches. |
@@ -52,6 +53,16 @@ Le pourcentage d'une tâche doit être fondé sur ses sous-critères : 0 % si au
 | Syscalls / espace utilisateur | Pas d'ABI syscall active, d'exécution de binaire utilisateur isolé ni de gestion de processus dans le noyau Rust actuel. | P3 reste à 0 % ; les composants de l'ancien dépôt sont une référence de conception, pas une fonctionnalité portée. |
 | ARM64 | Un chemin de démarrage/prototype séparé et un PMM initial existent, avec tests de compilation/émulation selon workflows. | Pas de parité avec x86-64 : MMU/espaces d'adressage, interruptions, SMP et pilotes ne doivent pas être supposés équivalents. |
 | Tests et CI | CI principale verte au HEAD ; test hôte du scheduler/context switch et workflows de boot négatif présents. | Vérifier les jobs individuellement après chaque modification ; la CI hôte ne remplace pas le boot QEMU, et QEMU ne remplace pas le matériel physique. |
+
+### État des preuves automatisées au moment de l'audit
+
+| Vérification | Résultat observé | Ce que cela prouve / ne prouve pas |
+|---|---|---|
+| CI principale sur HEAD `e18b1901` | **Réussie** — [run 38375116739](https://github.com/Likounsee/ArchiaOS/actions/runs/38375116739) | Les jobs inclus dans ce workflow ont réussi, dont la régression hôte scheduler/context ; ne prouve pas toutes les fonctionnalités futures. |
+| Démarrage négatif BootInfo sur HEAD `e18b1901` | **Réussi** — [run 38375116552](https://github.com/Likounsee/ArchiaOS/actions/runs/38375116552) | Le scénario négatif BootInfo couvert est rejeté comme attendu. |
+| Package USB x86-64 et démarrage UEFI local | **Réussis sur le commit de code `dfd67f29`** — [package](https://github.com/Likounsee/ArchiaOS/actions/runs/38375095036), [boot local](https://github.com/Likounsee/ArchiaOS/actions/runs/38375095030) | Le HEAD `e18b1901` n'a ensuite changé que l'intégration des tests hôte ; ces workflows n'ont pas été relancés sur le HEAD exact. Relancer si le code de boot change. |
+| Validation USB sur machine physique | **Non réalisée / non vérifiable ici** | Nécessite un PC et plusieurs essais consignés ; ne pas assimiler le package USB à un démarrage matériel. |
+| Tests du noyau Rust hors des modules explicitement ciblés | **Couverture partielle** | Ajouter des tests d'intégration par contrat ; l'absence d'un job de test n'est pas une preuve de réussite. |
 
 ### Comparaison du code avec `Likounsee/ArchiaOS-old`
 
