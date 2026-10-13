@@ -2354,6 +2354,47 @@ mod configuration_table_bounds_tests {
 }
 
 #[cfg(test)]
+mod platform_range_handoff_tests {
+    use super::platform_range_overlaps_handoff_storage;
+
+    const HANDOFF_RANGES: [(u64, u64); 4] = [
+        (0x1000, 0x1000),
+        (0x3000, 0x1000),
+        (0, 0),
+        (0x8000, 0x1000),
+    ];
+
+    #[test]
+    fn rejects_platform_tables_that_alias_handoff_storage() {
+        assert!(platform_range_overlaps_handoff_storage(
+            0x1000, 0x1000, &HANDOFF_RANGES
+        ));
+        assert!(platform_range_overlaps_handoff_storage(
+            0x1800, 0x100, &HANDOFF_RANGES
+        ));
+        assert!(platform_range_overlaps_handoff_storage(
+            0x0ff0, 0x20, &HANDOFF_RANGES
+        ));
+        assert!(platform_range_overlaps_handoff_storage(
+            0x8000, 0x1000, &HANDOFF_RANGES
+        ));
+    }
+
+    #[test]
+    fn allows_disjoint_adjacent_and_empty_optional_ranges() {
+        assert!(!platform_range_overlaps_handoff_storage(
+            0x2000, 0x1000, &HANDOFF_RANGES
+        ));
+        assert!(!platform_range_overlaps_handoff_storage(
+            0x4000, 0x1000, &HANDOFF_RANGES
+        ));
+        assert!(!platform_range_overlaps_handoff_storage(
+            0x1000, 0, &HANDOFF_RANGES
+        ));
+    }
+}
+
+#[cfg(test)]
 mod physical_range_overlap_tests {
     use super::physical_ranges_overlap;
 
