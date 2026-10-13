@@ -218,15 +218,13 @@ static mut RUNTIME_BOOT_CONTEXT: crate::context::CpuContext =
 static mut RUNTIME_STAGES: [usize; RUNTIME_TASKS] = [0; RUNTIME_TASKS];
 
 extern "C" fn runtime_task_a() -> ! {
+    // A records entry and blocks. Task B must wake it explicitly before it can
+    // resume; this exercises the real context-switch path, not just state data.
     unsafe { core::ptr::write_volatile(core::ptr::addr_of_mut!(RUNTIME_STAGES).cast::<usize>(), 1) };
-    if runtime_yield().is_err() {
+    if runtime_block_current().is_err() {
         runtime_halt();
     }
     unsafe { core::ptr::write_volatile(core::ptr::addr_of_mut!(RUNTIME_STAGES).cast::<usize>(), 2) };
-    if runtime_yield().is_err() {
-        runtime_halt();
-    }
-    unsafe { core::ptr::write_volatile(core::ptr::addr_of_mut!(RUNTIME_STAGES).cast::<usize>(), 3) };
     runtime_exit()
 }
 
@@ -237,7 +235,7 @@ extern "C" fn runtime_task_b() -> ! {
             1,
         )
     };
-    if runtime_yield().is_err() {
+    if runtime_wake(TaskId(0)).is_err() || runtime_yield().is_err() {
         runtime_halt();
     }
     unsafe {
@@ -273,6 +271,25 @@ fn runtime_yield() -> Result<(), SchedulerError> {
     Ok(())
 }
 
+/// Block the current runtime task and switch away until another task wakes it.
+fn runtime_block_current() -> Result<(), SchedulerError> {
+    unsafe {
+        let scheduler = core::ptr::addr_of_mut!(RUNTIME_SCHEDULER);
+        let previous = (*scheduler).current.ok_or(SchedulerError::NoCurrentTask)?;
+        let next = (&mut *scheduler).block_current()?.0;
+        let contexts = core::ptr::addr_of_mut!(RUNTIME_CONTEXTS).cast::<crate::context::CpuContext>();
+        // SAFETY: scheduler selected a runnable task; both contexts and stacks
+        // are static and interrupts are disabled for this single-CPU test.
+        crate::context::switch(&mut *contexts.add(previous), &*contexts.add(next));
+    }
+    Ok(())
+}
+
+/// Wake a blocked task in the boot-time runtime.
+fn runtime_wake(id: TaskId) -> Result<(), SchedulerError> {
+    unsafe { (&mut *core::ptr::addr_of_mut!(RUNTIME_SCHEDULER)).wake(id) }
+}
+
 /// Exit a runtime task permanently. An exited task is never dispatched again.
 /// When no runnable task remains, return to the boot context rather than
 /// continuing on a task stack that is logically dead.
@@ -304,10 +321,9 @@ fn runtime_exit() -> ! {
     runtime_halt()
 }
 
-/// Execute a real two-task round-robin scenario on separate stacks:
-/// A -> B -> A -> B -> A -> boot. The stage counters prove that each suspended
-/// task resumed after its own switch call, and exit handling returns to boot
-/// only after both tasks are marked Exited.
+/// Execute a real block/wake scenario on separate stacks:
+/// A blocks -> B wakes A and yields -> A resumes and exits -> B resumes and exits
+/// -> boot. This checks blocked-task wakeup and the real saved contexts.
 pub fn runtime_self_test() -> Result<(), SchedulerError> {
     unsafe {
         core::ptr::write(core::ptr::addr_of_mut!(RUNTIME_SCHEDULER), Scheduler::new());
@@ -342,11 +358,12 @@ pub fn runtime_self_test() -> Result<(), SchedulerError> {
         );
 
         let stages = core::ptr::addr_of!(RUNTIME_STAGES).cast::<usize>();
-        if core::ptr::read_volatile(stages) != 3
+        if core::ptr::read_volatile(stages) != 2
             || core::ptr::read_volatile(stages.add(1)) != 2
             || (&*scheduler).state(first)? != TaskState::Exited
             || (&*scheduler).state(second)? != TaskState::Exited
             || (&*scheduler).current().is_some()
+            || (&*scheduler).check_invariants().is_err()
         {
             return Err(SchedulerError::InvariantViolation);
         }
