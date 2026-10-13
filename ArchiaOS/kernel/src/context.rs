@@ -88,26 +88,67 @@ global_asm!(
     options(att_syntax)
 );
 
+// These single-use test fixtures are only touched by the boot-time self-test,
+// before normal task scheduling starts and with interrupts still disabled.
+static mut TEST_BOOT_CONTEXT: CpuContext = CpuContext::empty();
+static mut TEST_TASK_CONTEXT: CpuContext = CpuContext::empty();
+static mut TEST_TASK_STACK: TaskStack = TaskStack::new();
+static mut TEST_STAGE: usize = 0;
+
 extern "C" fn context_test_entry() -> ! {
+    unsafe {
+        *core::ptr::addr_of_mut!(TEST_STAGE) = 1;
+        // Return control to the boot stack. This suspends this task at the
+        // switch call; it must never return from the entry point.
+        switch(
+            &mut *core::ptr::addr_of_mut!(TEST_TASK_CONTEXT),
+            &*core::ptr::addr_of!(TEST_BOOT_CONTEXT),
+        );
+    }
     loop {
         core::hint::spin_loop();
     }
 }
 
-/// Validate the synthetic first-run frame without actually switching stacks.
+/// Validate the synthetic frame and perform a real first dispatch/return.
+///
+/// This is deliberately a one-shot boot test: it enters a separate stack,
+/// records that the task entry ran, and switches back to the boot stack.
 pub fn self_test() -> Result<(), ()> {
-    let mut stack = TaskStack::new();
-    let mut context = CpuContext::empty();
-    stack.initialize(&mut context, context_test_entry);
-    if !context.is_initialized() {
-        return Err(());
-    }
+    unsafe {
+        *core::ptr::addr_of_mut!(TEST_BOOT_CONTEXT) = CpuContext::empty();
+        *core::ptr::addr_of_mut!(TEST_TASK_CONTEXT) = CpuContext::empty();
+        *core::ptr::addr_of_mut!(TEST_STAGE) = 0;
 
-    let frame = context.rsp as *const u64;
-    // SAFETY: initialize() wrote eight u64 words within the live stack object.
-    let (entry, padding) = unsafe { ((*frame.add(6)), *frame.add(7)) };
-    if entry != context_test_entry as usize as u64 || padding != 0 {
-        return Err(());
+        (&mut *core::ptr::addr_of_mut!(TEST_TASK_STACK)).initialize(
+            &mut *core::ptr::addr_of_mut!(TEST_TASK_CONTEXT),
+            context_test_entry,
+        );
+
+        if !(&*core::ptr::addr_of!(TEST_TASK_CONTEXT)).is_initialized() {
+            return Err(());
+        }
+
+        let frame = (&*core::ptr::addr_of!(TEST_TASK_CONTEXT)).rsp as *const u64;
+        // SAFETY: initialize() wrote eight u64 words within TEST_TASK_STACK.
+        let (entry, padding) = unsafe { (*frame.add(6), *frame.add(7)) };
+        if entry != context_test_entry as usize as u64 || padding != 0 {
+            return Err(());
+        }
+
+        // SAFETY: both contexts and the task stack are static, valid, and
+        // exclusively used by this one-shot test with interrupts disabled.
+        switch(
+            &mut *core::ptr::addr_of_mut!(TEST_BOOT_CONTEXT),
+            &*core::ptr::addr_of!(TEST_TASK_CONTEXT),
+        );
+
+        if *core::ptr::addr_of!(TEST_STAGE) != 1
+            || !(&*core::ptr::addr_of!(TEST_BOOT_CONTEXT)).is_initialized()
+            || !(&*core::ptr::addr_of!(TEST_TASK_CONTEXT)).is_initialized()
+        {
+            return Err(());
+        }
     }
     Ok(())
 }
@@ -117,7 +158,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn first_run_stack_frame_is_aligned_and_contains_entry() {
+    fn first_run_stack_frame_is_aligned_and_performs_context_switch() {
         assert_eq!(self_test(), Ok(()));
     }
 
