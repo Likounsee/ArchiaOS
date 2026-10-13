@@ -1549,7 +1549,7 @@ fn audit_platform_table_ranges(
     high_half_image: bool,
     framebuffer_base: u64,
     framebuffer_size: u64,
-    handoff_ranges: &[(u64, u64); 4],
+    handoff_ranges: &[(u64, u64)],
 ) -> Result<(), BootError> {
     #[cfg(target_arch = "aarch64")]
     let _ = high_half_image;
