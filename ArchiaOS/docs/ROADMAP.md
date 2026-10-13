@@ -7,7 +7,7 @@
 | Priorité | Domaine | Avancement estimé | État / prochaine preuve attendue |
 |---|---|---:|---|
 | **P0** | Démarrage UEFI maison x86-64 par défaut | **100 % (jalon physique atteint)** | Démarrage depuis la clé USB et premier affichage framebuffer confirmés par l’utilisateur sur le PC physique. Le motif bleu prouve l’écriture dans le framebuffer après le handoff ; il ne constitue pas encore un bureau ni une pile graphique. Un redémarrage à froid n’est pas consigné. |
-| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **90 %** | Le HEAD `e31db2a` ajoute le rejet des flags BootInfo v1 inconnus et l’audit des chevauchements framebuffer avec les buffers de handoff, les segments ELF, l’image UEFI et l’arène de tables de pages. Les builds x86-64/ARM64 et les scénarios négatifs BootInfo sont verts ; le test de démarrage OVMF reste en cours. Reste : audit des autres plages réservées spécifiques aux plateformes et validation matérielle étendue. |
+| **P1** | Fiabilité du chargeur, BootInfo et mémoire | **91 %** | Le HEAD `e2ea1ab` étend l’audit des alias framebuffer aux tables ACPI RSDP et Device Tree ; `c529d92` rejette la révision ACPI réservée 1 ; `c785c17` corrige les diagnostics de handoff framebuffer. La CI complète du HEAD `f6b3cc4` est verte ; la validation du HEAD courant est en cours. Reste : audit complémentaire des plages réservées, scénarios matériels étendus et validation finale du HEAD courant. |
 | **P2** | Ordonnanceur et synchronisation | **0 %** | Non implémenté ; définir les primitives de tâches et le changement de contexte avant la préemption. |
 | **P3** | Espace utilisateur et ABI système | **0 %** | Non commencé ; dépend notamment des exceptions, syscalls et mécanismes mémoire isolés. |
 | **P4** | Stockage, VFS et préparation OpenFS | **0 %** | Pas de pilote bloc/VFS fonctionnel ; spécifier d'abord les interfaces. |
@@ -43,9 +43,9 @@ Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas
 
 **Critère de sortie :** build reproductible et tests de démarrage verts sur le HEAD courant, sans déclarer les essais QEMU comme une validation de tout matériel physique.
 
-### P1 — Fiabilité du chargeur et de la mémoire — 90 %
+### P1 — Fiabilité du chargeur et de la mémoire — 91 %
 
-**État : EN COURS — 90 %.** Le HEAD `e31db2a` ajoute le rejet des flags non définis de BootInfo v1 et le refus des chevauchements framebuffer avec la mémoire critique de démarrage. Les builds x86-64/ARM64 et les scénarios négatifs BootInfo sont verts ; le démarrage OVMF de la CI complète est encore en cours. L’audit des autres plages spécifiques aux plateformes et les scénarios matériels restent à faire.
+**État : EN COURS — 91 %.** Les commits `e2ea1ab` et `c529d92` étendent la protection contre les alias framebuffer avec les tables ACPI/Device Tree et rejettent la révision ACPI réservée 1. `c785c17` corrige les chaînes de diagnostic de cette validation. La CI complète du HEAD `f6b3cc4` est verte ; les vérifications du HEAD courant sont encore en cours. Reste : audit complémentaire des plages réservées, validation matérielle étendue et confirmation de la CI du HEAD courant.
 
 **Objectif :** sécuriser le transfert UEFI → noyau et la gestion de la mémoire physique.
 
