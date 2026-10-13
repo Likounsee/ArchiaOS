@@ -22,6 +22,9 @@ impl TaskStack {
         // slot preserves the SysV function-entry RSP alignment after `ret`.
         let top = self.0.as_mut_ptr().wrapping_add(TASK_STACK_SIZE) as usize;
         let frame = (top - 8 * core::mem::size_of::<u64>()) as *mut u64;
+        // Seed a first-run task with the current x87/SSE state. Every
+        // subsequent switch saves and restores this area independently.
+        unsafe { capture_fx_state(&mut context.simd) };
         unsafe {
             for index in 0..6 {
                 frame.add(index).write(0);
@@ -33,15 +36,28 @@ impl TaskStack {
     }
 }
 
+#[repr(C, align(16))]
+struct FxState([u8; 512]);
+
+impl FxState {
+    const fn empty() -> Self {
+        Self([0; 512])
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default)]
-#[repr(C)]
+#[repr(C, align(16))]
 pub struct CpuContext {
     rsp: u64,
+    // Keep the FXSAVE64 area at offset 16, aligned to its architectural
+    // 16-byte requirement. AVX upper state is deliberately not saved yet.
+    _reserved: u64,
+    simd: FxState,
 }
 
 impl CpuContext {
     pub const fn empty() -> Self {
-        Self { rsp: 0 }
+        Self { rsp: 0, _reserved: 0, simd: FxState::empty() }
     }
 
     pub fn is_initialized(&self) -> bool {
@@ -49,6 +65,41 @@ impl CpuContext {
         // RSP % 16 == 8 at the assembly entry boundary. Only synthetic first-run
         // frames have the stricter 16-byte alignment checked by self_test().
         self.rsp != 0
+    }
+}
+
+/// Enable legacy x87/SSE state management before any context switch.
+///
+/// AVX/AVX-512 execution is not enabled here: their extended state requires
+/// XSAVE/XRSTOR context storage, which is intentionally a separate future step.
+pub unsafe fn initialize_simd() {
+    let mut cr0: u64;
+    let mut cr4: u64;
+    // SAFETY: this function is called only during privileged x86-64 kernel
+    // initialization, before the scheduler is allowed to switch contexts.
+    unsafe {
+        core::arch::asm!("mov {}, cr0", out(reg) cr0, options(nomem, nostack, preserves_flags));
+        cr0 &= !((1 << 2) | (1 << 3)); // EM=0, TS=0: permit eager FPU/SSE use.
+        cr0 |= (1 << 1) | (1 << 5); // MP=1, NE=1.
+        core::arch::asm!("mov cr0, {}", in(reg) cr0, options(nomem, nostack, preserves_flags));
+
+        core::arch::asm!("mov {}, cr4", out(reg) cr4, options(nomem, nostack, preserves_flags));
+        cr4 |= (1 << 9) | (1 << 10); // OSFXSR and OSXMMEXCPT.
+        core::arch::asm!("mov cr4, {}", in(reg) cr4, options(nomem, nostack, preserves_flags));
+        core::arch::asm!("fninit", options(nomem, nostack, preserves_flags));
+        let mxcsr: u32 = 0x1F80;
+        core::arch::asm!("ldmxcsr [{}]", in(reg) &mxcsr, options(readonly, nostack, preserves_flags));
+    }
+}
+
+unsafe fn capture_fx_state(state: &mut FxState) {
+    // SAFETY: the destination is 16-byte aligned and exactly 512 bytes.
+    unsafe {
+        core::arch::asm!(
+            "fxsave64 [{}]",
+            in(reg) state.0.as_mut_ptr(),
+            options(nostack, preserves_flags)
+        );
     }
 }
 
@@ -61,11 +112,11 @@ impl CpuContext {
 /// and alive, and must not switch while holding locks that require this task.
 pub unsafe fn switch(old: &mut CpuContext, new: &CpuContext) {
     // SAFETY: the caller guarantees both context pointers and stacks are valid.
-    unsafe { archiaos_context_switch(&mut old.rsp, &new.rsp) };
+    unsafe { archiaos_context_switch(old as *mut CpuContext, new as *const CpuContext) };
 }
 
 extern "C" {
-    fn archiaos_context_switch(old_rsp: *mut u64, new_rsp: *const u64);
+    fn archiaos_context_switch(old_context: *mut CpuContext, new_context: *const CpuContext);
 }
 
 global_asm!(
@@ -79,6 +130,10 @@ global_asm!(
     "pushq %r13",
     "pushq %r14",
     "pushq %r15",
+    // FXSAVE preserves x87/MMX/MXCSR and XMM registers for each task.
+    // The SIMD area is fixed at offset 16 by CpuContext's C layout.
+    "fxsave64 16(%rdi)",
+    "fxrstor64 16(%rsi)",
     "movq %rsp, (%rdi)",
     "movq (%rsi), %rsp",
     "popq %r15",
