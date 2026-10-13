@@ -865,26 +865,27 @@ unsafe fn loaded_image_physical_range(
     let (image_base, image_size) = unsafe {
         ((*loaded).image_base as u64, (*loaded).image_size)
     };
-    let image_end = image_base.checked_add(image_size)
-        .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: loader-image range overflow.\r\n\0"))?;
-    let start = image_base & !(EFI_PAGE_SIZE - 1);
-    let end = image_end.checked_add(EFI_PAGE_SIZE - 1)
-        .map(|value| value & !(EFI_PAGE_SIZE - 1))
-        .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: rounded loader-image range overflow.\r\n\0"))?;
-    // The loader may be placed above 4 GiB by firmware on machines with
-    // large memory. The x86-64 four-level page tables can identity-map it as
-    // long as it remains in the low canonical 512 GiB region (PML4[0]).
-    // RAM below 4 GiB is mapped from the UEFI memory map; the loader's own
-    // pages above 4 GiB are added explicitly during page-table construction.
+    rounded_loader_image_range(image_base, image_size)
+        .ok_or_else(|| error(EFI_UNSUPPORTED, b"ArchiaOS: loader image has an invalid range or is outside the low-canonical identity-map range (512 GiB).\r\n\0"))
+}
+
+#[cfg(target_arch = "x86_64")]
+fn rounded_loader_image_range(image_base: u64, image_size: u64) -> Option<(u64, u64)> {
+    // The x86-64 four-level page tables can identity-map the loader only while
+    // it remains in the low canonical 512 GiB region (PML4[0]). Firmware may
+    // still place the image above 4 GiB, so its own range is mapped explicitly.
     const MAX_LOW_CANONICAL_IDENTITY_ADDRESS: u64 = 1u64 << 39;
-    if image_base == 0
-        || image_size == 0
-        || start >= end
-        || end > MAX_LOW_CANONICAL_IDENTITY_ADDRESS
-    {
-        return Err(error(EFI_UNSUPPORTED, b"ArchiaOS: loader image is outside the low-canonical identity-map range (512 GiB).\r\n\0"));
+    if image_base == 0 || image_size == 0 {
+        return None;
     }
-    Ok((start, end))
+    let image_end = image_base.checked_add(image_size)?;
+    let start = image_base & !(EFI_PAGE_SIZE - 1);
+    let end = image_end.checked_add(EFI_PAGE_SIZE - 1)? & !(EFI_PAGE_SIZE - 1);
+    if start >= end || end > MAX_LOW_CANONICAL_IDENTITY_ADDRESS {
+        return None;
+    }
+    Some((start, end))
+}
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -2952,5 +2953,29 @@ mod configuration_table_lookup_tests {
         let table = 0x1000usize as *mut ConfigurationTable;
         assert!(configuration_table(table, 4097, &FIRST_GUID).is_null());
         assert!(configuration_table(table, usize::MAX, &FIRST_GUID).is_null());
+    }
+}
+
+#[cfg(all(test, target_arch = "x86_64"))]
+mod loaded_image_range_tests {
+    use super::rounded_loader_image_range;
+
+    #[test]
+    fn rounds_valid_loader_image_to_page_boundaries() {
+        assert_eq!(rounded_loader_image_range(0x1234, 0x100), Some((0x1000, 0x2000)));
+        assert_eq!(rounded_loader_image_range(0x1fff, 2), Some((0x1000, 0x3000)));
+        // Firmware may place the loader above 4 GiB, within the low-canonical window.
+        assert_eq!(
+            rounded_loader_image_range(0x1_0000_1234, 0x100),
+            Some((0x1_0000_1000, 0x1_0000_2000))
+        );
+    }
+
+    #[test]
+    fn rejects_empty_overflowing_and_noncanonical_loader_ranges() {
+        assert_eq!(rounded_loader_image_range(0, 0x1000), None);
+        assert_eq!(rounded_loader_image_range(0x1000, 0), None);
+        assert_eq!(rounded_loader_image_range(u64::MAX - 0x10, 0x20), None);
+        assert_eq!(rounded_loader_image_range((1u64 << 39) - 0x1000, 0x1001), None);
     }
 }
