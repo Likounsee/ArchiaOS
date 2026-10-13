@@ -2274,6 +2274,42 @@ mod memory_map_tests {
     }
 
     #[test]
+    fn reserved_range_audit_rejects_conventional_pages_inside_mixed_ranges() {
+        // ACPI/DTB/firmware objects must not be considered reserved if even one
+        // page in the requested range is available as conventional memory.
+        let mut bytes = descriptor(2, 0x1000, 1);
+        bytes.extend_from_slice(&descriptor(EFI_CONVENTIONAL_MEMORY, 0x2000, 1));
+        bytes.extend_from_slice(&descriptor(4, 0x3000, 1));
+        let map = UefiMemoryMap::parse(&bytes, 48).expect("valid map");
+
+        assert_eq!(map.range_is_fully_reserved(0x1000, 0x1000), Ok(true));
+        assert_eq!(map.range_is_fully_reserved(0x1000, 0x3000), Ok(false));
+        assert_eq!(map.range_is_fully_reserved(0x2000, 0x1000), Ok(false));
+        assert_eq!(map.range_is_fully_reserved(0x3000, 0x1000), Ok(true));
+    }
+
+    #[test]
+    fn reserved_range_audit_rejects_unreported_gaps_and_range_overflow() {
+        let mut bytes = descriptor(2, 0x1000, 1);
+        // The next descriptor is adjacent to the first; the following one leaves
+        // an unreported page, which must never be assumed to be reserved.
+        bytes.extend_from_slice(&descriptor(4, 0x2000, 1));
+        bytes.extend_from_slice(&descriptor(2, 0x4000, 1));
+        let map = UefiMemoryMap::parse(&bytes, 48).expect("valid map");
+
+        assert_eq!(map.range_is_fully_reserved(0x1000, 0x2000), Ok(true));
+        assert_eq!(map.range_is_fully_reserved(0x1000, 0x4000), Ok(false));
+        assert_eq!(
+            map.range_is_fully_reserved(u64::MAX - 7, 16),
+            Err(MemoryMapError::RangeOverflow)
+        );
+        assert_eq!(
+            map.range_is_fully_reserved(0x1000, 0),
+            Err(MemoryMapError::EmptyRange)
+        );
+    }
+
+    #[test]
     fn rejects_descriptor_stride_smaller_than_uefi_layout() {
         assert_eq!(
             UefiMemoryMap::parse(&[0u8; 32], 32).err(),
