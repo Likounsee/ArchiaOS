@@ -5,7 +5,7 @@
 //! always receives (vector, error_code). Handlers are fatal until recovery and
 //! per-task exception delivery are designed.
 
-use core::arch::asm;
+use core::arch::{asm, global_asm};
 
 const EXCEPTION_COUNT: usize = 32;
 const INTERRUPT_GATE: u8 = 0x8e;
@@ -83,7 +83,7 @@ pub unsafe fn install() {
 }
 
 global_asm!(
-    ".section .text.archiaos_isr, \\"ax\\"",
+    ".section .text",
     ".global isr_stub_0",
     "isr_stub_0:",
     "pushq $0",
@@ -244,7 +244,7 @@ global_asm!(
     "cli",
     "hlt",
     "jmp .Larchiaos_exception_halt",
-    ".section .rodata.archiaos_isr, \\"a\\"",
+    ".section .rodata",
     ".balign 8",
     ".global isr_stub_table",
     "isr_stub_table:",
