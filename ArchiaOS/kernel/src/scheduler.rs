@@ -1,8 +1,8 @@
-//! Allocation-free cooperative scheduler bookkeeping (P2 bring-up).
+//! Allocation-free cooperative scheduler and x86-64 context integration (P2).
 //!
-//! This module deliberately does not perform a CPU context switch yet. It
-//! establishes and tests the task-state/round-robin contract before assembly
-//! context switching, per-task stacks, interrupts, or preemption are added.
+//! The state model remains independently testable. A bounded boot-time runtime
+//! test also binds task IDs to dedicated static stacks/CPU contexts and performs
+//! real round-robin context switches. Timer preemption and SMP are out of scope.
 
 pub const MAX_TASKS: usize = 8;
 
@@ -193,6 +193,166 @@ impl Scheduler {
         }
         Ok(())
     }
+}
+
+
+// ---- First real two-task runtime integration (x86-64, single CPU) ----
+//
+// Stacks are static rather than embedded in Scheduler, so a scheduler object
+// cannot accidentally consume >100 KiB of the early boot stack. The first
+// runtime slice intentionally supports two tasks; the state model remains
+// MAX_TASKS-capable and can be extended once allocation/lifecycle policy lands.
+const RUNTIME_TASKS: usize = 2;
+
+static mut RUNTIME_SCHEDULER: Scheduler = Scheduler::new();
+static mut RUNTIME_CONTEXTS: [crate::context::CpuContext; RUNTIME_TASKS] = [
+    crate::context::CpuContext::empty(),
+    crate::context::CpuContext::empty(),
+];
+static mut RUNTIME_STACKS: [crate::context::TaskStack; RUNTIME_TASKS] = [
+    crate::context::TaskStack::new(),
+    crate::context::TaskStack::new(),
+];
+static mut RUNTIME_BOOT_CONTEXT: crate::context::CpuContext =
+    crate::context::CpuContext::empty();
+static mut RUNTIME_STAGES: [usize; RUNTIME_TASKS] = [0; RUNTIME_TASKS];
+
+extern "C" fn runtime_task_a() -> ! {
+    unsafe { core::ptr::write_volatile(core::ptr::addr_of_mut!(RUNTIME_STAGES).cast::<usize>(), 1) };
+    if runtime_yield().is_err() {
+        runtime_halt();
+    }
+    unsafe { core::ptr::write_volatile(core::ptr::addr_of_mut!(RUNTIME_STAGES).cast::<usize>(), 2) };
+    if runtime_yield().is_err() {
+        runtime_halt();
+    }
+    unsafe { core::ptr::write_volatile(core::ptr::addr_of_mut!(RUNTIME_STAGES).cast::<usize>(), 3) };
+    runtime_exit()
+}
+
+extern "C" fn runtime_task_b() -> ! {
+    unsafe {
+        core::ptr::write_volatile(
+            core::ptr::addr_of_mut!(RUNTIME_STAGES).cast::<usize>().add(1),
+            1,
+        )
+    };
+    if runtime_yield().is_err() {
+        runtime_halt();
+    }
+    unsafe {
+        core::ptr::write_volatile(
+            core::ptr::addr_of_mut!(RUNTIME_STAGES).cast::<usize>().add(1),
+            2,
+        )
+    };
+    runtime_exit()
+}
+
+fn runtime_halt() -> ! {
+    loop {
+        core::hint::spin_loop();
+    }
+}
+
+/// Yield from the currently running runtime task and resume when it is selected
+/// again. Call only on the single boot CPU with maskable interrupts disabled.
+fn runtime_yield() -> Result<(), SchedulerError> {
+    unsafe {
+        let scheduler = core::ptr::addr_of_mut!(RUNTIME_SCHEDULER);
+        let previous = (*scheduler).current.ok_or(SchedulerError::NoCurrentTask)?;
+        let next = (&mut *scheduler).yield_current()?.0;
+        if previous == next {
+            return Ok(());
+        }
+        let contexts = core::ptr::addr_of_mut!(RUNTIME_CONTEXTS).cast::<crate::context::CpuContext>();
+        // SAFETY: task IDs are bounded by the scheduler; the two distinct
+        // contexts are static, and their stacks remain alive for this test.
+        crate::context::switch(&mut *contexts.add(previous), &*contexts.add(next));
+    }
+    Ok(())
+}
+
+/// Exit a runtime task permanently. An exited task is never dispatched again.
+/// When no runnable task remains, return to the boot context rather than
+/// continuing on a task stack that is logically dead.
+fn runtime_exit() -> ! {
+    unsafe {
+        let scheduler = core::ptr::addr_of_mut!(RUNTIME_SCHEDULER);
+        let previous = match (*scheduler).current {
+            Some(index) => index,
+            None => runtime_halt(),
+        };
+        match (&mut *scheduler).exit_current() {
+            Ok(next_id) => {
+                let contexts = core::ptr::addr_of_mut!(RUNTIME_CONTEXTS).cast::<crate::context::CpuContext>();
+                // SAFETY: scheduler returned a valid distinct runnable task.
+                crate::context::switch(&mut *contexts.add(previous), &*contexts.add(next_id.0));
+            }
+            Err(SchedulerError::NoRunnableTask) => {
+                let contexts = core::ptr::addr_of_mut!(RUNTIME_CONTEXTS).cast::<crate::context::CpuContext>();
+                // SAFETY: boot context was saved by the initial dispatch.
+                crate::context::switch(
+                    &mut *contexts.add(previous),
+                    &*core::ptr::addr_of!(RUNTIME_BOOT_CONTEXT),
+                );
+            }
+            Err(_) => runtime_halt(),
+        }
+    }
+    // A task which was marked Exited must never be resumed.
+    runtime_halt()
+}
+
+/// Execute a real two-task round-robin scenario on separate stacks:
+/// A -> B -> A -> B -> A -> boot. The stage counters prove that each suspended
+/// task resumed after its own switch call, and exit handling returns to boot
+/// only after both tasks are marked Exited.
+pub fn runtime_self_test() -> Result<(), SchedulerError> {
+    unsafe {
+        core::ptr::write(core::ptr::addr_of_mut!(RUNTIME_SCHEDULER), Scheduler::new());
+        core::ptr::write(
+            core::ptr::addr_of_mut!(RUNTIME_CONTEXTS),
+            [crate::context::CpuContext::empty(); RUNTIME_TASKS],
+        );
+        core::ptr::write(core::ptr::addr_of_mut!(RUNTIME_BOOT_CONTEXT), crate::context::CpuContext::empty());
+        core::ptr::write(core::ptr::addr_of_mut!(RUNTIME_STAGES), [0; RUNTIME_TASKS]);
+
+        let scheduler = core::ptr::addr_of_mut!(RUNTIME_SCHEDULER);
+        let first = (&mut *scheduler).create_task()?;
+        let second = (&mut *scheduler).create_task()?;
+        if first.0 != 0 || second.0 != 1 {
+            return Err(SchedulerError::InvariantViolation);
+        }
+
+        let stacks = core::ptr::addr_of_mut!(RUNTIME_STACKS).cast::<crate::context::TaskStack>();
+        let contexts = core::ptr::addr_of_mut!(RUNTIME_CONTEXTS).cast::<crate::context::CpuContext>();
+        (&mut *stacks.add(first.0)).initialize(&mut *contexts.add(first.0), runtime_task_a);
+        (&mut *stacks.add(second.0)).initialize(&mut *contexts.add(second.0), runtime_task_b);
+
+        let initial = (&mut *scheduler).schedule()?;
+        if initial != first {
+            return Err(SchedulerError::InvariantViolation);
+        }
+        // SAFETY: boot/task contexts and both dedicated stacks are static,
+        // initialized, and exclusively used by this single-threaded self-test.
+        crate::context::switch(
+            &mut *core::ptr::addr_of_mut!(RUNTIME_BOOT_CONTEXT),
+            &*contexts.add(initial.0),
+        );
+
+        let stages = core::ptr::addr_of!(RUNTIME_STAGES).cast::<usize>();
+        if core::ptr::read_volatile(stages) != 3
+            || core::ptr::read_volatile(stages.add(1)) != 2
+            || (&*scheduler).state(first)? != TaskState::Exited
+            || (&*scheduler).state(second)? != TaskState::Exited
+            || (&*scheduler).current().is_some()
+        {
+            return Err(SchedulerError::InvariantViolation);
+        }
+        (&*scheduler).check_invariants()?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
