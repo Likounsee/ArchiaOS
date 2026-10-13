@@ -11,6 +11,7 @@ on:
       - "ArchiaOS/bootloader/**"
       - "ArchiaOS/linker.ld"
       - "ArchiaOS/scripts/verify-uefi-artifacts.py"
+      - "ArchiaOS/docs/P1-PHYSICAL-VALIDATION.md"
       - ".cargo/config.toml"
       - ".github/workflows/hardware-p0-usb.yml"
 
@@ -86,10 +87,11 @@ jobs:
           Ce paquet ne constitue pas une garantie de compatibilité matérielle.
           La validation P0 reste en attente des résultats observés sur une vraie machine.
           EOF
+          printf "Commit: %s\nArchitecture: x86_64 UEFI\nPackage: ZIP avec arborescence EFI\n" "$GITHUB_SHA" > "$package/BUILD-INFO.txt"
           (cd "$RUNNER_TEMP" && zip -qr archiaos-p0-usb.zip archiaos-p0-usb)
           echo "## Paquet USB ArchiaOS P0" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Le ZIP contient le chargeur et le noyau compilés, avec l'arborescence EFI attendue." >> "$GITHUB_STEP_SUMMARY"
+          echo "Le ZIP contient un dossier racine archiaos-p0-usb/, les dossiers EFI/BOOT et EFI/ArchiaOS, README-FR.txt et BUILD-INFO.txt." >> "$GITHUB_STEP_SUMMARY"
           echo "Copier le dossier EFI à la racine d'une clé FAT32 dédiée après avoir vérifié son identité." >> "$GITHUB_STEP_SUMMARY"
           echo "Le test matériel physique reste à effectuer ; aucun support local n'a été modifié par ce workflow." >> "$GITHUB_STEP_SUMMARY"
 
