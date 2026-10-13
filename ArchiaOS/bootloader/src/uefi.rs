@@ -1532,7 +1532,7 @@ fn physical_ranges_overlap(first_start: u64, first_length: u64, second_start: u6
 fn platform_range_overlaps_handoff_storage(
     start: u64,
     length: u64,
-    handoff_ranges: &[(u64, u64); 4],
+    handoff_ranges: &[(u64, u64)],
 ) -> bool {
     handoff_ranges.iter().any(|&(reserved_start, reserved_length)| {
         physical_ranges_overlap(start, length, reserved_start, reserved_length)
@@ -2061,12 +2061,17 @@ pub unsafe fn transfer_to_kernel(
         // framebuffer-overlapping page from its ordinary RAM identity map, and the
         // kernel PMM independently reserves those frames before publishing alloc_page().
 
-        let mut handoff_ranges = [
-            (info_storage_start, core::mem::size_of::<BootInfo>() as u64),
-            (map_storage_start, MAX_MEMORY_MAP_SIZE as u64),
-            (0, 0),
-            (0, 0),
-        ];
+        // Keep every retained handoff object out of firmware platform-table
+        // storage. Four fixed slots cover BootInfo, the map buffer, loader image,
+        // and page-table arena; the remaining slots cover each allocated PT_LOAD
+        // segment, including the complete pages reserved by AllocateAddress.
+        let mut handoff_ranges = [(0u64, 0u64); MAX_LOAD_SEGMENTS + 4];
+        handoff_ranges[0] = (
+            info_storage_start,
+            core::mem::size_of::<BootInfo>() as u64,
+        );
+        handoff_ranges[1] = (map_storage_start, MAX_MEMORY_MAP_SIZE as u64);
+        let mut handoff_range_count = 4usize;
         #[cfg(target_arch = "x86_64")]
         if let Some((loader_start, loader_end)) = loader_image_range {
             handoff_ranges[2] = (
@@ -2082,6 +2087,32 @@ pub unsafe fn transfer_to_kernel(
                 .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: page-table arena size overflow during platform-table audit.\r\n\0"))?;
             handoff_ranges[3] = (arena.physical_base, arena_bytes);
         }
+        // Platform tables must not alias any page backing the loaded kernel.
+        // Use the page-rounded allocation ranges rather than only ELF byte ranges.
+        for segment_index in 0.._elf.program_header_count() {
+            let segment = match archiaos_bootloader::elf::load_segment(
+                _kernel_image,
+                _elf,
+                segment_index,
+            ) {
+                Ok(segment) => segment,
+                Err(archiaos_bootloader::elf::ElfError::NotLoadableSegment) => continue,
+                Err(_) => return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid ELF segment during platform-table overlap audit.\\r\\n\\0")),
+            };
+            let segment_end = segment.physical_address
+                .checked_add(segment.memory_size)
+                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: ELF range overflow during platform-table overlap audit.\\r\\n\\0"))?;
+            let rounded_end = segment_end
+                .checked_add(EFI_PAGE_SIZE - 1)
+                .map(|value| value & !(EFI_PAGE_SIZE - 1))
+                .ok_or_else(|| error(EFI_LOAD_ERROR, b"ArchiaOS: rounded ELF range overflow during platform-table overlap audit.\\r\\n\\0"))?;
+            let rounded_start = segment.physical_address & !(EFI_PAGE_SIZE - 1);
+            if rounded_end <= rounded_start || handoff_range_count >= handoff_ranges.len() {
+                return Err(error(EFI_LOAD_ERROR, b"ArchiaOS: invalid or excessive ELF ranges during platform-table overlap audit.\\r\\n\\0"));
+            }
+            handoff_ranges[handoff_range_count] = (rounded_start, rounded_end - rounded_start);
+            handoff_range_count += 1;
+        }
         audit_platform_table_ranges(
             &parsed_map,
             acpi_rsdp,
@@ -2089,7 +2120,7 @@ pub unsafe fn transfer_to_kernel(
             image_uses_highhalf(_elf),
             framebuffer_base,
             framebuffer_size,
-            &handoff_ranges,
+            &handoff_ranges[..handoff_range_count],
         )?;
 
         // Stop tracking the two pool buffers before the first EBS call, so no
@@ -2357,11 +2388,13 @@ mod configuration_table_bounds_tests {
 mod platform_range_handoff_tests {
     use super::platform_range_overlaps_handoff_storage;
 
-    const HANDOFF_RANGES: [(u64, u64); 4] = [
-        (0x1000, 0x1000),
-        (0x3000, 0x1000),
-        (0, 0),
-        (0x8000, 0x1000),
+    const HANDOFF_RANGES: [(u64, u64); 6] = [
+        (0x1000, 0x1000), // BootInfo
+        (0x3000, 0x1000), // final memory map
+        (0, 0),           // optional loader image
+        (0x8000, 0x1000), // page-table arena
+        (0xa000, 0x2000), // page-rounded kernel text
+        (0xc000, 0x1000), // page-rounded kernel data
     ];
 
     #[test]
@@ -2378,6 +2411,12 @@ mod platform_range_handoff_tests {
         assert!(platform_range_overlaps_handoff_storage(
             0x8000, 0x1000, &HANDOFF_RANGES
         ));
+        assert!(platform_range_overlaps_handoff_storage(
+            0xaff0, 0x40, &HANDOFF_RANGES
+        ));
+        assert!(platform_range_overlaps_handoff_storage(
+            0xc800, 0x100, &HANDOFF_RANGES
+        ));
     }
 
     #[test]
@@ -2387,6 +2426,12 @@ mod platform_range_handoff_tests {
         ));
         assert!(!platform_range_overlaps_handoff_storage(
             0x4000, 0x1000, &HANDOFF_RANGES
+        ));
+        assert!(!platform_range_overlaps_handoff_storage(
+            0x9000, 0x1000, &HANDOFF_RANGES
+        ));
+        assert!(!platform_range_overlaps_handoff_storage(
+            0xd000, 0x1000, &HANDOFF_RANGES
         ));
         assert!(!platform_range_overlaps_handoff_storage(
             0x1000, 0, &HANDOFF_RANGES
