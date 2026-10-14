@@ -70,7 +70,8 @@ for marker in \
   "ArchiaOS: UEFI PMM allocation/free self-test passed" \
   "ArchiaOS: x87/SSE context state initialized (FXSAVE64/FXRSTOR64)" \
   "ArchiaOS: SSE4.1 optimized integer self-test passed" \
-  "ArchiaOS: real task block/wake context-switch self-test passed" \
+  "ArchiaOS: three-task block/wake/yield/exit context-switch self-test passed" \
+  "ArchiaOS: block-to-idle, wakeup and task-resume self-test passed" \
   "ArchiaOS: UEFI kernel entry validated"; do
   grep -Fq "$marker" "$LOG" || { echo "BOOT ÉCHOUÉ : marqueur absent : $marker (voir $LOG)" >&2; exit 1; }
 done
