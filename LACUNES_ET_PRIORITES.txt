@@ -31,14 +31,16 @@ En attendant que l'implémentation Rust et ses interfaces soient prêtes :
 PRIORITÉ 1 — MÉMOIRE VIRTUELLE ET ALLOCATION
 -------------------------------------------
 1. Étendre et clarifier les limites du gestionnaire de mémoire physique (PMM).
-   État partiel : la fenêtre de suivi a été étendue de 4 Gio à 64 Gio dans
-   kernel/src/memory.rs ; les tests de calcul des plages couvrent désormais
-   également des adresses au-dessus de l'ancienne limite. Les deux bitmaps
-   occupent environ 4 Mio au total à cette capacité. La limite de 64 Gio reste
-   une capacité de suivi, pas une garantie de prise en charge de toute adresse
-   par chaque CPU. Restent à valider la compilation, les tests d'intégration,
-   les cartes mémoire QEMU et les cas de machines ayant de grandes quantités de
-   RAM. La prise en charge au-delà de 64 Gio n'est pas encore implémentée.
+   État partiel : la fenêtre de suivi du PMM est portée à 512 Gio dans
+   kernel/src/memory_ranges.rs. À cette capacité, les deux bitmaps occupent
+   environ 32 Mio de BSS (16 Mio chacun). Les tests hôte et le test au démarrage
+   couvrent les adresses au-dessus de 4 Gio et de l'ancienne limite intermédiaire
+   de 64 Gio, ainsi que la borne exclusive de 512 Gio. Cette limite de suivi ne
+   garantit pas que chaque CPU ou plateforme puisse adresser toute la plage.
+   Restent à valider la compilation, les tests d'intégration, les cartes mémoire
+   QEMU et les machines avec beaucoup de RAM. Le VMM et les mappings physiques
+   au-delà de l'espace effectivement mappé par le chargeur restent distincts du
+   simple suivi PMM.
 
 2. Développer/compléter le gestionnaire de mémoire virtuelle (VMM).
    À vérifier et à porter selon les besoins : création et modification des
@@ -57,7 +59,7 @@ PRIORITÉ 1 — MÉMOIRE VIRTUELLE ET ALLOCATION
    d'adresses, alignement, libérations invalides et fragmentation.
    Avancée : les calculs purs des plages PMM sont isolés dans
    kernel/src/memory_ranges.rs et couverts par des tests hôte exécutés en CI
-   (alignement, débordement, chevauchements, réservations et adresses > 4 Gio).
+   (alignement, débordement, chevauchements, réservations et adresses > 4 Gio et > 64 Gio, borne de 512 Gio).
    Ces tests ne valident pas à eux seuls le VMM ni l'intégration matérielle.
 
 PRIORITÉ 2 — INTERRUPTIONS, ORDONNANCEMENT ET SMP

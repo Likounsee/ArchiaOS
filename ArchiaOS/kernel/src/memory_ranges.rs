@@ -2,8 +2,9 @@
 //! No bootloader or hardware dependencies: edge cases can be tested on the host.
 
 pub const PAGE_SIZE: u64 = 4096;
-/// PMM tracking ceiling; this does not imply CPU support for every address.
-pub const MAX_PHYSICAL_ADDRESS: u64 = 1u64 << 36;
+/// PMM tracking ceiling (512 GiB, one low-canonical PML4 span on 4-level x86-64).
+/// This does not imply that every CPU or platform supports every physical address.
+pub const MAX_PHYSICAL_ADDRESS: u64 = 1u64 << 39;
 pub const MAX_FRAMES: u64 = MAX_PHYSICAL_ADDRESS / PAGE_SIZE;
 
 /// Return complete pages fully contained in a byte range, clipped to the PMM.
@@ -48,16 +49,18 @@ mod tests {
     }
 
     #[test]
-    fn addresses_above_the_old_four_gib_limit_are_managed() {
-        let address = 1u64 << 32;
-        assert_eq!(frame_range(address, PAGE_SIZE), Some((address / PAGE_SIZE, address / PAGE_SIZE + 1)));
-        assert_eq!(reserved_frame_range(address, PAGE_SIZE), Some((address / PAGE_SIZE, address / PAGE_SIZE + 1)));
+    fn addresses_above_previous_four_and_sixty_four_gib_limits_are_managed() {
+        for address in [1u64 << 32, 1u64 << 36, (1u64 << 39) - PAGE_SIZE] {
+            assert_eq!(frame_range(address, PAGE_SIZE), Some((address / PAGE_SIZE, address / PAGE_SIZE + 1)));
+            assert_eq!(reserved_frame_range(address, PAGE_SIZE), Some((address / PAGE_SIZE, address / PAGE_SIZE + 1)));
+        }
     }
 
     #[test]
-    fn reserved_ranges_round_outward_and_clip_at_sixty_four_gib() {
+    fn reserved_ranges_round_outward_and_clip_at_five_hundred_twelve_gib() {
         assert_eq!(reserved_frame_range(0x1001, 1), Some((1, 2)));
         assert_eq!(reserved_frame_range(0x1fff, 2), Some((1, 3)));
+        assert_eq!(reserved_frame_range((1u64 << 36) - PAGE_SIZE, PAGE_SIZE * 2), Some(((1u64 << 36) / PAGE_SIZE - 1, (1u64 << 36) / PAGE_SIZE + 1)));
         assert_eq!(reserved_frame_range(MAX_PHYSICAL_ADDRESS - PAGE_SIZE, PAGE_SIZE * 2), Some((MAX_FRAMES - 1, MAX_FRAMES)));
         assert_eq!(reserved_frame_range(MAX_PHYSICAL_ADDRESS, PAGE_SIZE), Some((MAX_FRAMES, MAX_FRAMES)));
         assert_eq!(reserved_frame_range(u64::MAX - 1, 1), Some((MAX_FRAMES, MAX_FRAMES)));

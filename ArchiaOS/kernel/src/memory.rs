@@ -149,7 +149,7 @@ pub unsafe fn initialize_from_bootinfo<W: Write>(
         if descriptor.is_conventional() {
             // Report only complete pages the current bitmap can actually manage:
             // frames below 1 MiB are reserved, and physical addresses at/above
-            // 64 GiB are outside this PMM's current supported window.
+            // 512 GiB are outside this PMM's current supported window.
             let (first, last) = frame_range(descriptor.physical_start, length)
                 .ok_or(MemoryError::InvalidMemoryRange)?;
             let first = first.max(ONE_MIB / PAGE_SIZE);
@@ -350,13 +350,14 @@ pub fn free_page_count() -> u64 {
 pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
     // Exercise page-range calculations and framebuffer overlap accounting without
     // mutating the global bitmaps. All ranges are half-open and clipped to the PMM's
-    // supported [0, 64 GiB) window.
+    // supported [0, 512 GiB) window.
     let frame_cases = [
         ((0x1000, 0x1000), Some((1, 2))),
         ((0x1001, 0x0fff), Some((2, 2))),
         ((0x1000, 0x1001), Some((1, 2))),
-        // The former 4 GiB ceiling must now be inside the managed window.
+        // Addresses above both the old 4 GiB and interim 64 GiB limits are now tracked.
         ((1u64 << 32, PAGE_SIZE), Some(((1u64 << 32) / PAGE_SIZE, ((1u64 << 32) / PAGE_SIZE) + 1))),
+        ((1u64 << 36, PAGE_SIZE), Some(((1u64 << 36) / PAGE_SIZE, ((1u64 << 36) / PAGE_SIZE) + 1))),
         ((MAX_PHYSICAL_ADDRESS, PAGE_SIZE), Some((MAX_FRAMES, MAX_FRAMES))),
         ((u64::MAX - 1, 8), None),
         ((0, 0), Some((0, 0))),
@@ -369,8 +370,9 @@ pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
     let reservation_cases = [
         ((0x1001, 1), Some((1, 2))),
         ((0x1fff, 2), Some((1, 3))),
-        // Reservations above 4 GiB must be clipped against the new 64 GiB ceiling.
+        // Reservations above 4 GiB and 64 GiB must remain addressable.
         ((1u64 << 32, PAGE_SIZE), Some(((1u64 << 32) / PAGE_SIZE, ((1u64 << 32) / PAGE_SIZE) + 1))),
+        ((1u64 << 36, PAGE_SIZE), Some(((1u64 << 36) / PAGE_SIZE, ((1u64 << 36) / PAGE_SIZE) + 1))),
         ((MAX_PHYSICAL_ADDRESS - PAGE_SIZE, PAGE_SIZE * 2), Some((MAX_FRAMES - 1, MAX_FRAMES))),
         ((MAX_PHYSICAL_ADDRESS, PAGE_SIZE), Some((MAX_FRAMES, MAX_FRAMES))),
         ((u64::MAX - 1, 1), Some((MAX_FRAMES, MAX_FRAMES))),
@@ -473,7 +475,7 @@ pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
         }
         let _ = writeln!(log, "PMM test: firmware-reserved frame cannot be freed");
     } else {
-        let _ = writeln!(log, "PMM test: no additional reserved frame in 1 MiB..64 GiB window");
+        let _ = writeln!(log, "PMM test: no additional reserved frame in 1 MiB..512 GiB window");
     }
 
     // Cross multiple 64-bit bitmap words to exercise allocation and fragmented frees.
