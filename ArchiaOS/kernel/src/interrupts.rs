@@ -117,8 +117,10 @@ extern "C" fn archiaos_pic_interrupt_dispatch(frame: *mut u64) -> *mut u64 {
     // Stack layout from isr_pic_common: 15 saved GPRs, vector, synthetic error.
     // SAFETY: assembly supplies a pointer to the complete normalized interrupt frame.
     let vector = unsafe { *frame.add(15) };
-    let Some(irq) = vector.checked_sub(usize::from(LEGACY_PIC_VECTOR_BASE))
-        .filter(|irq| *irq < usize::from(LEGACY_PIC_IRQ_COUNT))
+    let Some(irq) = vector
+        .checked_sub(u64::from(LEGACY_PIC_VECTOR_BASE))
+        .filter(|irq| *irq < u64::from(LEGACY_PIC_IRQ_COUNT))
+        .map(|irq| irq as usize)
     else {
         fatal_unhandled_pic_irq();
     };
