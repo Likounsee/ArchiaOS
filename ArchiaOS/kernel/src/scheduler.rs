@@ -226,14 +226,16 @@ impl Scheduler {
 // cannot accidentally consume >100 KiB of the early boot stack. The first
 // runtime slice intentionally supports two tasks; the state model remains
 // MAX_TASKS-capable and can be extended once allocation/lifecycle policy lands.
-const RUNTIME_TASKS: usize = 2;
+const RUNTIME_TASKS: usize = 3;
 
 static mut RUNTIME_SCHEDULER: Scheduler = Scheduler::new();
 static mut RUNTIME_CONTEXTS: [crate::context::CpuContext; RUNTIME_TASKS] = [
     crate::context::CpuContext::empty(),
     crate::context::CpuContext::empty(),
+    crate::context::CpuContext::empty(),
 ];
 static mut RUNTIME_STACKS: [crate::context::TaskStack; RUNTIME_TASKS] = [
+    crate::context::TaskStack::new(),
     crate::context::TaskStack::new(),
     crate::context::TaskStack::new(),
 ];
@@ -266,6 +268,18 @@ extern "C" fn runtime_task_b() -> ! {
         core::ptr::write_volatile(
             core::ptr::addr_of_mut!(RUNTIME_STAGES).cast::<usize>().add(1),
             2,
+        )
+    };
+    runtime_exit()
+}
+
+extern "C" fn runtime_task_c() -> ! {
+    // Task C must run after A exits and before B resumes, proving round-robin
+    // dispatch continues correctly across three independently saved contexts.
+    unsafe {
+        core::ptr::write_volatile(
+            core::ptr::addr_of_mut!(RUNTIME_STAGES).cast::<usize>().add(2),
+            1,
         )
     };
     runtime_exit()
@@ -345,9 +359,9 @@ fn runtime_exit() -> ! {
     runtime_halt()
 }
 
-/// Execute a real block/wake scenario on separate stacks:
-/// A blocks -> B wakes A and yields -> A resumes and exits -> B resumes and exits
-/// -> boot. This checks blocked-task wakeup and the real saved contexts.
+/// Execute a real three-task scenario on separate stacks:
+/// A blocks -> B wakes A and yields -> A exits -> C exits -> B resumes and exits
+/// -> boot. This checks wakeup, round-robin order and three saved contexts.
 pub fn runtime_self_test() -> Result<(), SchedulerError> {
     unsafe {
         core::ptr::write(core::ptr::addr_of_mut!(RUNTIME_SCHEDULER), Scheduler::new());
@@ -361,7 +375,8 @@ pub fn runtime_self_test() -> Result<(), SchedulerError> {
         let scheduler = core::ptr::addr_of_mut!(RUNTIME_SCHEDULER);
         let first = (&mut *scheduler).create_task()?;
         let second = (&mut *scheduler).create_task()?;
-        if first.0 != 0 || second.0 != 1 {
+        let third = (&mut *scheduler).create_task()?;
+        if first.0 != 0 || second.0 != 1 || third.0 != 2 {
             return Err(SchedulerError::InvariantViolation);
         }
 
@@ -369,6 +384,7 @@ pub fn runtime_self_test() -> Result<(), SchedulerError> {
         let contexts = core::ptr::addr_of_mut!(RUNTIME_CONTEXTS).cast::<crate::context::CpuContext>();
         (&mut *stacks.add(first.0)).initialize(&mut *contexts.add(first.0), runtime_task_a);
         (&mut *stacks.add(second.0)).initialize(&mut *contexts.add(second.0), runtime_task_b);
+        (&mut *stacks.add(third.0)).initialize(&mut *contexts.add(third.0), runtime_task_c);
 
         let initial = (&mut *scheduler).schedule()?;
         if initial != first {
@@ -384,8 +400,10 @@ pub fn runtime_self_test() -> Result<(), SchedulerError> {
         let stages = core::ptr::addr_of!(RUNTIME_STAGES).cast::<usize>();
         if core::ptr::read_volatile(stages) != 2
             || core::ptr::read_volatile(stages.add(1)) != 2
+            || core::ptr::read_volatile(stages.add(2)) != 1
             || (&*scheduler).state(first)? != TaskState::Exited
             || (&*scheduler).state(second)? != TaskState::Exited
+            || (&*scheduler).state(third)? != TaskState::Exited
             || (&*scheduler).current().is_some()
             || (&*scheduler).check_invariants().is_err()
         {
