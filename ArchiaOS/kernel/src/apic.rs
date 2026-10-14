@@ -98,9 +98,9 @@ pub fn masked_ioapic_low(
 }
 
 /// Build an IOAPIC redirection high dword for a physical destination APIC ID.
-pub fn ioapic_destination_high(apic_id: u8) -> Result<u32, ApicError> {
-    if apic_id > u8::MAX { return Err(ApicError::InvalidDestination); }
-    Ok(u32::from(apic_id) << 24)
+pub fn ioapic_destination_high(apic_id: u32) -> Result<u32, ApicError> {
+    if apic_id > u8::MAX as u32 { return Err(ApicError::InvalidDestination); }
+    Ok(apic_id << 24)
 }
 
 #[cfg(test)]
@@ -142,5 +142,6 @@ mod tests {
         assert_eq!(masked_ioapic_low(0x40, 2, 0), Err(ApicError::InvalidPolarity));
         assert_eq!(masked_ioapic_low(0x40, 0, 2), Err(ApicError::InvalidTriggerMode));
         assert_eq!(ioapic_destination_high(2), Ok(0x0200_0000));
+        assert_eq!(ioapic_destination_high(256), Err(ApicError::InvalidDestination));
     }
 }
