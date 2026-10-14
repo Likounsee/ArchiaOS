@@ -489,11 +489,14 @@ fn runtime_validate_boundary() -> Result<(), SchedulerError> {
         // it can be blocked, woken, or dispatched. Catch lifecycle/context
         // mismatches here rather than letting assembly restore an empty RSP.
         let contexts = core::ptr::addr_of!(RUNTIME_CONTEXTS).cast::<crate::context::CpuContext>();
+        let stacks = core::ptr::addr_of!(RUNTIME_STACKS).cast::<crate::context::TaskStack>();
         for index in 0..RUNTIME_TASKS {
-            if scheduler.state(TaskId(index))? != TaskState::Empty
-                && !(&*contexts.add(index)).is_initialized()
-            {
-                return Err(SchedulerError::InvariantViolation);
+            if scheduler.state(TaskId(index))? != TaskState::Empty {
+                let context = &*contexts.add(index);
+                let stack = &*stacks.add(index);
+                if !context.is_initialized() || !stack.contains_context(context) {
+                    return Err(SchedulerError::InvariantViolation);
+                }
             }
         }
     }
