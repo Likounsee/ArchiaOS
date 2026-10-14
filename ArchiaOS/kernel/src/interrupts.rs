@@ -106,7 +106,7 @@ pub fn register_apic_vector_handler(
     APIC_VECTOR_HANDLERS[usize::from(vector)]
         .compare_exchange(0, handler as usize, Ordering::AcqRel, Ordering::Acquire)
         .map(|_| ())
-        .map_err(|_| crate::apic::ApicError::InvalidVector)
+        .map_err(|_| crate::apic::ApicError::HandlerAlreadyRegistered)
 }
 
 /// Invoke a previously registered APIC callback. The IDT/assembly entry path
