@@ -14,6 +14,7 @@ mod scheduler;
 mod context;
 mod interrupts;
 mod interrupt_vectors;
+mod acpi_madt;
 mod sync;
 
 /// Legacy dual 8259 PIC setup. All lines stay masked until matching IDT
