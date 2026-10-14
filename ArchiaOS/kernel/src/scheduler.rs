@@ -910,7 +910,8 @@ mod tests {
         assert_eq!(scheduler.wake(TaskId(0)), Err(SchedulerError::InvariantViolation));
         assert_eq!(scheduler.state(TaskId(0)), Ok(TaskState::Runnable));
         assert_eq!(scheduler.create_task(), Err(SchedulerError::InvariantViolation));
-        assert_eq!(scheduler.state(TaskId(1)), Err(SchedulerError::InvalidTask));
+        // An in-range slot is a valid index even when it is still Empty.
+        assert_eq!(scheduler.state(TaskId(1)), Ok(TaskState::Empty));
 
         let mut active = Scheduler::new();
         let active_task = active.create_task().unwrap();
