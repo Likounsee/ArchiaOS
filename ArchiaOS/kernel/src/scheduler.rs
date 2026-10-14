@@ -199,6 +199,13 @@ impl Scheduler {
     }
 
     fn select_next(&mut self) -> Result<TaskId, SchedulerError> {
+        // Validate before modulo/index arithmetic. A damaged cursor must return
+        // a controlled scheduler error rather than panic on overflow or select
+        // an unintended slot.
+        if self.cursor >= MAX_TASKS {
+            return Err(SchedulerError::InvariantViolation);
+        }
+
         for offset in 1..=MAX_TASKS {
             let index = (self.cursor + offset) % MAX_TASKS;
             if self.tasks[index].state == TaskState::Runnable {
@@ -764,6 +771,9 @@ mod tests {
         // cannot write the cursor directly.
         scheduler.cursor = MAX_TASKS;
         assert_eq!(scheduler.check_invariants(), Err(SchedulerError::InvariantViolation));
+        assert_eq!(scheduler.schedule(), Err(SchedulerError::InvariantViolation));
+        assert_eq!(scheduler.state(TaskId(0)), Ok(TaskState::Runnable));
+        assert_eq!(scheduler.current(), None);
     }
 
     #[test]
