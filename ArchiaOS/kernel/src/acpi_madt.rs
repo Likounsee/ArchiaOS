@@ -33,6 +33,7 @@ pub enum MadtError {
     InvalidRsdpSignature,
     InvalidRsdpLength,
     InvalidRsdpChecksum,
+    UnsupportedRsdpRevision,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -133,6 +134,9 @@ pub fn parse_rsdp(bytes: &[u8]) -> Result<RsdpInfo, MadtError> {
         return Err(MadtError::InvalidRsdpChecksum);
     }
     let revision = bytes[15];
+    if revision == 1 {
+        return Err(MadtError::UnsupportedRsdpRevision);
+    }
     let rsdt_address = u32_at(bytes, 16).ok_or(MadtError::InvalidRsdpLength)?;
     if revision < 2 {
         return Ok(RsdpInfo { revision, rsdt_address, xsdt_address: None });
@@ -422,6 +426,11 @@ mod tests {
         let mut invalid = extended.clone();
         invalid[30] ^= 1;
         assert_eq!(parse_rsdp(&invalid), Err(MadtError::InvalidRsdpChecksum));
+
+        let mut unsupported = legacy.clone();
+        unsupported[15] = 1;
+        checksum(&mut unsupported, 8, 20);
+        assert_eq!(parse_rsdp(&unsupported), Err(MadtError::UnsupportedRsdpRevision));
     }
 
     #[test]
