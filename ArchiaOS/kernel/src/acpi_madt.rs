@@ -30,6 +30,9 @@ pub enum MadtError {
     InvalidRootSignature,
     InvalidRootEntrySize,
     TooManyRootEntries,
+    InvalidRsdpSignature,
+    InvalidRsdpLength,
+    InvalidRsdpChecksum,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -109,6 +112,43 @@ fn u64_at(bytes: &[u8], offset: usize) -> Option<u64> {
         *bytes.get(offset + 4)?, *bytes.get(offset + 5)?,
         *bytes.get(offset + 6)?, *bytes.get(offset + 7)?,
     ]))
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RsdpInfo {
+    pub revision: u8,
+    pub rsdt_address: u32,
+    pub xsdt_address: Option<u64>,
+}
+
+/// Validate an ACPI RSDP byte image before using its root-table addresses.
+/// The returned addresses are metadata only; this function never dereferences
+/// physical addresses or assumes they are mapped in the current address space.
+pub fn parse_rsdp(bytes: &[u8]) -> Result<RsdpInfo, MadtError> {
+    if bytes.len() < 20 { return Err(MadtError::InvalidRsdpLength); }
+    if bytes.get(0..8) != Some(b"RSD PTR ".as_slice()) {
+        return Err(MadtError::InvalidRsdpSignature);
+    }
+    if bytes[..20].iter().fold(0u8, |sum, byte| sum.wrapping_add(*byte)) != 0 {
+        return Err(MadtError::InvalidRsdpChecksum);
+    }
+    let revision = bytes[15];
+    let rsdt_address = u32_at(bytes, 16).ok_or(MadtError::InvalidRsdpLength)?;
+    if revision < 2 {
+        return Ok(RsdpInfo { revision, rsdt_address, xsdt_address: None });
+    }
+    if bytes.len() < 36 { return Err(MadtError::InvalidRsdpLength); }
+    let length = u32_at(bytes, 20).ok_or(MadtError::InvalidRsdpLength)? as usize;
+    if length < 36 || length > bytes.len() { return Err(MadtError::InvalidRsdpLength); }
+    if bytes[..length].iter().fold(0u8, |sum, byte| sum.wrapping_add(*byte)) != 0 {
+        return Err(MadtError::InvalidRsdpChecksum);
+    }
+    let xsdt_address = u64_at(bytes, 24).ok_or(MadtError::InvalidRsdpLength)?;
+    Ok(RsdpInfo {
+        revision,
+        rsdt_address,
+        xsdt_address: if xsdt_address == 0 { None } else { Some(xsdt_address) },
+    })
 }
 
 /// Maximum root-table entries retained without allocating.
@@ -351,6 +391,37 @@ mod tests {
     fn rejects_reserved_interrupt_override_flags() {
         let entries = [2, 10, 0, 0, 0, 0, 0, 0, 0x02, 0];
         assert_eq!(parse_madt(&base(0, &entries)), Err(MadtError::InvalidOverride));
+    }
+
+    #[test]
+    fn parses_and_checks_legacy_and_extended_rsdp() {
+        fn checksum(bytes: &mut [u8], index: usize, end: usize) {
+            bytes[index] = 0;
+            bytes[index] = 0u8.wrapping_sub(bytes[..end].iter().fold(0u8, |sum, byte| sum.wrapping_add(*byte)));
+        }
+        let mut legacy = vec![0u8; 20];
+        legacy[..8].copy_from_slice(b"RSD PTR ");
+        legacy[15] = 0;
+        legacy[16..20].copy_from_slice(&0x1234u32.to_le_bytes());
+        checksum(&mut legacy, 8, 20);
+        assert_eq!(parse_rsdp(&legacy), Ok(RsdpInfo { revision: 0, rsdt_address: 0x1234, xsdt_address: None }));
+
+        let mut extended = vec![0u8; 36];
+        extended[..8].copy_from_slice(b"RSD PTR ");
+        extended[15] = 2;
+        extended[16..20].copy_from_slice(&0x1234u32.to_le_bytes());
+        extended[20..24].copy_from_slice(&36u32.to_le_bytes());
+        extended[24..32].copy_from_slice(&0x1_0000_5678u64.to_le_bytes());
+        checksum(&mut extended, 8, 20);
+        checksum(&mut extended, 32, 36);
+        // Extended checksum includes the legacy checksum byte, so refresh it last.
+        checksum(&mut extended, 8, 20);
+        checksum(&mut extended, 32, 36);
+        assert_eq!(parse_rsdp(&extended), Ok(RsdpInfo { revision: 2, rsdt_address: 0x1234, xsdt_address: Some(0x1_0000_5678) }));
+
+        let mut invalid = extended.clone();
+        invalid[30] ^= 1;
+        assert_eq!(parse_rsdp(&invalid), Err(MadtError::InvalidRsdpChecksum));
     }
 
     #[test]
