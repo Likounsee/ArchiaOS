@@ -55,7 +55,7 @@ def main() -> None:
         fail("isr_stub_table must list every stub exactly once in vector order")
 
     common_match = re.search(
-        r'"isr_common:",(?P<body>.*?)(?:"\\.section \\.rodata")',
+        r'"isr_common:",(?P<body>.*?)(?:"\.section \.rodata")',
         source,
         re.DOTALL,
     )
