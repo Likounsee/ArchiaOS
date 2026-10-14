@@ -13,6 +13,7 @@ pub const MAX_MADT_OVERRIDES: usize = 64;
 pub enum MadtError {
     TruncatedHeader,
     InvalidSignature,
+    InvalidChecksum,
     InvalidLength,
     TruncatedEntry,
     InvalidEntryLength,
@@ -115,6 +116,11 @@ pub fn parse_madt(bytes: &[u8]) -> Result<MadtInfo, MadtError> {
     if length < MADT_FIXED || length > bytes.len() {
         return Err(MadtError::InvalidLength);
     }
+    // ACPI SDT checksum covers exactly the declared table length, not trailing
+    // bytes that may belong to another allocation or firmware object.
+    if bytes[..length].iter().fold(0u8, |sum, byte| sum.wrapping_add(*byte)) != 0 {
+        return Err(MadtError::InvalidChecksum);
+    }
     let mut info = MadtInfo::empty(
         u32_at(bytes, 36).ok_or(MadtError::InvalidLength)? as u64,
         u32_at(bytes, 40).ok_or(MadtError::InvalidLength)? & 1 != 0,
@@ -189,6 +195,10 @@ mod tests {
         b.extend_from_slice(entries);
         let len = b.len() as u32;
         b[4..8].copy_from_slice(&len.to_le_bytes());
+        // ACPI SDT checksum byte is at offset 9; zero it before calculation.
+        b[9] = 0;
+        let checksum = 0u8.wrapping_sub(b.iter().fold(0u8, |sum, byte| sum.wrapping_add(*byte)));
+        b[9] = checksum;
         b
     }
 
@@ -228,6 +238,9 @@ mod tests {
         let mut wrong = base(0, &[]);
         wrong[0] = b'X';
         assert_eq!(parse_madt(&wrong), Err(MadtError::InvalidSignature));
+        let mut bad_checksum = base(0, &[]);
+        bad_checksum[20] ^= 0x80;
+        assert_eq!(parse_madt(&bad_checksum), Err(MadtError::InvalidChecksum));
         let mut short = base(0, &[]);
         short[4..8].copy_from_slice(&43u32.to_le_bytes());
         assert_eq!(parse_madt(&short), Err(MadtError::InvalidLength));
