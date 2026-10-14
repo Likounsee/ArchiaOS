@@ -50,6 +50,33 @@ fn scheduler_can_restart_after_every_task_is_blocked() {
 }
 
 #[test]
+fn idle_aware_transitions_dispatch_other_runnable_tasks_first() {
+    let mut blocked_scheduler = Scheduler::new();
+    let blocked = blocked_scheduler.create_task().expect("first task slot");
+    let runnable = blocked_scheduler.create_task().expect("second task slot");
+    assert_eq!(blocked_scheduler.schedule(), Ok(blocked));
+    assert_eq!(
+        blocked_scheduler.block_current_or_idle(),
+        Ok(scheduler::DispatchDecision::Run(runnable))
+    );
+    assert_eq!(blocked_scheduler.state(blocked), Ok(TaskState::Blocked));
+    assert_eq!(blocked_scheduler.state(runnable), Ok(TaskState::Running));
+    assert_eq!(blocked_scheduler.check_invariants(), Ok(()));
+
+    let mut exiting_scheduler = Scheduler::new();
+    let exiting = exiting_scheduler.create_task().expect("first task slot");
+    let runnable = exiting_scheduler.create_task().expect("second task slot");
+    assert_eq!(exiting_scheduler.schedule(), Ok(exiting));
+    assert_eq!(
+        exiting_scheduler.exit_current_or_idle(),
+        Ok(scheduler::DispatchDecision::Run(runnable))
+    );
+    assert_eq!(exiting_scheduler.state(exiting), Ok(TaskState::Exited));
+    assert_eq!(exiting_scheduler.state(runnable), Ok(TaskState::Running));
+    assert_eq!(exiting_scheduler.check_invariants(), Ok(()));
+}
+
+#[test]
 fn blocking_last_runnable_task_returns_waiting_idle_decision() {
     let mut scheduler = Scheduler::new();
     let task = scheduler.create_task().expect("task slot");
