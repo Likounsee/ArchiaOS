@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 SOURCE = Path(__file__).resolve().parents[1] / "kernel/src/interrupts.rs"
+VECTOR_SOURCE = Path(__file__).resolve().parents[1] / "kernel/src/interrupt_vectors.rs"
 ERROR_CODE_VECTORS = {8, 10, 11, 12, 13, 14, 17, 21, 29, 30}
 
 
@@ -22,6 +23,28 @@ def fail(message: str) -> None:
 
 def main() -> None:
     source = SOURCE.read_text(encoding="utf-8")
+    vector_source = VECTOR_SOURCE.read_text(encoding="utf-8")
+    metadata_match = re.search(
+        r'pub const fn cpu_exception_has_error_code\\(vector: u8\\) -> bool \\{\\s*matches!\\(vector, ([^)]*)\\)',
+        vector_source,
+        re.DOTALL,
+    )
+    if not metadata_match:
+        fail("cpu_exception_has_error_code metadata not found")
+    metadata_vectors = set()
+    for item in metadata_match.group(1).split("|"):
+        item = item.strip()
+        if "..=" in item:
+            lower, upper = (int(value.strip()) for value in item.split("..=", 1))
+            metadata_vectors.update(range(lower, upper + 1))
+        else:
+            metadata_vectors.add(int(item))
+    if metadata_vectors != ERROR_CODE_VECTORS:
+        fail(
+            "ISR error-code list disagrees with cpu_exception_has_error_code: "
+            f"stubs={sorted(ERROR_CODE_VECTORS)}, metadata={sorted(metadata_vectors)}"
+        )
+
     stubs = list(re.finditer(
         r'^\s*"isr_stub_(\d+):",(?P<body>.*?)(?=^\s*"\.global isr_stub_|^\s*"\.global isr_common")',
         source,
