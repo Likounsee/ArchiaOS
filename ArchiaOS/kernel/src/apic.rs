@@ -5,6 +5,9 @@
 //! map the controller, validate CPU capability, and install a returning IRQ path
 //! before enabling delivery.
 
+use core::hint::spin_loop;
+use core::sync::atomic::{AtomicBool, Ordering};
+
 pub const IA32_APIC_BASE_MSR: u32 = 0x1b;
 pub const APIC_BASE_ENABLE: u64 = 1 << 11;
 pub const APIC_X2_MODE_ENABLE: u64 = 1 << 10;
@@ -31,6 +34,7 @@ pub enum ApicError {
     InvalidTriggerMode,
     InvalidDestination,
     InvalidMappedPointer,
+    InvalidGlobalInterrupt,
 }
 
 /// xAPIC MMIO window whose 4 KiB register page has already been mapped.
@@ -97,6 +101,125 @@ impl LocalApic {
     /// The mapping must be valid and xAPIC mode must be active.
     pub unsafe fn timer_current_count(&self) -> u32 {
         unsafe { self.read_register(APIC_CURRENT_COUNT_REGISTER) }
+    }
+}
+
+/// IOAPIC indirect-register window with serialized selector/data accesses.
+///
+/// The caller supplies the global-system-interrupt base from the MADT. This
+/// wrapper only programs masked routes; enabling a route remains an explicit,
+/// later step after handlers and EOI paths are ready.
+pub struct IoApic {
+    base: *mut u32,
+    gsi_base: u32,
+    selector_lock: AtomicBool,
+}
+
+unsafe impl Send for IoApic {}
+unsafe impl Sync for IoApic {}
+
+impl IoApic {
+    /// # Safety
+    /// base must refer to a live, writable, uncached 4 KiB IOAPIC MMIO mapping
+    /// and remain mapped for this object's lifetime. The supplied GSI base
+    /// must come from a validated MADT IOAPIC record.
+    pub unsafe fn from_mapped_base(base: *mut u32, gsi_base: u32) -> Result<Self, ApicError> {
+        if base.is_null() || (base as usize & 0xfff) != 0 {
+            return Err(ApicError::InvalidMappedPointer);
+        }
+        Ok(Self { base, gsi_base, selector_lock: AtomicBool::new(false) })
+    }
+
+    fn lock_selector(&self) -> IoApicGuard<'_> {
+        loop {
+            if self.selector_lock.compare_exchange_weak(
+                false, true, Ordering::Acquire, Ordering::Relaxed
+            ).is_ok() {
+                return IoApicGuard(&self.selector_lock);
+            }
+            while self.selector_lock.load(Ordering::Relaxed) { spin_loop(); }
+        }
+    }
+
+    unsafe fn read_register_locked(&self, register: u8) -> u32 {
+        // SAFETY: caller holds selector lock; mapping validity is constructor contract.
+        unsafe {
+            core::ptr::write_volatile(self.base, u32::from(register));
+            core::ptr::read_volatile(self.base.add(4))
+        }
+    }
+
+    unsafe fn write_register_locked(&self, register: u8, value: u32) {
+        // SAFETY: caller holds selector lock; mapping validity is constructor contract.
+        unsafe {
+            core::ptr::write_volatile(self.base, u32::from(register));
+            core::ptr::write_volatile(self.base.add(4), value);
+        }
+    }
+
+    /// Number of redirection entries reported by the controller.
+    ///
+    /// # Safety
+    /// The IOAPIC mapping must remain valid.
+    pub unsafe fn redirection_count(&self) -> u32 {
+        let _guard = self.lock_selector();
+        let version = unsafe { self.read_register_locked(1) };
+        ((version >> 16) & 0xff) + 1
+    }
+
+    /// Configure a GSI route, but leave it masked at all times.
+    ///
+    /// # Safety
+    /// The IOAPIC mapping must remain valid, and its GSI base must match the
+    /// validated MADT record. No handler is installed or route unmasked here.
+    pub unsafe fn configure_masked(
+        &self,
+        gsi: u32,
+        vector: u8,
+        polarity_flags: u16,
+        trigger_flags: u16,
+        destination_apic_id: u32,
+    ) -> Result<(), ApicError> {
+        let pin = gsi.checked_sub(self.gsi_base).ok_or(ApicError::InvalidGlobalInterrupt)?;
+        let high = ioapic_destination_high(destination_apic_id)?;
+        let low = masked_ioapic_low(vector, polarity_flags, trigger_flags)?;
+        let _guard = self.lock_selector();
+        let version = unsafe { self.read_register_locked(1) };
+        let count = ((version >> 16) & 0xff) + 1;
+        if pin >= count { return Err(ApicError::InvalidGlobalInterrupt); }
+        let low_register = 0x10u32 + pin * 2;
+        if low_register + 1 > u8::MAX as u32 { return Err(ApicError::InvalidGlobalInterrupt); }
+        // Keep the low dword masked before changing destination or trigger data.
+        unsafe {
+            self.write_register_locked(low_register as u8, low | APIC_LVT_MASKED);
+            self.write_register_locked((low_register + 1) as u8, high);
+            self.write_register_locked(low_register as u8, low | APIC_LVT_MASKED);
+        }
+        Ok(())
+    }
+
+    /// Mask an already configured route without changing its other fields.
+    ///
+    /// # Safety
+    /// The IOAPIC mapping must remain valid and GSI must belong to this controller.
+    pub unsafe fn mask(&self, gsi: u32) -> Result<(), ApicError> {
+        let pin = gsi.checked_sub(self.gsi_base).ok_or(ApicError::InvalidGlobalInterrupt)?;
+        let _guard = self.lock_selector();
+        let version = unsafe { self.read_register_locked(1) };
+        let count = ((version >> 16) & 0xff) + 1;
+        if pin >= count { return Err(ApicError::InvalidGlobalInterrupt); }
+        let low_register = 0x10u32 + pin * 2;
+        if low_register > u8::MAX as u32 { return Err(ApicError::InvalidGlobalInterrupt); }
+        let low = unsafe { self.read_register_locked(low_register as u8) };
+        unsafe { self.write_register_locked(low_register as u8, low | APIC_LVT_MASKED) };
+        Ok(())
+    }
+}
+
+struct IoApicGuard<'a>(&'a AtomicBool);
+impl Drop for IoApicGuard<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
     }
 }
 
