@@ -13,6 +13,8 @@ pub const APIC_BASE_ENABLE: u64 = 1 << 11;
 pub const APIC_X2_MODE_ENABLE: u64 = 1 << 10;
 pub const APIC_BASE_ADDRESS_MASK: u64 = 0x000f_ffff_ffff_f000;
 pub const APIC_SPURIOUS_VECTOR_REGISTER: u32 = 0x0f0;
+pub const APIC_VERSION_REGISTER: u32 = 0x030;
+pub const APIC_TASK_PRIORITY_REGISTER: u32 = 0x080;
 pub const APIC_ICR_LOW_REGISTER: u32 = 0x300;
 pub const APIC_ICR_HIGH_REGISTER: u32 = 0x310;
 pub const APIC_ICR_DELIVERY_PENDING: u32 = 1 << 12;
@@ -66,6 +68,12 @@ pub fn ipi_command(kind: IpiKind, vector: u8) -> Result<u32, ApicError> {
     }
 }
 
+/// Build the software-enable register while selecting a valid spurious vector.
+pub fn spurious_vector_value(vector: u8) -> Result<u32, ApicError> {
+    if vector < 32 { return Err(ApicError::InvalidVector); }
+    Ok(u32::from(vector) | APIC_SPURIOUS_ENABLE)
+}
+
 /// xAPIC MMIO window whose 4 KiB register page has already been mapped.
 ///
 /// Construction is unsafe because the caller must guarantee that the pointer
@@ -97,6 +105,40 @@ impl LocalApic {
     unsafe fn read_register(&self, offset: u32) -> u32 {
         // SAFETY: constructor contract; offsets are aligned xAPIC register offsets.
         unsafe { core::ptr::read_volatile(self.base.add((offset / 4) as usize)) }
+    }
+
+    /// Initialize the local APIC while keeping every supported LVT source masked.
+    /// The spurious-vector register is enabled last; the IOAPIC routes remain masked.
+    ///
+    /// # Safety
+    /// The mapping must be valid and xAPIC mode active. The IDT must already
+    /// contain a safe handler for the spurious vector; hardware routes must remain
+    /// masked until their handlers and EOI path are installed.
+    pub unsafe fn initialize_masked(
+        &self,
+        spurious_vector: u8,
+        timer_vector: u8,
+        timer_divisor: u16,
+    ) -> Result<(), ApicError> {
+        let svr = spurious_vector_value(spurious_vector)?;
+        let timer_lvt = masked_timer_lvt(timer_vector)?;
+        let divide = timer_divide_encoding(timer_divisor)?;
+        let version = unsafe { self.read_register(APIC_VERSION_REGISTER) };
+        let max_lvt = (version >> 16) & 0xff;
+        unsafe {
+            self.write_register(APIC_TASK_PRIORITY_REGISTER, 0);
+            self.write_register(APIC_LVT_TIMER_REGISTER, timer_lvt);
+            if max_lvt >= 1 { self.write_register(0x330, APIC_LVT_MASKED); }
+            if max_lvt >= 2 { self.write_register(0x340, APIC_LVT_MASKED); }
+            if max_lvt >= 3 { self.write_register(0x350, APIC_LVT_MASKED); }
+            if max_lvt >= 4 { self.write_register(0x360, APIC_LVT_MASKED); }
+            if max_lvt >= 5 { self.write_register(0x370, APIC_LVT_MASKED); }
+            if max_lvt >= 6 { self.write_register(0x2f0, APIC_LVT_MASKED); }
+            self.write_register(APIC_DIVIDE_CONFIGURATION_REGISTER, divide);
+            self.write_register(APIC_INITIAL_COUNT_REGISTER, 0);
+            self.write_register(APIC_SPURIOUS_VECTOR_REGISTER, svr);
+        }
+        Ok(())
     }
 
     /// Send the local-APIC EOI after a local interrupt handler has completed.
@@ -409,6 +451,12 @@ mod tests {
             validate_apic_base(0xfee0_0001 | APIC_BASE_ENABLE, 0xfee0_0001),
             Err(ApicError::InvalidPhysicalAddress)
         );
+    }
+
+    #[test]
+    fn spurious_vector_must_be_architecturally_valid() {
+        assert_eq!(spurious_vector_value(0xFF), Ok(0x1FF));
+        assert_eq!(spurious_vector_value(31), Err(ApicError::InvalidVector));
     }
 
     #[test]
