@@ -144,7 +144,7 @@ def main() -> None:
 
     for struct_name in ("IdtEntry", "Idtr"):
         struct_match = re.search(
-            rf'#\\[repr\\(C, packed\\)\\]\\s*struct {struct_name} \\{{(?P<body>.*?)\\n\\}}',
+            rf'#\[repr\(C, packed\)\]\s*struct {struct_name} \{{(?P<body>.*?)\n\}}',
             source,
             re.DOTALL,
         )
