@@ -495,6 +495,22 @@ pub extern "C" fn rust_kernel_main(
 pub extern "C" fn archiaos_exception_dispatch(vector: u64, error_code: u64, instruction_pointer: u64) -> ! {
     let mut serial = Serial;
     serial.init();
+
+    // Until a returning IRQ dispatcher exists, classify legacy PIC vectors
+    // accurately and stop without sending an EOI from this fatal path.
+    if vector <= u8::MAX as u64 {
+        if let Some(irq) = interrupts::legacy_pic_irq_for_vector(vector as u8) {
+            let _ = writeln!(
+                serial,
+                "ArchiaOS: FATAL unhandled legacy PIC IRQ vector={} irq={} (no EOI; interrupts remain disabled)",
+                vector,
+                irq
+            );
+            let _ = writeln!(serial, "ArchiaOS: interrupted RIP={:#018x}", instruction_pointer);
+            halt_forever();
+        }
+    }
+
     let name = match vector {
         0 => "divide error", 1 => "debug", 2 => "non-maskable interrupt",
         3 => "breakpoint", 4 => "overflow", 5 => "bound range",
