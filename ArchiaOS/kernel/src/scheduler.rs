@@ -452,4 +452,50 @@ mod tests {
         assert_eq!(scheduler.state(task), Ok(TaskState::Exited));
         assert_eq!(scheduler.check_invariants(), Ok(()));
     }
+
+    #[test]
+    fn repeated_wake_is_rejected_without_corrupting_runnable_state() {
+        let mut scheduler = Scheduler::new();
+        let task = scheduler.create_task().unwrap();
+        assert_eq!(scheduler.schedule(), Ok(task));
+        assert_eq!(scheduler.block_current(), Err(SchedulerError::NoRunnableTask));
+        assert_eq!(scheduler.wake(task), Ok(()));
+        assert_eq!(scheduler.wake(task), Err(SchedulerError::TaskNotBlocked));
+        assert_eq!(scheduler.state(task), Ok(TaskState::Runnable));
+        assert_eq!(scheduler.dispatch_or_idle(), Ok(DispatchDecision::Run(task)));
+        assert_eq!(scheduler.state(task), Ok(TaskState::Running));
+        assert_eq!(scheduler.check_invariants(), Ok(()));
+    }
+
+    #[test]
+    fn invalid_wake_and_dispatch_while_running_do_not_mutate_scheduler() {
+        let mut scheduler = Scheduler::new();
+        let task = scheduler.create_task().unwrap();
+        assert_eq!(scheduler.wake(TaskId(MAX_TASKS)), Err(SchedulerError::InvalidTask));
+        assert_eq!(scheduler.schedule(), Ok(task));
+        assert_eq!(scheduler.schedule(), Err(SchedulerError::InvariantViolation));
+        assert_eq!(scheduler.dispatch_or_idle(), Err(SchedulerError::InvariantViolation));
+        assert_eq!(scheduler.current(), Some(task));
+        assert_eq!(scheduler.state(task), Ok(TaskState::Running));
+        assert_eq!(scheduler.check_invariants(), Ok(()));
+    }
+
+    #[test]
+    fn no_runnable_task_errors_leave_blocked_or_exited_state_consistent() {
+        let mut blocked = Scheduler::new();
+        let blocked_task = blocked.create_task().unwrap();
+        assert_eq!(blocked.schedule(), Ok(blocked_task));
+        assert_eq!(blocked.block_current(), Err(SchedulerError::NoRunnableTask));
+        assert_eq!(blocked.current(), None);
+        assert_eq!(blocked.state(blocked_task), Ok(TaskState::Blocked));
+        assert_eq!(blocked.check_invariants(), Ok(()));
+
+        let mut exited = Scheduler::new();
+        let exited_task = exited.create_task().unwrap();
+        assert_eq!(exited.schedule(), Ok(exited_task));
+        assert_eq!(exited.exit_current(), Err(SchedulerError::NoRunnableTask));
+        assert_eq!(exited.current(), None);
+        assert_eq!(exited.state(exited_task), Ok(TaskState::Exited));
+        assert_eq!(exited.check_invariants(), Ok(()));
+    }
 }
