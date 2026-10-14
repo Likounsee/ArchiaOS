@@ -223,9 +223,9 @@ impl Scheduler {
 // ---- First real two-task runtime integration (x86-64, single CPU) ----
 //
 // Stacks are static rather than embedded in Scheduler, so a scheduler object
-// cannot accidentally consume >100 KiB of the early boot stack. The first
-// runtime slice intentionally supports two tasks; the state model remains
-// MAX_TASKS-capable and can be extended once allocation/lifecycle policy lands.
+// cannot accidentally consume >100 KiB of the early boot stack. The runtime
+// integration exercises three tasks; the state model remains MAX_TASKS-capable
+// and can be extended once allocation/lifecycle policy lands.
 const RUNTIME_TASKS: usize = 3;
 
 static mut RUNTIME_SCHEDULER: Scheduler = Scheduler::new();
