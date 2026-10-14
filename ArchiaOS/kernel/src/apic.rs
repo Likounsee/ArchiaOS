@@ -503,6 +503,34 @@ mod tests {
     struct MockApicPage([u32; 1024]);
 
     #[test]
+    fn ipi_sender_programs_destination_and_delivery_mode_in_mock_registers() {
+        let mut page = MockApicPage([0; 1024]);
+        // SAFETY: this aligned page is a writable mock APIC register window.
+        let apic = unsafe {
+            LocalApic::from_mapped_base(page.0.as_mut_ptr()).expect("aligned mock page")
+        };
+
+        // SAFETY: only ordinary memory is accessed by this test double; ICR
+        // reads never report delivery-pending, so the bounded wait completes.
+        unsafe { apic.send_ipi(7, IpiKind::Fixed, 0x40) }.expect("fixed IPI");
+        assert_eq!(page.0[(APIC_ICR_HIGH_REGISTER / 4) as usize], 7 << 24);
+        assert_eq!(page.0[(APIC_ICR_LOW_REGISTER / 4) as usize], 0x40);
+
+        unsafe { apic.send_ipi(2, IpiKind::InitAssert, 0) }.expect("INIT assert");
+        assert_eq!(page.0[(APIC_ICR_HIGH_REGISTER / 4) as usize], 2 << 24);
+        assert_eq!(
+            page.0[(APIC_ICR_LOW_REGISTER / 4) as usize],
+            (5 << 8) | (1 << 14) | (1 << 15)
+        );
+
+        unsafe { apic.send_ipi(2, IpiKind::Startup, 8) }.expect("startup IPI");
+        assert_eq!(
+            page.0[(APIC_ICR_LOW_REGISTER / 4) as usize],
+            (6 << 8) | 8
+        );
+    }
+
+    #[test]
     fn masked_local_apic_initialization_programs_registers_without_unmasking_sources() {
         let mut page = MockApicPage([0; 1024]);
         page.0[(APIC_VERSION_REGISTER / 4) as usize] = 6 << 16;
