@@ -577,9 +577,22 @@ mod tests {
     struct MockApicPage([u32; 1024]);
 
     #[test]
-    fn local_apic_eoi_writes_zero_to_the_eoi_register() {
+    fn local_apic_eoi_writes_only_the_eoi_register() {
         let mut page = MockApicPage([0; 1024]);
-        page.0[(APIC_EOI_REGISTER / 4) as usize] = 0xfeed_beef;
+        let eoi = (APIC_EOI_REGISTER / 4) as usize;
+        let before = [
+            (APIC_TASK_PRIORITY_REGISTER / 4) as usize,
+            (APIC_SPURIOUS_VECTOR_REGISTER / 4) as usize,
+            (APIC_LVT_TIMER_REGISTER / 4) as usize,
+            (APIC_ICR_LOW_REGISTER / 4) as usize,
+            (APIC_ICR_HIGH_REGISTER / 4) as usize,
+        ];
+        page.0[eoi] = 0xfeed_beef;
+        for (n, index) in before.iter().copied().enumerate() {
+            page.0[index] = 0x1234_0000 | n as u32;
+        }
+        let neighbors: [u32; 5] = core::array::from_fn(|n| page.0[before[n]]);
+
         // SAFETY: this aligned writable mock page models the APIC register window.
         let apic = unsafe {
             LocalApic::from_mapped_base(page.0.as_mut_ptr()).expect("aligned mock page")
@@ -587,7 +600,10 @@ mod tests {
 
         // SAFETY: the mock page is ordinary memory, not real APIC MMIO.
         unsafe { apic.end_of_interrupt() };
-        assert_eq!(page.0[(APIC_EOI_REGISTER / 4) as usize], 0);
+        assert_eq!(page.0[eoi], 0);
+        for (n, index) in before.iter().copied().enumerate() {
+            assert_eq!(page.0[index], neighbors[n], "neighbor register {index:#x}");
+        }
     }
 
     #[test]
