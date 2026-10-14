@@ -494,10 +494,9 @@ fn runtime_yield() -> Result<(), SchedulerError> {
 
 /// Block the current runtime task and switch to another runnable task.
 ///
-/// This boot-time integration deliberately requires another runnable task;
-/// the general scheduler model exposes `dispatch_or_idle`, but a persistent
-/// architecture-level idle context is not installed yet. Do not use this helper
-/// as a general-purpose blocking primitive until that idle context exists.
+/// This helper requires another runnable task. The boot-time idle test uses
+/// a dedicated idle context, but production blocking still needs an interrupt
+/// and wakeup path before this helper can be generalized.
 fn runtime_block_current() -> Result<(), SchedulerError> {
     if !runtime_stack_guards_intact() {
         return Err(SchedulerError::StackCorrupted);
@@ -545,6 +544,9 @@ fn runtime_block_current_to_boot() -> Result<(), SchedulerError> {
             }
             DispatchDecision::Idle(_) => return Err(SchedulerError::InvariantViolation),
         }
+    }
+    if !runtime_stack_guards_intact() {
+        return Err(SchedulerError::StackCorrupted);
     }
     Ok(())
 }
