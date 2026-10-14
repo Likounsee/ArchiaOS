@@ -503,6 +503,24 @@ mod tests {
     struct MockApicPage([u32; 1024]);
 
     #[test]
+    fn ipi_delivery_pending_timeout_does_not_overwrite_destination() {
+        let mut page = MockApicPage([0; 1024]);
+        page.0[(APIC_ICR_LOW_REGISTER / 4) as usize] = APIC_ICR_DELIVERY_PENDING;
+        page.0[(APIC_ICR_HIGH_REGISTER / 4) as usize] = 0x1234_5678;
+        // SAFETY: this is an aligned writable mock register page; its ICR
+        // pending bit stays set, deterministically exercising the bounded timeout.
+        let apic = unsafe {
+            LocalApic::from_mapped_base(page.0.as_mut_ptr()).expect("aligned mock page")
+        };
+        // SAFETY: this mock never sends a hardware IPI.
+        assert_eq!(
+            unsafe { apic.send_ipi(3, IpiKind::Fixed, 0x40) },
+            Err(ApicError::IpiTimeout)
+        );
+        assert_eq!(page.0[(APIC_ICR_HIGH_REGISTER / 4) as usize], 0x1234_5678);
+    }
+
+    #[test]
     fn ipi_sender_programs_destination_and_delivery_mode_in_mock_registers() {
         let mut page = MockApicPage([0; 1024]);
         // SAFETY: this aligned page is a writable mock APIC register window.
