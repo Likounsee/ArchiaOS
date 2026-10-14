@@ -804,7 +804,7 @@ pub extern "C" fn rust_kernel_main(
                 let _ = writeln!(serial, "ArchiaOS: APIC returning dispatch self-test FAILED");
                 halt_forever();
             }
-            let _ = writeln!(serial, "ArchiaOS: APIC registered-handler, EOI and IRETQ dispatch self-test passed");
+            let _ = writeln!(serial, "ArchiaOS: APIC registered-handler dispatch and IRETQ return self-test passed (software interrupt; hardware IRQ delivery not tested)");
         }
         Err(reason) => {
             let _ = writeln!(serial, "ArchiaOS: local xAPIC initialization skipped: {}", reason);
