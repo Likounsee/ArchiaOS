@@ -287,6 +287,33 @@ mod tests {
     }
 
     #[test]
+    fn all_out_of_range_irq_values_are_rejected() {
+        for irq in LEGACY_PIC_IRQ_COUNT..=u8::MAX {
+            assert_eq!(legacy_pic_vector_for_irq(irq), None, "vector mapping IRQ {irq}");
+            assert_eq!(eoi_plan_for_irq(irq), None, "EOI plan IRQ {irq}");
+            assert_eq!(eoi_plan_for_handled_irq(irq, true), None, "handled EOI plan IRQ {irq}");
+            assert_eq!(
+                masks_after_masking_irq(0, 0xff, irq),
+                None,
+                "mask transition IRQ {irq}"
+            );
+        }
+    }
+
+    #[test]
+    fn eoi_plans_are_exact_for_every_possible_irq_byte() {
+        for irq in 0u8..=u8::MAX {
+            let expected = match irq {
+                0..=7 => Some((false, true)),
+                8..=15 => Some((true, true)),
+                _ => None,
+            };
+            assert_eq!(eoi_plan_for_irq(irq), expected, "IRQ {irq}");
+            assert_eq!(eoi_plan_for_handled_irq(irq, false), None, "unhandled IRQ {irq}");
+        }
+    }
+
+    #[test]
     fn refuses_to_transition_from_inconsistent_pic_masks() {
         // A slave line is enabled, but the master cascade is masked.
         assert_eq!(masks_after_masking_irq(0b0000_0100, 0b1111_1110, 0), None);
@@ -326,6 +353,10 @@ mod tests {
                         pic_masks_are_consistent(next_master, next_slave),
                         "inconsistent result: master={master_mask:#04x}, slave={slave_mask:#04x}, irq={irq}"
                     );
+                    // This API only masks lines: no transition may clear a
+                    // previously set mask bit (the masked state).
+                    assert_eq!(next_master | master_mask, next_master);
+                    assert_eq!(next_slave | slave_mask, next_slave);
                     if irq < 8 {
                         assert_ne!(next_master & (1u8 << irq), 0);
                         assert_eq!(next_slave, slave_mask);
