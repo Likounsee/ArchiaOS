@@ -39,10 +39,16 @@ impl TaskStack {
     /// A non-zero RSP alone is not sufficient: a corrupted context could point
     /// into another task's stack or into the guard canaries and crash on restore.
     pub fn contains_context(&self, context: &CpuContext) -> bool {
+        // Restoring a context pops six callee-saved registers and then RET
+        // consumes the saved return address. Validate the entire readable
+        // frame, not merely its first byte, before allowing the assembly switch.
+        const RESTORE_FRAME_BYTES: usize = 7 * core::mem::size_of::<u64>();
         let start = self.bytes.as_ptr() as usize;
         let end = start + TASK_STACK_SIZE;
         let rsp = context.rsp as usize;
-        rsp >= start && rsp < end
+        rsp >= start
+            && rsp <= end - RESTORE_FRAME_BYTES
+            && rsp % core::mem::align_of::<u64>() == 0
     }
 
     /// Prepare a never-run task to begin at `entry` after the first context switch.
@@ -292,6 +298,26 @@ mod tests {
         assert!(stack.contains_context(&context));
         assert!(!other_stack.contains_context(&context));
         assert!(!stack.contains_context(&CpuContext::empty()));
+    }
+
+    #[test]
+    fn context_validation_rejects_unaligned_or_truncated_restore_frames() {
+        let stack = TaskStack::new();
+        let start = stack.bytes.as_ptr() as usize;
+        let end = start + TASK_STACK_SIZE;
+
+        let mut context = CpuContext::empty();
+        context.rsp = (start + 1) as u64;
+        assert!(!stack.contains_context(&context), "unaligned RSP");
+
+        context.rsp = (end - 6 * core::mem::size_of::<u64>()) as u64;
+        assert!(!stack.contains_context(&context), "frame lacks return address");
+
+        context.rsp = end as u64;
+        assert!(!stack.contains_context(&context), "RSP points past usable stack");
+
+        context.rsp = start as u64;
+        assert!(stack.contains_context(&context), "complete frame can start at stack base");
     }
 
     #[test]
