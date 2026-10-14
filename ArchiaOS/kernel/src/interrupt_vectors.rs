@@ -101,14 +101,15 @@ pub const fn eoi_plan_for_irq(irq: u8) -> Option<(bool, bool)> {
 
 /// Compute PIC masks after masking one IRQ, without touching hardware.
 ///
-/// Returns `None` for an invalid IRQ. The cascade line (IRQ2) is masked when
-/// masking the last enabled slave IRQ leaves the entire slave PIC masked.
+/// Returns `None` for an invalid IRQ or an already inconsistent input mask
+/// pair. The cascade line (IRQ2) is masked when masking the last enabled slave
+/// IRQ leaves the entire slave PIC masked.
 pub const fn masks_after_masking_irq(
     master_mask: u8,
     slave_mask: u8,
     irq: u8,
 ) -> Option<(u8, u8)> {
-    if irq >= LEGACY_PIC_IRQ_COUNT {
+    if irq >= LEGACY_PIC_IRQ_COUNT || !pic_masks_are_consistent(master_mask, slave_mask) {
         return None;
     }
 
@@ -153,6 +154,28 @@ mod tests {
         assert_eq!(split_x86_64_idt_handler_address(0x0000_0000_0000_ffff), (0xffff, 0, 0));
         assert_eq!(split_x86_64_idt_handler_address(0x0000_0000_1234_5678), (0x5678, 0x1234, 0));
         assert_eq!(split_x86_64_idt_handler_address(0xffff_8123_4567_89ab), (0x89ab, 0x4567, 0xffff_8123));
+    }
+
+    #[test]
+    fn every_idt_handler_address_bit_survives_split_and_reassembly() {
+        for bit in 0..64 {
+            let address = 1u64 << bit;
+            let (low, middle, high) = split_x86_64_idt_handler_address(address);
+            let rebuilt = u64::from(low) | (u64::from(middle) << 16) | (u64::from(high) << 32);
+            assert_eq!(rebuilt, address, "address bit {bit}");
+        }
+
+        for address in [
+            0x0000_0000_0000_0000,
+            0x0000_0000_0000_ffff,
+            0x0000_0000_ffff_ffff,
+            0xffff_8000_0000_0000,
+            0xffff_ffff_ffff_ffff,
+        ] {
+            let (low, middle, high) = split_x86_64_idt_handler_address(address);
+            let rebuilt = u64::from(low) | (u64::from(middle) << 16) | (u64::from(high) << 32);
+            assert_eq!(rebuilt, address, "address {address:#018x}");
+        }
     }
 
     #[test]
@@ -261,6 +284,15 @@ mod tests {
     fn invalid_irq_has_no_eoi_plan() {
         assert_eq!(eoi_plan_for_irq(16), None);
         assert_eq!(eoi_plan_for_irq(0xff), None);
+    }
+
+    #[test]
+    fn refuses_to_transition_from_inconsistent_pic_masks() {
+        // A slave line is enabled, but the master cascade is masked.
+        assert_eq!(masks_after_masking_irq(0b0000_0100, 0b1111_1110, 0), None);
+        // The inverse state is also invalid: a slave IRQ cannot be reached if
+        // IRQ2 is masked, even when the requested change targets the slave.
+        assert_eq!(masks_after_masking_irq(0b0000_0100, 0b1111_1101, 8), None);
     }
 
     #[test]
