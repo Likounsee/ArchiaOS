@@ -27,6 +27,9 @@ pub enum MadtError {
     DuplicateIoApicId,
     DuplicateInterruptOverride,
     NoEnabledProcessor,
+    InvalidRootSignature,
+    InvalidRootEntrySize,
+    TooManyRootEntries,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -106,6 +109,50 @@ fn u64_at(bytes: &[u8], offset: usize) -> Option<u64> {
         *bytes.get(offset + 4)?, *bytes.get(offset + 5)?,
         *bytes.get(offset + 6)?, *bytes.get(offset + 7)?,
     ]))
+}
+
+/// Maximum root-table entries retained without allocating.
+pub const MAX_ACPI_ROOT_ENTRIES: usize = 512;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AcpiRootTable {
+    pub xsdt: bool,
+    pub addresses: [Option<u64>; MAX_ACPI_ROOT_ENTRIES],
+    pub count: usize,
+}
+
+/// Parse a checksum-verified RSDT/XSDT into physical-address metadata.
+/// This function never dereferences those addresses; a mapping layer must
+/// validate each referenced SDT before reading its signature or contents.
+pub fn parse_root_table(root: &[u8]) -> Result<AcpiRootTable, MadtError> {
+    const SDT_HEADER: usize = 36;
+    if root.len() < SDT_HEADER { return Err(MadtError::TruncatedHeader); }
+    let xsdt = match root.get(0..4) {
+        Some(sig) if sig == b"XSDT" => true,
+        Some(sig) if sig == b"RSDT" => false,
+        _ => return Err(MadtError::InvalidRootSignature),
+    };
+    let length = u32_at(root, 4).ok_or(MadtError::InvalidLength)? as usize;
+    if length < SDT_HEADER || length > root.len() { return Err(MadtError::InvalidLength); }
+    if root[..length].iter().fold(0u8, |sum, byte| sum.wrapping_add(*byte)) != 0 {
+        return Err(MadtError::InvalidChecksum);
+    }
+    let entry_size = if xsdt { 8 } else { 4 };
+    if (length - SDT_HEADER) % entry_size != 0 { return Err(MadtError::InvalidRootEntrySize); }
+    let count = (length - SDT_HEADER) / entry_size;
+    if count > MAX_ACPI_ROOT_ENTRIES { return Err(MadtError::TooManyRootEntries); }
+    let mut table = AcpiRootTable { xsdt, addresses: [None; MAX_ACPI_ROOT_ENTRIES], count };
+    for index in 0..count {
+        let offset = SDT_HEADER + index * entry_size;
+        let address = if xsdt {
+            u64_at(root, offset).ok_or(MadtError::InvalidRootEntrySize)?
+        } else {
+            u32_at(root, offset).ok_or(MadtError::InvalidRootEntrySize)? as u64
+        };
+        if address == 0 { return Err(MadtError::InvalidRootEntrySize); }
+        table.addresses[index] = Some(address);
+    }
+    Ok(table)
 }
 
 /// Validate topology invariants required before enabling xAPIC routing.
@@ -304,6 +351,36 @@ mod tests {
     fn rejects_reserved_interrupt_override_flags() {
         let entries = [2, 10, 0, 0, 0, 0, 0, 0, 0x02, 0];
         assert_eq!(parse_madt(&base(0, &entries)), Err(MadtError::InvalidOverride));
+    }
+
+    #[test]
+    fn parses_checked_rsdt_and_xsdt_address_lists() {
+        fn root(sig: &[u8; 4], addresses: &[u64], wide: bool) -> std::vec::Vec<u8> {
+            let entry_size = if wide { 8 } else { 4 };
+            let mut b = vec![0u8; 36 + addresses.len() * entry_size];
+            b[0..4].copy_from_slice(sig);
+            for (i, address) in addresses.iter().enumerate() {
+                let off = 36 + i * entry_size;
+                if wide {
+                    b[off..off + 8].copy_from_slice(&address.to_le_bytes());
+                } else {
+                    b[off..off + 4].copy_from_slice(&(*address as u32).to_le_bytes());
+                }
+            }
+            let len = b.len() as u32;
+            b[4..8].copy_from_slice(&len.to_le_bytes());
+            b[9] = 0;
+            b[9] = 0u8.wrapping_sub(b.iter().fold(0u8, |sum, byte| sum.wrapping_add(*byte)));
+            b
+        }
+        let rsdt = parse_root_table(&root(b"RSDT", &[0x1234, 0x5678], false)).unwrap();
+        assert!(!rsdt.xsdt);
+        assert_eq!(rsdt.count, 2);
+        assert_eq!(rsdt.addresses[1], Some(0x5678));
+
+        let xsdt = parse_root_table(&root(b"XSDT", &[0x1_0000_1234], true)).unwrap();
+        assert!(xsdt.xsdt);
+        assert_eq!(xsdt.addresses[0], Some(0x1_0000_1234));
     }
 
     #[test]
