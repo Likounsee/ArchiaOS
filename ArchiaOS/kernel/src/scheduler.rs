@@ -243,7 +243,7 @@ impl Scheduler {
 }
 
 
-// ---- First real two-task runtime integration (x86-64, single CPU) ----
+// ---- Real three-task runtime integration (x86-64, single CPU) ----
 //
 // Stacks are static rather than embedded in Scheduler, so a scheduler object
 // cannot accidentally consume >100 KiB of the early boot stack. The runtime
@@ -332,7 +332,12 @@ fn runtime_yield() -> Result<(), SchedulerError> {
     Ok(())
 }
 
-/// Block the current runtime task and switch away until another task wakes it.
+/// Block the current runtime task and switch to another runnable task.
+///
+/// This boot-time integration deliberately requires another runnable task;
+/// the general scheduler model exposes `dispatch_or_idle`, but a persistent
+/// architecture-level idle context is not installed yet. Do not use this helper
+/// as a general-purpose blocking primitive until that idle context exists.
 fn runtime_block_current() -> Result<(), SchedulerError> {
     unsafe {
         let scheduler = core::ptr::addr_of_mut!(RUNTIME_SCHEDULER);
