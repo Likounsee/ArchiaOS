@@ -34,6 +34,17 @@ impl TaskStack {
             && self.upper_guard.iter().all(|word| *word == STACK_GUARD_PATTERN)
     }
 
+    /// Check whether a saved CPU context points into this stack's usable bytes.
+    ///
+    /// A non-zero RSP alone is not sufficient: a corrupted context could point
+    /// into another task's stack or into the guard canaries and crash on restore.
+    pub fn contains_context(&self, context: &CpuContext) -> bool {
+        let start = self.bytes.as_ptr() as usize;
+        let end = start + TASK_STACK_SIZE;
+        let rsp = context.rsp as usize;
+        rsp >= start && rsp < end
+    }
+
     /// Prepare a never-run task to begin at `entry` after the first context switch.
     pub fn initialize(&mut self, context: &mut CpuContext, entry: extern "C" fn() -> !) {
         // The stack type guarantees a 16-byte-aligned top. The extra final
@@ -264,6 +275,23 @@ mod tests {
     #[test]
     fn context_starts_uninitialized() {
         assert!(!CpuContext::empty().is_initialized());
+    }
+
+    extern "C" fn never_run() -> ! {
+        loop { core::hint::spin_loop(); }
+    }
+
+    #[test]
+    fn saved_context_must_belong_to_its_own_stack() {
+        let mut stack = TaskStack::new();
+        let mut other_stack = TaskStack::new();
+        let mut context = CpuContext::empty();
+        stack.initialize(&mut context, never_run);
+
+        assert!(context.is_initialized());
+        assert!(stack.contains_context(&context));
+        assert!(!other_stack.contains_context(&context));
+        assert!(!stack.contains_context(&CpuContext::empty()));
     }
 
     #[test]
