@@ -251,6 +251,15 @@ impl Scheduler {
         if running > 1 || (self.current.is_some() != (running == 1)) {
             return Err(SchedulerError::InvariantViolation);
         }
+        // While a task is running, the round-robin cursor must identify that
+        // same task. A valid-but-stale cursor is just as dangerous as an
+        // out-of-range cursor: the next transition could skip fairness order
+        // or conceal a broken current-task handoff.
+        if let Some(current) = self.current {
+            if self.cursor != current {
+                return Err(SchedulerError::InvariantViolation);
+            }
+        }
         Ok(())
     }
 
@@ -795,6 +804,14 @@ mod tests {
         let active_task = active.create_task().unwrap();
         assert_eq!(active.schedule(), Ok(active_task));
         active.cursor = MAX_TASKS;
+        assert_eq!(active.yield_current(), Err(SchedulerError::InvariantViolation));
+        assert_eq!(active.state(active_task), Ok(TaskState::Running));
+        assert_eq!(active.current(), Some(active_task));
+
+        // In-range cursor corruption must also be rejected before a task
+        // transition mutates the currently running task.
+        active.cursor = (active_task.0 + 1) % MAX_TASKS;
+        assert_eq!(active.check_invariants(), Err(SchedulerError::InvariantViolation));
         assert_eq!(active.yield_current(), Err(SchedulerError::InvariantViolation));
         assert_eq!(active.state(active_task), Ok(TaskState::Running));
         assert_eq!(active.current(), Some(active_task));
