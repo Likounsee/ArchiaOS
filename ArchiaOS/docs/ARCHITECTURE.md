@@ -6,9 +6,11 @@ ArchiaOS utilise son chargeur UEFI propre et un noyau Rust x86-64 lié en espace
 
 ## Mémoire
 
-Le PMM expérimental suit les frames physiques sous 512 Gio à l'aide de deux bitmaps : pages gérées et pages libres. Ils occupent environ 32 Mio au total et sont placés dynamiquement dans de la RAM conventionnelle réservée au démarrage. Le PMM alloue des frames dans sa fenêtre de 512 Gio ; le VMM fournit des alias virtuels explicites pour les accéder. Cette limite reste une fenêtre de suivi et ne garantit pas que chaque CPU puisse adresser toute la plage. Les plages utilisables sont appliquées par mots bitmap ; les plages réservées prennent priorité. Le test au démarrage traverse plusieurs mots, vérifie les allocations distinctes, les libérations, les adresses invalides et le double-free.
+Le PMM suit et alloue des frames physiques dans sa fenêtre logicielle de 512 Gio. Ses deux bitmaps occupent environ 32 Mio et sont réservés dynamiquement sous 4 Gio. Les plages utilisables sont appliquées par mots bitmap et les plages réservées prennent priorité. Les tests de démarrage vérifient allocations/libérations, erreurs de libération, fragmentation et restauration des compteurs.
 
-La fenêtre de suivi est de 512 Gio, mais le plafond d'allocation sûr reste 4 Gio jusqu'à l'extension des mappings physiques. Ce PMM ne remplace pas un VMM : les mappings virtuels, les permissions de pages, l'invalidation TLB, les espaces d'adressage isolés et un tas noyau général restent à compléter et à valider.
+Le VMM de bootstrap (kernel/src/vmm.rs) fournit des mappings noyau à la demande, des permissions configurables avec refus du W^X, l'invalidation TLB locale et la récupération des tables intermédiaires vides. Le PMM/VMM est testé sous OVMF/QEMU avec 5 Gio de RAM : le noyau écrit et relit une frame physique au-dessus de 4 Gio par mapping virtuel.
+
+Le tas global (kernel/src/heap.rs) mappe des pages à la demande, découpe et fusionne les blocs libres, et est testé pour alignement, croissance et réutilisation. kernel/src/address_space.rs crée des racines PML4 indépendantes, partage les mappings noyau superviseur et isole des mappings utilisateur dans une fenêtre bootstrap démarrant à 512 Gio virtuels. Son test bascule CR3, vérifie l'isolation entre deux racines et restaure les compteurs de frames.
 
 ## CPU, interruptions et ordonnancement
 
@@ -16,9 +18,9 @@ L'IDT x86-64 de 256 entrées et les stubs ISR sont installés. Le chemin d'excep
 
 ## Limites fonctionnelles connues
 
-- VMM complet et espaces d'adressage isolés : non terminés.
-- Processus utilisateur ring 3, chargement ELF utilisateur et appels système : non terminés.
-- SMP, IPI, verrous adaptés au noyau et tests multi-CPU : non terminés.
+- VMM et racines d'adressage bootstrap : présents, mais pas encore sûrs pour le SMP (pas de shootdown TLB inter-CPU).
+- Chargement ELF, placement/relocalisation dans la fenêtre utilisateur bootstrap, transition ring 3 et appels système : non terminés.
+- SMP, IPI, verrous IRQ/SMP pour PMM/VMM/tas et tests multi-CPU : non terminés.
 - Chemins d'E/S de stockage complets et VFS : à vérifier/compléter ; une détection PCI/NVMe ne prouve pas l'existence d'E/S fonctionnelles.
 - OpenFS Rust : portage séparé volontairement ; ne pas réintégrer automatiquement l'ancienne implémentation.
 - Tests QEMU d'intégration et validation matérielle : à étendre au-delà des scénarios déjà configurés.

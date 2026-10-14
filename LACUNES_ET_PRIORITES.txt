@@ -30,15 +30,21 @@ En attendant que l'implémentation Rust et ses interfaces soient prêtes :
 
 PRIORITÉ 1 — MÉMOIRE VIRTUELLE ET ALLOCATION
 -------------------------------------------
+État du socle mono-CPU : implémenté et validé sous OVMF/QEMU avec 5 Gio de RAM.
+Les tests confirment l'accès à une frame physique au-dessus de 4 Gio, les mappings
+noyau W^X, la récupération des tables, le tas et des racines PML4 isolées. Les
+shootdowns TLB et verrous IRQ/SMP relèvent de P2 ; ELF/ring 3 de P3 ; la campagne
+sur matériel physique de P5.
 1. Étendre et clarifier les limites du gestionnaire de mémoire physique (PMM).
    État partiel : la fenêtre de suivi du PMM est portée à 512 Gio dans
    kernel/src/memory_ranges.rs. Les deux bitmaps occupent environ 32 Mio et sont
    placés dynamiquement dans une plage conventionnelle sous 4 Gio. Le PMM alloue
    des frames dans sa fenêtre de 512 Gio. kernel/src/vmm.rs fournit un mapping
    noyau à la demande (NX/inscriptible), le retire avec invalidation TLB locale
-   et teste écriture/lecture sur une frame physique haute lorsque la RAM UEFI en
-   fournit une. Restent les validations sur machines >4 Gio, le nettoyage des
-   tables et la synchronisation SMP.
+   et teste écriture/lecture sur une frame physique haute. La CI valide le chemin
+   sous QEMU avec 5 Gio de RAM ; le nettoyage des tables est aussi vérifié par le
+   compteur de frames. La validation sur matériel physique >4 Gio reste P5 ; la
+   synchronisation SMP relève de P2.
 
 2. Développer/compléter le gestionnaire de mémoire virtuelle (VMM).
    Avancée : kernel/src/vmm.rs crée et retire des mappings noyau choisis, configure
@@ -72,7 +78,8 @@ PRIORITÉ 1 — MÉMOIRE VIRTUELLE ET ALLOCATION
    Avancée : les calculs purs des plages PMM sont isolés dans
    kernel/src/memory_ranges.rs et couverts par des tests hôte exécutés en CI
    (alignement, débordement, chevauchements, réservations et adresses > 4 Gio et > 64 Gio, borne de 512 Gio). Les bitmaps PMM sont réservés dynamiquement ; le VMM crée désormais des mappings haute mémoire à la demande.
-   Ces tests ne valident pas à eux seuls le VMM ni l'intégration matérielle.
+   Les tests hôte sont complétés par le démarrage QEMU à haute mémoire, le test
+   VMM et le test de deux racines PML4. Une campagne sur matériel physique reste P5.
 
 PRIORITÉ 2 — INTERRUPTIONS, ORDONNANCEMENT ET SMP
 -------------------------------------------------

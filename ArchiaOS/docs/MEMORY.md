@@ -14,7 +14,7 @@ Les plages sont appliquées par mots bitmap plutôt qu'en parcourant chaque page
 
 Le test PMM au démarrage vérifie notamment les calculs de plages utilisables/réservées, les limites et chevauchements du framebuffer, les invariants des bitmaps, l'épuisement simulé, le rejet des libérations invalides, l'absence de libération de frames réservées, ainsi que l'allocation et la libération de 130 pages distinctes à travers plusieurs mots bitmap. Il contrôle que le nombre de pages libres revient à sa valeur initiale après le test.
 
-Le workflow de démarrage local doit aussi exiger le marqueur série `ArchiaOS: UEFI PMM allocation/free self-test passed` et `ArchiaOS: framebuffer probe=written`. Ces marqueurs prouvent que le chemin de test correspondant a été atteint sous OVMF/QEMU ; ils ne remplacent pas la validation sur matériel physique.
+Le workflow de démarrage local exige aussi le marqueur série `ArchiaOS: UEFI PMM allocation/free self-test passed` et `ArchiaOS: framebuffer probe=written`. Ces marqueurs prouvent que le chemin de test correspondant a été atteint sous OVMF/QEMU ; ils ne remplacent pas la validation sur matériel physique.
 
 ## Premier VMM x86-64
 
@@ -30,4 +30,4 @@ Le workflow de démarrage local doit aussi exiger le marqueur série `ArchiaOS: 
 
 ## Limites importantes
 
-Le PMM suit et alloue des frames jusqu'à 512 Gio ; les bitmaps et tables de pages restent accessibles sous 4 Gio. Le VMM est encore un mécanisme de bootstrap : pas d'espaces d'adressage par processus, pas de récupération des tables intermédiaires, pas de shootdown TLB SMP, et le PMM/VMM ne sont pas synchronisés pour SMP. Le nombre d'octets de mémoire conventionnelle indiqué dans les statistiques est le total géré après exclusion des pages basses et du framebuffer, et non la totalité de la RAM installée. Il n'existe pas encore de tas général ni de gestionnaire complet de mémoire virtuelle. La stabilité des réservations et du démarrage doit encore être confirmée par une campagne matérielle répétable.
+Le PMM suit et alloue des frames jusqu'à 512 Gio ; les bitmaps et tables de pages restent accessibles sous 4 Gio. Le VMM et les racines PML4 bootstrap sont validés sous QEMU, mais ne disposent pas encore de shootdown TLB SMP ni de synchronisation IRQ/SMP. La fenêtre utilisateur initiale commence à 512 Gio virtuels pour éviter l'alias d'identité ; le chargement ELF et la transition ring 3 restent à réaliser dans P3. Le nombre d'octets de mémoire conventionnelle indiqué dans les statistiques est le total géré après exclusion des pages basses et du framebuffer, et non la totalité de la RAM installée. Une validation sur matériel physique avec plus de 4 Gio reste souhaitable.
