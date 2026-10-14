@@ -11,7 +11,10 @@ const EXCEPTION_COUNT: usize = 32;
 const IDT_ENTRY_COUNT: usize = 256;
 const INTERRUPT_GATE: u8 = 0x8e;
 
-pub use crate::interrupt_vectors::{legacy_pic_irq_for_vector, legacy_pic_vector_for_irq, LEGACY_PIC_IRQ_COUNT, LEGACY_PIC_VECTOR_BASE};
+pub use crate::interrupt_vectors::{
+    classify_interrupt_vector, legacy_pic_irq_for_vector, legacy_pic_vector_for_irq,
+    InterruptVectorClass, LEGACY_PIC_IRQ_COUNT, LEGACY_PIC_VECTOR_BASE,
+};
 
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
