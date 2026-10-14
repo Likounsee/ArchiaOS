@@ -346,9 +346,16 @@ mod tests {
                 }
 
                 for irq in 0..LEGACY_PIC_IRQ_COUNT {
-                    let (next_master, next_slave) =
+                    let Some((next_master, next_slave)) =
                         masks_after_masking_irq(master_mask, slave_mask, irq)
-                            .expect("valid IRQ must yield masks");
+                    else {
+                        // Masking IRQ2 would disconnect any enabled slave line.
+                        // This is the one valid IRQ whose transition is rejected
+                        // for some otherwise-consistent input mask pairs.
+                        assert_eq!(irq, 2, "unexpected rejected IRQ {irq}");
+                        assert_ne!(slave_mask, 0xff, "cascade may be masked when slave is fully masked");
+                        continue;
+                    };
                     assert!(
                         pic_masks_are_consistent(next_master, next_slave),
                         "inconsistent result: master={master_mask:#04x}, slave={slave_mask:#04x}, irq={irq}"
