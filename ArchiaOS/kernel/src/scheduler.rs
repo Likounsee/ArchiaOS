@@ -684,6 +684,55 @@ mod tests {
     }
 
     #[test]
+    fn exiting_last_runnable_task_keeps_blocked_work_in_waiting_state() {
+        let mut scheduler = Scheduler::new();
+        let blocked = scheduler.create_task().unwrap();
+        let running = scheduler.create_task().unwrap();
+
+        assert_eq!(scheduler.schedule(), Ok(blocked));
+        assert_eq!(scheduler.block_current_or_idle(), Ok(DispatchDecision::Run(running)));
+        assert_eq!(scheduler.state(blocked), Ok(TaskState::Blocked));
+        assert_eq!(scheduler.current(), Some(running));
+
+        assert_eq!(
+            scheduler.exit_current_or_idle(),
+            Ok(DispatchDecision::Idle(IdleReason::WaitingForWakeup))
+        );
+        assert_eq!(scheduler.current(), None);
+        assert_eq!(scheduler.state(blocked), Ok(TaskState::Blocked));
+        assert_eq!(scheduler.state(running), Ok(TaskState::Exited));
+        assert_eq!(scheduler.check_invariants(), Ok(()));
+
+        scheduler.wake(blocked).unwrap();
+        assert_eq!(scheduler.dispatch_or_idle(), Ok(DispatchDecision::Run(blocked)));
+        assert_eq!(scheduler.state(blocked), Ok(TaskState::Running));
+        assert_eq!(scheduler.check_invariants(), Ok(()));
+    }
+
+    #[test]
+    fn waking_one_of_multiple_blocked_tasks_preserves_round_robin_selection() {
+        let mut scheduler = Scheduler::new();
+        let first = scheduler.create_task().unwrap();
+        let second = scheduler.create_task().unwrap();
+        let third = scheduler.create_task().unwrap();
+
+        assert_eq!(scheduler.schedule(), Ok(first));
+        assert_eq!(scheduler.block_current_or_idle(), Ok(DispatchDecision::Run(second)));
+        assert_eq!(scheduler.block_current_or_idle(), Ok(DispatchDecision::Run(third)));
+        assert_eq!(
+            scheduler.block_current_or_idle(),
+            Ok(DispatchDecision::Idle(IdleReason::WaitingForWakeup))
+        );
+
+        scheduler.wake(second).unwrap();
+        assert_eq!(scheduler.dispatch_or_idle(), Ok(DispatchDecision::Run(second)));
+        assert_eq!(scheduler.state(first), Ok(TaskState::Blocked));
+        assert_eq!(scheduler.state(second), Ok(TaskState::Running));
+        assert_eq!(scheduler.state(third), Ok(TaskState::Blocked));
+        assert_eq!(scheduler.check_invariants(), Ok(()));
+    }
+
+    #[test]
     fn repeated_wake_is_rejected_without_corrupting_runnable_state() {
         let mut scheduler = Scheduler::new();
         let task = scheduler.create_task().unwrap();
