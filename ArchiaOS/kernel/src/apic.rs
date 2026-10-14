@@ -88,7 +88,15 @@ pub fn validate_hardware_irq_vector(vector: u8) -> Result<(), ApicError> {
 
 /// Build the software-enable register while selecting a valid spurious vector.
 pub fn spurious_vector_value(vector: u8) -> Result<u32, ApicError> {
-    if vector < 32 { return Err(ApicError::InvalidVector); }
+    // The spurious vector is an IDT vector, not a hardware IRQ destination.
+    // Keep CPU exceptions, remapped PIC vectors, and the software test gate
+    // unavailable; 0xff is the default architectural choice.
+    if vector < 32
+        || (0x20..=0x2f).contains(&vector)
+        || vector == APIC_TEST_RETURN_VECTOR
+    {
+        return Err(ApicError::InvalidVector);
+    }
     Ok(u32::from(vector) | APIC_SPURIOUS_ENABLE)
 }
 
@@ -475,6 +483,9 @@ mod tests {
     fn spurious_vector_must_be_architecturally_valid() {
         assert_eq!(spurious_vector_value(0xFF), Ok(0x1FF));
         assert_eq!(spurious_vector_value(31), Err(ApicError::InvalidVector));
+        assert_eq!(spurious_vector_value(0x20), Err(ApicError::InvalidVector));
+        assert_eq!(spurious_vector_value(0x2f), Err(ApicError::InvalidVector));
+        assert_eq!(spurious_vector_value(APIC_TEST_RETURN_VECTOR), Err(ApicError::InvalidVector));
     }
 
     #[test]
