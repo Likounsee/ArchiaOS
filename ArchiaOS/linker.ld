@@ -37,6 +37,8 @@ SECTIONS
     .data ALIGN(4K) : AT(ADDR(.data) - KERNEL_VMA)
     {
         *(.data .data.*)
+        /* Keep GOT entries used by optimized Rust code (e.g. memset). */
+        *(.got .got.*)
     } :data
 
     .bss ALIGN(4K) : AT(ADDR(.bss) - KERNEL_VMA)
@@ -49,7 +51,6 @@ SECTIONS
     {
         *(.eh_frame .eh_frame.*)
         *(.comment)
-        *(.got .got.*)
     }
 
     ASSERT(LOADADDR(.text) >= KERNEL_LMA, "kernel load address is below the reserved base")
