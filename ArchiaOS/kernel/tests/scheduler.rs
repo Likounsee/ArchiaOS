@@ -16,7 +16,7 @@ fn x86_64_context_switch_enters_task_stack_and_returns() {
 }
 
 #[test]
-fn two_runtime_tasks_block_wake_resume_and_exit_on_distinct_stacks() {
+fn three_runtime_tasks_block_wake_yield_and_exit_on_distinct_stacks() {
     assert_eq!(scheduler::runtime_self_test(), Ok(()));
 }
 
