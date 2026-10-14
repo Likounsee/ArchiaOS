@@ -498,4 +498,33 @@ mod tests {
         assert_eq!(ioapic_destination_high(2), Ok(0x0200_0000));
         assert_eq!(ioapic_destination_high(256), Err(ApicError::InvalidDestination));
     }
+
+    #[repr(align(4096))]
+    struct MockApicPage([u32; 1024]);
+
+    #[test]
+    fn masked_local_apic_initialization_programs_registers_without_unmasking_sources() {
+        let mut page = MockApicPage([0; 1024]);
+        page.0[(APIC_VERSION_REGISTER / 4) as usize] = 6 << 16;
+        // SAFETY: the aligned test page is a valid writable 4 KiB mock register
+        // window. No privileged instructions or real hardware are accessed.
+        let apic = unsafe {
+            LocalApic::from_mapped_base(page.0.as_mut_ptr()).expect("aligned mock page")
+        };
+        // SAFETY: this test owns the mock page and has no concurrent MMIO users.
+        unsafe { apic.initialize_masked(0xff, 0x40, 16) }.expect("valid masked setup");
+
+        assert_eq!(page.0[(APIC_TASK_PRIORITY_REGISTER / 4) as usize], 0);
+        assert_eq!(page.0[(APIC_LVT_TIMER_REGISTER / 4) as usize], 0x40 | APIC_LVT_MASKED);
+        for offset in [0x330u32, 0x340, 0x350, 0x360, 0x370, 0x2f0] {
+            assert_eq!(
+                page.0[(offset / 4) as usize],
+                APIC_LVT_MASKED,
+                "LVT register {offset:#x} must stay masked"
+            );
+        }
+        assert_eq!(page.0[(APIC_DIVIDE_CONFIGURATION_REGISTER / 4) as usize], 0b0011);
+        assert_eq!(page.0[(APIC_INITIAL_COUNT_REGISTER / 4) as usize], 0);
+        assert_eq!(page.0[(APIC_SPURIOUS_VECTOR_REGISTER / 4) as usize], 0x1ff);
+    }
 }
