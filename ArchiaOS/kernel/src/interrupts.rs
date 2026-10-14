@@ -14,8 +14,8 @@ const INTERRUPT_GATE: u8 = 0x8e;
 pub use crate::interrupt_vectors::{
     classify_interrupt_vector, cpu_exception_has_error_code, eoi_plan_for_handled_irq,
     legacy_pic_irq_for_vector, legacy_pic_vector_for_irq, pic_irq_for_frame_vector,
-    split_x86_64_idt_handler_address,
-    InterruptVectorClass,
+    split_x86_64_idt_handler_address, pic_spurious_irq_disposition,
+    InterruptVectorClass, PicSpuriousIrqDisposition,
     LEGACY_PIC_IRQ_COUNT,
     LEGACY_PIC_VECTOR_BASE,
 };
@@ -135,18 +135,24 @@ extern "C" fn archiaos_pic_interrupt_dispatch(frame: *mut u64) -> *mut u64 {
     let Some(irq) = pic_irq_for_frame_vector(vector) else {
         fatal_unhandled_pic_irq();
     };
-    // IRQ7 and IRQ15 can be spurious on the 8259. Check the in-service
-    // register before invoking a device handler; a spurious IRQ7 needs no EOI,
-    // while a spurious IRQ15 needs only the master cascade EOI.
-    if irq == 7 && !pic_irq_in_service(0x20, 7) {
-        return frame;
-    }
-    if irq == 15 && !pic_irq_in_service(0xa0, 7) {
-        unsafe {
-            asm!("out dx, al", in("dx") 0x20u16, in("al") 0x20u8,
-                 options(nomem, nostack, preserves_flags));
+    // IRQ7 and IRQ15 can be spurious on the 8259. Keep the hardware
+    // register reads separate from the pure, host-testable disposition logic.
+    let in_service = match irq {
+        7 => pic_irq_in_service(0x20, 7),
+        15 => pic_irq_in_service(0xa0, 7),
+        _ => true,
+    };
+    match pic_spurious_irq_disposition(irq as u8, in_service) {
+        Some(PicSpuriousIrqDisposition::Ignore) => return frame,
+        Some(PicSpuriousIrqDisposition::MasterEoi) => {
+            unsafe {
+                asm!("out dx, al", in("dx") 0x20u16, in("al") 0x20u8,
+                     options(nomem, nostack, preserves_flags));
+            }
+            return frame;
         }
-        return frame;
+        Some(PicSpuriousIrqDisposition::Real) => {}
+        None => fatal_unhandled_pic_irq(),
     }
     let raw = PIC_IRQ_HANDLERS[irq].load(Ordering::Acquire);
     if raw == 0 {
