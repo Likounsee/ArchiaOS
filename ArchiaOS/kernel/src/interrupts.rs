@@ -2060,6 +2060,7 @@ global_asm!(
     ".quad isr_apic_stub_244, isr_apic_stub_245, isr_apic_stub_246, isr_apic_stub_247",
     ".quad isr_apic_stub_248, isr_apic_stub_249, isr_apic_stub_250, isr_apic_stub_251",
     ".quad isr_apic_stub_252, isr_apic_stub_253, isr_apic_stub_254",
+    ".section .text",
     ".global isr_spurious_return_stub",
     "isr_spurious_return_stub:",
     "pushq $0",
