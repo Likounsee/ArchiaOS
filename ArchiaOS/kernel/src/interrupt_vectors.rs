@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn masking_slave_irq_preserves_cascade_while_slave_has_enabled_lines() {
-        assert_eq!(masks_after_masking_irq(0b0000_0000, 0b1111_1110, 8), Some((0b0000_0000, 0b1111_1111)));
+        assert_eq!(masks_after_masking_irq(0b0000_0000, 0b1111_1100, 8), Some((0b0000_0000, 0b1111_1101)));
     }
 
     #[test]
