@@ -433,7 +433,7 @@ jobs:
           grep -Fq "VMM: arbitrary kernel mapping, W^X rejection, access and unmap passed" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "VMM: explicit virtual access to physical RAM above 4 GiB passed" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "ArchiaOS: kernel heap self-test passed" "$RUNNER_TEMP/archiaos-production-uefi.log"
-          grep -Fq "Heap: alignment, page growth, access, free and reuse tests passed" "$RUNNER_TEMP/archiaos-production-uefi.log"
+          grep -Fq "Heap: alignment, split/coalesce, page growth, access, free and reuse tests passed" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "VMM: explicit virtual access to physical RAM above 4 GiB passed" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "ArchiaOS: CPU family " "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "ArchiaOS: CPU features " "$RUNNER_TEMP/archiaos-production-uefi.log"
