@@ -4,7 +4,7 @@
 
 Le noyau reçoit le contrat versionné `ARCHIABI BootInfo` du chargeur UEFI ArchiaOS. Il valide l'en-tête avant d'utiliser ses champs, puis parse la carte mémoire UEFI en respectant la taille et le pas des descripteurs. Les plages sont contrôlées contre les débordements et les entrées incohérentes ; une carte vide ou trop grande est rejetée.
 
-Seules les plages `EfiConventionalMemory` deviennent candidates à l'allocation. Les autres types UEFI (chargeur, runtime, ACPI, MMIO et autres réservations) restent indisponibles. Les pages sous 1 Mio sont réservées. Le PMM suit les adresses physiques dans `[0, 512 Gio)`, mais l'allocateur ne remet actuellement que des pages sous 4 Gio, car le chargeur ne mappe pas encore la RAM ordinaire au-delà de cette limite. Cette limite est une capacité de suivi du PMM, pas une garantie que tous les processeurs prennent en charge toute cette plage.
+Seules les plages `EfiConventionalMemory` deviennent candidates à l'allocation. Les autres types UEFI (chargeur, runtime, ACPI, MMIO et autres réservations) restent indisponibles. Les pages sous 1 Mio sont réservées. Le PMM suit et alloue les frames physiques dans `[0, 512 Gio)`. Une adresse physique n'est pas un pointeur virtuel : les frames hautes sont accessibles via un alias noyau créé à la demande par le VMM. La limite de 512 Gio est une fenêtre logicielle, pas une garantie que toutes les machines disposent de cette quantité de RAM.
 
 ## Allocateur physique expérimental
 
@@ -16,6 +16,10 @@ Le test PMM au démarrage vérifie notamment les calculs de plages utilisables/r
 
 Le workflow de démarrage local doit aussi exiger le marqueur série `ArchiaOS: UEFI PMM allocation/free self-test passed` et `ArchiaOS: framebuffer probe=written`. Ces marqueurs prouvent que le chemin de test correspondant a été atteint sous OVMF/QEMU ; ils ne remplacent pas la validation sur matériel physique.
 
+## Premier VMM x86-64
+
+`kernel/src/vmm.rs` ajoute `map_physical_page` et `unmap_physical_page`. Le mapping noyau à la demande utilise la base virtuelle canonique `0xffff900000000000`, crée les tables intermédiaires manquantes à partir de frames allouées sous 4 Gio et installe une feuille inscriptible/NX. Le retrait vérifie que la feuille pointe toujours vers la frame attendue et invalide le TLB local. Le test d'intégration au démarrage écrit et relit un motif via l'alias, le retire puis libère la frame ; il teste aussi une frame au-dessus de 4 Gio si la carte UEFI en fournit.
+
 ## Limites importantes
 
-Le PMM suit une fenêtre de 512 Gio, mais l'allocation réelle reste limitée à 4 Gio tant que le VMM/chargeur ne fournit pas de mapping direct pour la RAM haute. Les bitmaps sont réservés dans une plage conventionnelle sous 4 Gio. Le PMM s'initialise une seule fois et n'est pas synchronisé pour SMP. Le nombre d'octets de mémoire conventionnelle indiqué dans les statistiques est le total géré après exclusion des pages basses et du framebuffer, et non la totalité de la RAM installée. Il n'existe pas encore de tas général ni de gestionnaire complet de mémoire virtuelle. La stabilité des réservations et du démarrage doit encore être confirmée par une campagne matérielle répétable.
+Le PMM suit et alloue des frames jusqu'à 512 Gio ; les bitmaps et tables de pages restent accessibles sous 4 Gio. Le VMM est encore un mécanisme de bootstrap : pas d'espaces d'adressage par processus, pas de récupération des tables intermédiaires, pas de shootdown TLB SMP, et le PMM/VMM ne sont pas synchronisés pour SMP. Le nombre d'octets de mémoire conventionnelle indiqué dans les statistiques est le total géré après exclusion des pages basses et du framebuffer, et non la totalité de la RAM installée. Il n'existe pas encore de tas général ni de gestionnaire complet de mémoire virtuelle. La stabilité des réservations et du démarrage doit encore être confirmée par une campagne matérielle répétable.

@@ -451,7 +451,7 @@ pub fn free_page_count() -> u64 {
 pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
     // Exercise page-range calculations and framebuffer overlap accounting without
     // mutating the global bitmaps. All ranges are half-open and clipped to the PMM's
-    // tracked [0, 512 GiB) window; allocatable physical pages remain below 4 GiB until the VMM expands the mapping.
+    // tracked [0, 512 GiB) window. Physical addresses are not virtual pointers.
     let frame_cases = [
         ((0x1000, 0x1000), Some((1, 2))),
         ((0x1001, 0x0fff), Some((2, 2))),

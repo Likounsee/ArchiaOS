@@ -3,6 +3,7 @@
 
 mod memory_ranges;
 mod memory;
+mod vmm;
 mod cpu;
 mod cpu_features;
 mod simd;
@@ -447,7 +448,7 @@ pub extern "C" fn rust_kernel_main(
     }
     let _ = writeln!(serial, "ArchiaOS: UEFI memory map entries: {}", stats.map_entries);
     let _ = writeln!(serial, "ArchiaOS: conventional memory ranges: {}, bytes: {}", stats.usable_ranges, stats.usable_bytes);
-    let _ = writeln!(serial, "ArchiaOS: free physical pages below 4 GiB: {}", stats.free_pages);
+    let _ = writeln!(serial, "ArchiaOS: free physical pages in PMM window (up to 512 GiB): {}", stats.free_pages);
 
     if let Err(error) = memory::self_test(&mut serial) {
         paint_status_line(info, 3, FB_FAIL);
@@ -456,6 +457,13 @@ pub extern "C" fn rust_kernel_main(
     }
     paint_status_line(info, 3, FB_PMM_OK);
     let _ = writeln!(serial, "ArchiaOS: UEFI PMM allocation/free self-test passed");
+
+    if let Err(error) = vmm::self_test(&mut serial) {
+        paint_status_line(info, 3, FB_FAIL);
+        let _ = writeln!(serial, "ArchiaOS: VMM self-test failed: {:?}", error);
+        halt_forever();
+    }
+    let _ = writeln!(serial, "ArchiaOS: VMM mapping self-test passed");
 
     match context::self_test() {
         Ok(()) => {
