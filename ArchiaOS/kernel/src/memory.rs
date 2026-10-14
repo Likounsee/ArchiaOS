@@ -4,13 +4,8 @@ use core::ptr;
 use archiaos_bootloader::bootinfo::BootInfo;
 use archiaos_bootloader::memory_map::UefiMemoryMap;
 use core::slice;
-
-const PAGE_SIZE: u64 = 4096;
+use crate::memory_ranges::{frame_range, overlapping_frames, reserved_frame_range, MAX_FRAMES, MAX_PHYSICAL_ADDRESS, PAGE_SIZE};
 const ONE_MIB: u64 = 1024 * 1024;
-// Track up to 64 GiB of physical address space. This is a PMM tracking limit,
-// not a claim that every CPU supports or maps every address in this range.
-const MAX_PHYSICAL_ADDRESS: u64 = 1u64 << 36;
-const MAX_FRAMES: u64 = MAX_PHYSICAL_ADDRESS / PAGE_SIZE;
 const BITMAP_WORDS: usize = (MAX_FRAMES / 64) as usize;
 const MAX_MEMMAP_ENTRIES: u64 = 4096;
 const PMM_SELF_TEST_PAGES: usize = 130;
@@ -77,44 +72,6 @@ unsafe fn set_bit(bitmap: *mut u64, frame: u64, value: bool) {
     let current = unsafe { ptr::read(word_ptr) };
     let updated = if value { current | mask } else { current & !mask };
     unsafe { ptr::write(word_ptr, updated) };
-}
-
-fn frame_range(base: u64, length: u64) -> Option<(u64, u64)> {
-    let end = base.checked_add(length)?;
-    let mut first = base / PAGE_SIZE;
-    if base % PAGE_SIZE != 0 {
-        first = first.checked_add(1)?;
-    }
-    let first = first.min(MAX_FRAMES);
-    let last = (end / PAGE_SIZE).min(MAX_FRAMES);
-    // Short or unaligned descriptors can contain no complete pages, in which
-    // case ceil(base / PAGE_SIZE) is greater than floor(end / PAGE_SIZE).
-    // Normalize that empty range instead of allowing last - first to wrap.
-    Some((first.min(last), last))
-}
-
-/// Return every allocator frame touched by a reserved byte range, including
-/// partially covered first/last pages. This is used for framebuffer MMIO.
-fn reserved_frame_range(base: u64, length: u64) -> Option<(u64, u64)> {
-    if length == 0 {
-        return Some((0, 0));
-    }
-    let end = base.checked_add(length)?;
-    let first = (base / PAGE_SIZE).min(MAX_FRAMES);
-    // This allocator manages only physical addresses below 64 GiB. Clip before
-    // rounding so an out-of-window MMIO range near u64::MAX cannot overflow the
-    // page-rounding addition and abort initialization for memory we never manage.
-    if first == MAX_FRAMES {
-        return Some((MAX_FRAMES, MAX_FRAMES));
-    }
-    let clipped_end = end.min(MAX_PHYSICAL_ADDRESS);
-    let rounded_end = clipped_end.checked_add(PAGE_SIZE - 1)? / PAGE_SIZE;
-    Some((first, rounded_end.min(MAX_FRAMES)))
-}
-
-/// Number of managed frames shared by two half-open frame intervals.
-fn overlapping_frames(first: u64, last: u64, reserved_first: u64, reserved_last: u64) -> u64 {
-    last.min(reserved_last).saturating_sub(first.max(reserved_first))
 }
 
 unsafe fn set_bit_range(bitmap: *mut u64, first: u64, last: u64, value: bool) {

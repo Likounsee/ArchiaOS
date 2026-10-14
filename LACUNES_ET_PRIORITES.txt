@@ -55,6 +55,10 @@ PRIORITÉ 1 — MÉMOIRE VIRTUELLE ET ALLOCATION
 
 5. Tester les cas limites : mémoire indisponible, régions réservées, limites
    d'adresses, alignement, libérations invalides et fragmentation.
+   Avancée : les calculs purs des plages PMM sont isolés dans
+   kernel/src/memory_ranges.rs et couverts par des tests hôte exécutés en CI
+   (alignement, débordement, chevauchements, réservations et adresses > 4 Gio).
+   Ces tests ne valident pas à eux seuls le VMM ni l'intégration matérielle.
 
 PRIORITÉ 2 — INTERRUPTIONS, ORDONNANCEMENT ET SMP
 -------------------------------------------------

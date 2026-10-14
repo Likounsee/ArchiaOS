@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+mod memory_ranges;
 mod memory;
 mod cpu;
 mod cpu_features;

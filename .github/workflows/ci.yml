@@ -36,6 +36,8 @@ jobs:
           "$RUNNER_TEMP/archiaos-cpu-feature-tests"
           rustc --edition=2021 --test kernel/src/simd.rs -o "$RUNNER_TEMP/archiaos-simd-tests"
           "$RUNNER_TEMP/archiaos-simd-tests"
+          rustc --edition=2021 --test kernel/src/memory_ranges.rs -o "$RUNNER_TEMP/archiaos-memory-range-tests"
+          "$RUNNER_TEMP/archiaos-memory-range-tests"
       - name: Audit x86-64 ISR stub normalization and coverage
         run: python3 scripts/verify-isr-stubs.py
       - name: Test scheduler state machine on host
