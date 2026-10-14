@@ -398,6 +398,8 @@ pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
         ((0x1000, 0x1000), Some((1, 2))),
         ((0x1001, 0x0fff), Some((2, 2))),
         ((0x1000, 0x1001), Some((1, 2))),
+        // The former 4 GiB ceiling must now be inside the managed window.
+        ((1u64 << 32, PAGE_SIZE), Some(((1u64 << 32) / PAGE_SIZE, ((1u64 << 32) / PAGE_SIZE) + 1))),
         ((MAX_PHYSICAL_ADDRESS, PAGE_SIZE), Some((MAX_FRAMES, MAX_FRAMES))),
         ((u64::MAX - 1, 8), None),
         ((0, 0), Some((0, 0))),
@@ -410,6 +412,8 @@ pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
     let reservation_cases = [
         ((0x1001, 1), Some((1, 2))),
         ((0x1fff, 2), Some((1, 3))),
+        // Reservations above 4 GiB must be clipped against the new 64 GiB ceiling.
+        ((1u64 << 32, PAGE_SIZE), Some(((1u64 << 32) / PAGE_SIZE, ((1u64 << 32) / PAGE_SIZE) + 1))),
         ((MAX_PHYSICAL_ADDRESS - PAGE_SIZE, PAGE_SIZE * 2), Some((MAX_FRAMES - 1, MAX_FRAMES))),
         ((MAX_PHYSICAL_ADDRESS, PAGE_SIZE), Some((MAX_FRAMES, MAX_FRAMES))),
         ((u64::MAX - 1, 1), Some((MAX_FRAMES, MAX_FRAMES))),
