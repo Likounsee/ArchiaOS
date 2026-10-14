@@ -149,6 +149,22 @@ impl Scheduler {
         self.select_next()
     }
 
+    /// Block the current task and return either the next task or an explicit idle reason.
+    ///
+    /// Unlike `block_current`, this does not report `NoRunnableTask` as an error
+    /// when every remaining task is blocked or exited. The caller must still
+    /// provide a safe architecture-level idle context before using this for
+    /// real CPU blocking.
+    pub fn block_current_or_idle(&mut self) -> Result<DispatchDecision, SchedulerError> {
+        let previous = self.current.ok_or(SchedulerError::NoCurrentTask)?;
+        if self.tasks[previous].state != TaskState::Running {
+            return Err(SchedulerError::InvariantViolation);
+        }
+        self.tasks[previous].state = TaskState::Blocked;
+        self.current = None;
+        self.dispatch_or_idle()
+    }
+
     pub fn wake(&mut self, id: TaskId) -> Result<(), SchedulerError> {
         let task = self.tasks.get_mut(id.0).ok_or(SchedulerError::InvalidTask)?;
         if task.state != TaskState::Blocked {
@@ -166,6 +182,20 @@ impl Scheduler {
         self.tasks[previous].state = TaskState::Exited;
         self.current = None;
         self.select_next()
+    }
+
+    /// Exit the current task and return a dispatch or terminal/idle decision.
+    ///
+    /// An all-exited result is distinct from a temporary wait for blocked tasks.
+    /// This is scheduler-state handling only; it does not switch CPU contexts.
+    pub fn exit_current_or_idle(&mut self) -> Result<DispatchDecision, SchedulerError> {
+        let previous = self.current.ok_or(SchedulerError::NoCurrentTask)?;
+        if self.tasks[previous].state != TaskState::Running {
+            return Err(SchedulerError::InvariantViolation);
+        }
+        self.tasks[previous].state = TaskState::Exited;
+        self.current = None;
+        self.dispatch_or_idle()
     }
 
     fn select_next(&mut self) -> Result<TaskId, SchedulerError> {
