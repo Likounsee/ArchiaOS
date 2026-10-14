@@ -1,8 +1,8 @@
 //! Minimal x86-64 cooperative CPU context primitive (P2).
 //!
-//! Saves/restores the System V callee-saved register set and RSP. This is the
-//! low-level primitive for a later scheduler integration; it does not itself
-//! choose tasks, enable interrupts, or provide synchronization.
+//! Saves/restores the System V callee-saved register set, RSP, and legacy
+//! x87/SSE state. The scheduler selects contexts; this primitive does not
+//! enable interrupts or provide synchronization.
 
 use core::arch::global_asm;
 
