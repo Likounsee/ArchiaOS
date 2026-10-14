@@ -26,6 +26,10 @@ pub const APIC_SPURIOUS_ENABLE: u32 = 1 << 8;
 pub const APIC_LVT_MASKED: u32 = 1 << 16;
 pub const APIC_LVT_PERIODIC: u32 = 1 << 17;
 pub const APIC_LVT_TSC_DEADLINE: u32 = 2 << 17;
+/// Dedicated software self-test vector installed by the interrupt subsystem.
+pub const APIC_TEST_RETURN_VECTOR: u8 = 0xf1;
+/// Architectural APIC spurious vector; it must never be assigned to a real IRQ.
+pub const APIC_SPURIOUS_VECTOR: u8 = 0xff;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ApicError {
@@ -65,6 +69,16 @@ pub fn ipi_command(kind: IpiKind, vector: u8) -> Result<u32, ApicError> {
             if vector == 0 { return Err(ApicError::InvalidIpiVector); }
             Ok((0b110 << 8) | u32::from(vector))
         }
+    }
+}
+
+/// Reject vectors reserved for CPU exceptions, the software return-path test,
+/// or the local-APIC spurious gate before programming a hardware IRQ source.
+pub fn validate_hardware_irq_vector(vector: u8) -> Result<(), ApicError> {
+    if vector < 32 || vector == APIC_TEST_RETURN_VECTOR || vector == APIC_SPURIOUS_VECTOR {
+        Err(ApicError::InvalidVector)
+    } else {
+        Ok(())
     }
 }
 
@@ -360,7 +374,7 @@ pub fn validate_apic_base(msr: u64, madt_base: u64) -> Result<u64, ApicError> {
 /// Construct a masked, one-shot local APIC timer LVT value.
 /// It stays masked until a calibrated initial count and safe handler exist.
 pub fn masked_timer_lvt(vector: u8) -> Result<u32, ApicError> {
-    if vector < 32 { return Err(ApicError::InvalidVector); }
+    validate_hardware_irq_vector(vector)?;
     Ok(u32::from(vector) | APIC_LVT_MASKED)
 }
 
@@ -387,7 +401,7 @@ pub fn masked_ioapic_low(
     polarity_flags: u16,
     trigger_flags: u16,
 ) -> Result<u32, ApicError> {
-    if vector < 32 { return Err(ApicError::InvalidVector); }
+    validate_hardware_irq_vector(vector)?;
     let polarity = match polarity_flags {
         0 | 1 => false,
         3 => true,
@@ -473,6 +487,8 @@ mod tests {
     fn timer_configuration_is_masked_and_validated() {
         assert_eq!(masked_timer_lvt(0x40), Ok(0x40 | APIC_LVT_MASKED));
         assert_eq!(masked_timer_lvt(31), Err(ApicError::InvalidVector));
+        assert_eq!(masked_timer_lvt(APIC_TEST_RETURN_VECTOR), Err(ApicError::InvalidVector));
+        assert_eq!(masked_timer_lvt(APIC_SPURIOUS_VECTOR), Err(ApicError::InvalidVector));
         assert_eq!(timer_divide_encoding(1), Ok(0b1011));
         assert_eq!(timer_divide_encoding(16), Ok(0b0011));
         assert_eq!(timer_divide_encoding(3), Err(ApicError::InvalidDivide));
@@ -493,6 +509,8 @@ mod tests {
     fn ioapic_routes_default_masked_and_decode_acpi_flags() {
         assert_eq!(masked_ioapic_low(0x40, 0, 0), Ok(0x10040));
         assert_eq!(masked_ioapic_low(0x40, 3, 3), Ok(0x1a040));
+        assert_eq!(masked_ioapic_low(APIC_TEST_RETURN_VECTOR, 0, 0), Err(ApicError::InvalidVector));
+        assert_eq!(masked_ioapic_low(APIC_SPURIOUS_VECTOR, 0, 0), Err(ApicError::InvalidVector));
         assert_eq!(masked_ioapic_low(0x40, 2, 0), Err(ApicError::InvalidPolarity));
         assert_eq!(masked_ioapic_low(0x40, 0, 2), Err(ApicError::InvalidTriggerMode));
         assert_eq!(ioapic_destination_high(2), Ok(0x0200_0000));
