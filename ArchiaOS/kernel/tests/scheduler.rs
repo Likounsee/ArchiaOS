@@ -50,6 +50,40 @@ fn scheduler_can_restart_after_every_task_is_blocked() {
 }
 
 #[test]
+fn blocking_last_runnable_task_returns_waiting_idle_decision() {
+    let mut scheduler = Scheduler::new();
+    let task = scheduler.create_task().expect("task slot");
+
+    assert_eq!(scheduler.schedule(), Ok(task));
+    assert_eq!(
+        scheduler.block_current_or_idle(),
+        Ok(scheduler::DispatchDecision::Idle(scheduler::IdleReason::WaitingForWakeup))
+    );
+    assert_eq!(scheduler.current(), None);
+    assert_eq!(scheduler.state(task), Ok(TaskState::Blocked));
+    assert_eq!(scheduler.check_invariants(), Ok(()));
+
+    scheduler.wake(task).expect("blocked task should wake");
+    assert_eq!(scheduler.dispatch_or_idle(), Ok(scheduler::DispatchDecision::Run(task)));
+    assert_eq!(scheduler.current(), Some(task));
+}
+
+#[test]
+fn exiting_last_task_returns_all_tasks_exited_idle_decision() {
+    let mut scheduler = Scheduler::new();
+    let task = scheduler.create_task().expect("task slot");
+
+    assert_eq!(scheduler.schedule(), Ok(task));
+    assert_eq!(
+        scheduler.exit_current_or_idle(),
+        Ok(scheduler::DispatchDecision::Idle(scheduler::IdleReason::AllTasksExited))
+    );
+    assert_eq!(scheduler.current(), None);
+    assert_eq!(scheduler.state(task), Ok(TaskState::Exited));
+    assert_eq!(scheduler.check_invariants(), Ok(()));
+}
+
+#[test]
 fn exited_task_is_not_dispatchable_or_wakeable() {
     let mut scheduler = Scheduler::new();
     let task = scheduler.create_task().expect("task slot");
