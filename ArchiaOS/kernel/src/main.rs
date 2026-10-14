@@ -265,7 +265,7 @@ static mut LOCAL_APIC_STORAGE: core::mem::MaybeUninit<apic::LocalApic> =
 
 /// Enable xAPIC mode and install its EOI dispatcher without enabling any device
 /// routes. All external sources and the local timer remain masked at this stage.
-unsafe fn initialize_local_apic(madt_base: u64) -> Result<(), &'static str> {
+unsafe fn initialize_local_apic(madt_base: u64) -> Result<&'static apic::LocalApic, &'static str> {
     // CPUID.1:EDX[9] advertises the architectural local APIC.
     if unsafe { core::arch::x86_64::__cpuid(1) }.edx & (1 << 9) == 0 {
         return Err("CPU does not advertise the local APIC");
@@ -316,7 +316,7 @@ unsafe fn initialize_local_apic(madt_base: u64) -> Result<(), &'static str> {
     // Vector 0x40 is reserved for the masked timer; no IOAPIC route is unmasked.
     unsafe { apic_ref.initialize_masked(apic::APIC_SPURIOUS_VECTOR, 0x40, 16) }
         .map_err(|_| "local APIC masked initialization failed")?;
-    Ok(())
+    Ok(apic_ref)
 }
 
 
@@ -798,13 +798,18 @@ pub extern "C" fn rust_kernel_main(
     // is operational. No IOAPIC routes or timer interrupts are enabled yet.
     match validated_madt_local_apic_base {
         Some(madt_base) => match unsafe { initialize_local_apic(madt_base) } {
-        Ok(()) => {
-            let _ = writeln!(serial, "ArchiaOS: local xAPIC initialized; dispatcher published; sources remain masked");
+        Ok(apic_ref) => {
+            let _ = writeln!(serial, "ArchiaOS: local xAPIC initialized; dispatcher published; external IOAPIC routes remain masked");
             if !interrupts::apic_dispatch_self_test() {
-                let _ = writeln!(serial, "ArchiaOS: APIC returning dispatch self-test FAILED");
+                let _ = writeln!(serial, "ArchiaOS: APIC software dispatch self-test FAILED");
                 halt_forever();
             }
-            let _ = writeln!(serial, "ArchiaOS: APIC registered-handler dispatch and IRETQ return self-test passed (software interrupt; hardware IRQ delivery not tested)");
+            let _ = writeln!(serial, "ArchiaOS: APIC software dispatch and IRETQ self-test passed");
+            if !interrupts::apic_timer_interrupt_self_test(apic_ref) {
+                let _ = writeln!(serial, "ArchiaOS: APIC one-shot hardware timer interrupt self-test FAILED");
+                halt_forever();
+            }
+            let _ = writeln!(serial, "ArchiaOS: APIC one-shot timer IRQ, handler, EOI and IRETQ self-test passed; timer re-masked");
         }
         Err(reason) => {
             let _ = writeln!(serial, "ArchiaOS: local xAPIC initialization skipped: {}", reason);
