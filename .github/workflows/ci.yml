@@ -408,7 +408,7 @@ jobs:
           # build uses the versioned BootInfo ABI instead of the Limine response.
           cp "$firmware_vars" "$RUNNER_TEMP/OVMF_VARS_PRODUCTION.fd"
           set +e
-          timeout 25s qemu-system-x86_64 -machine q35 -m 512M -drive "if=pflash,format=raw,readonly=on,file=$firmware_code" -drive "if=pflash,format=raw,file=$RUNNER_TEMP/OVMF_VARS_PRODUCTION.fd" -drive "file=$RUNNER_TEMP/archiaos-production-uefi.img,format=raw,if=ide" -boot order=c -display none -serial stdio -monitor none -no-reboot -no-shutdown > "$RUNNER_TEMP/archiaos-production-uefi.log" 2>&1
+          timeout 25s qemu-system-x86_64 -machine q35 -cpu Haswell -m 512M -drive "if=pflash,format=raw,readonly=on,file=$firmware_code" -drive "if=pflash,format=raw,file=$RUNNER_TEMP/OVMF_VARS_PRODUCTION.fd" -drive "file=$RUNNER_TEMP/archiaos-production-uefi.img,format=raw,if=ide" -boot order=c -display none -serial stdio -monitor none -no-reboot -no-shutdown > "$RUNNER_TEMP/archiaos-production-uefi.log" 2>&1
           production_qemu_status=$?
           set -e
           cat "$RUNNER_TEMP/archiaos-production-uefi.log"
