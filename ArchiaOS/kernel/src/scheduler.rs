@@ -326,6 +326,15 @@ extern "C" fn runtime_task_b() -> ! {
     runtime_exit()
 }
 
+extern "C" fn runtime_idle_task() -> ! {
+    unsafe { core::ptr::write_volatile(core::ptr::addr_of_mut!(RUNTIME_STAGES).cast::<usize>(), 1) };
+    if runtime_block_current_to_boot().is_err() {
+        runtime_halt();
+    }
+    unsafe { core::ptr::write_volatile(core::ptr::addr_of_mut!(RUNTIME_STAGES).cast::<usize>(), 2) };
+    runtime_exit()
+}
+
 extern "C" fn runtime_task_c() -> ! {
     // Task C must run after A exits and before B resumes, proving round-robin
     // dispatch continues correctly across three independently saved contexts.
@@ -377,6 +386,32 @@ fn runtime_block_current() -> Result<(), SchedulerError> {
         // SAFETY: scheduler selected a runnable task; both contexts and stacks
         // are static and interrupts are disabled for this single-CPU test.
         crate::context::switch(&mut *contexts.add(previous), &*contexts.add(next));
+    }
+    Ok(())
+}
+
+/// Block a task and hand control to the boot-time scheduler owner if no task is runnable.
+////
+//// This is a deterministic test harness for the idle boundary, not a production
+//// idle loop: the saved boot context regains control so the test can inject a
+//// wakeup without enabling interrupts.
+fn runtime_block_current_to_boot() -> Result<(), SchedulerError> {
+    unsafe {
+        let scheduler = core::ptr::addr_of_mut!(RUNTIME_SCHEDULER);
+        let previous = (*scheduler).current.ok_or(SchedulerError::NoCurrentTask)?;
+        match (&mut *scheduler).block_current_or_idle()? {
+            DispatchDecision::Run(next) => {
+                let contexts = core::ptr::addr_of_mut!(RUNTIME_CONTEXTS).cast::<crate::context::CpuContext>();
+                crate::context::switch(&mut *contexts.add(previous), &*contexts.add(next.0));
+            }
+            DispatchDecision::Idle(IdleReason::WaitingForWakeup) => {
+                crate::context::switch(
+                    &mut *core::ptr::addr_of_mut!(RUNTIME_CONTEXTS).cast::<crate::context::CpuContext>().add(previous),
+                    &*core::ptr::addr_of!(RUNTIME_BOOT_CONTEXT),
+                );
+            }
+            DispatchDecision::Idle(_) => return Err(SchedulerError::InvariantViolation),
+        }
     }
     Ok(())
 }
@@ -472,6 +507,69 @@ pub fn runtime_self_test() -> Result<(), SchedulerError> {
             return Err(SchedulerError::InvariantViolation);
         }
         (&*scheduler).check_invariants()?;
+    }
+    Ok(())
+}
+
+/// Exercise a real block-to-idle boundary, then wake and resume the same task.
+///
+/// With interrupts deliberately disabled, the boot context acts as the test
+/// harness at the idle boundary; this proves context preservation and wakeup
+/// without pretending that a hardware interrupt path already exists.
+pub fn runtime_idle_wakeup_self_test() -> Result<(), SchedulerError> {
+    unsafe {
+        core::ptr::write(core::ptr::addr_of_mut!(RUNTIME_SCHEDULER), Scheduler::new());
+        core::ptr::write(
+            core::ptr::addr_of_mut!(RUNTIME_CONTEXTS),
+            [crate::context::CpuContext::empty(); RUNTIME_TASKS],
+        );
+        core::ptr::write(core::ptr::addr_of_mut!(RUNTIME_BOOT_CONTEXT), crate::context::CpuContext::empty());
+        core::ptr::write(core::ptr::addr_of_mut!(RUNTIME_STAGES), [0; RUNTIME_TASKS]);
+
+        let scheduler = core::ptr::addr_of_mut!(RUNTIME_SCHEDULER);
+        let task = (&mut *scheduler).create_task()?;
+        let stacks = core::ptr::addr_of_mut!(RUNTIME_STACKS).cast::<crate::context::TaskStack>();
+        let contexts = core::ptr::addr_of_mut!(RUNTIME_CONTEXTS).cast::<crate::context::CpuContext>();
+        (&mut *stacks.add(task.0)).initialize(&mut *contexts.add(task.0), runtime_idle_task);
+
+        if (&mut *scheduler).schedule()? != task {
+            return Err(SchedulerError::InvariantViolation);
+        }
+        crate::context::switch(
+            &mut *core::ptr::addr_of_mut!(RUNTIME_BOOT_CONTEXT),
+            &*contexts.add(task.0),
+        );
+
+        let stage = core::ptr::read_volatile(core::ptr::addr_of!(RUNTIME_STAGES).cast::<usize>());
+        if stage != 1
+            || (&*scheduler).current().is_some()
+            || (&*scheduler).state(task)? != TaskState::Blocked
+            || (&*scheduler).dispatch_or_idle()?
+                != DispatchDecision::Idle(IdleReason::WaitingForWakeup)
+            || (&*scheduler).check_invariants().is_err()
+        {
+            return Err(SchedulerError::InvariantViolation);
+        }
+
+        (&mut *scheduler).wake(task)?;
+        match (&mut *scheduler).dispatch_or_idle()? {
+            DispatchDecision::Run(next) if next == task => {}
+            _ => return Err(SchedulerError::InvariantViolation),
+        }
+        crate::context::switch(
+            &mut *core::ptr::addr_of_mut!(RUNTIME_BOOT_CONTEXT),
+            &*contexts.add(task.0),
+        );
+
+        if core::ptr::read_volatile(core::ptr::addr_of!(RUNTIME_STAGES).cast::<usize>()) != 2
+            || (&*scheduler).state(task)? != TaskState::Exited
+            || (&*scheduler).current().is_some()
+            || (&*scheduler).dispatch_or_idle()?
+                != DispatchDecision::Idle(IdleReason::AllTasksExited)
+            || (&*scheduler).check_invariants().is_err()
+        {
+            return Err(SchedulerError::InvariantViolation);
+        }
     }
     Ok(())
 }
