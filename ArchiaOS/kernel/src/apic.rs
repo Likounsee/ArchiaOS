@@ -454,9 +454,8 @@ impl IoApic {
         let (low_register, _) =
             ioapic_redirection_registers(gsi, self.gsi_base, count)?;
         let low = unsafe { self.read_register_locked(low_register) };
-        let vector = (low & 0xff) as u8;
-        validate_hardware_irq_vector(vector)?;
-        unsafe { self.write_register_locked(low_register, low & !APIC_LVT_MASKED) };
+        let unmasked_low = unmasked_ioapic_low(low)?;
+        unsafe { self.write_register_locked(low_register, unmasked_low) };
         Ok(())
     }
 }
@@ -552,6 +551,14 @@ pub fn masked_ioapic_low(
     if polarity { value |= 1 << 13; }
     if level { value |= 1 << 15; }
     Ok(value)
+}
+
+/// Validate an existing IOAPIC low dword and clear only its mask bit.
+///
+/// Kept pure so route activation can be exhaustively tested without MMIO.
+pub fn unmasked_ioapic_low(low: u32) -> Result<u32, ApicError> {
+    validate_hardware_irq_vector((low & 0xff) as u8)?;
+    Ok(low & !APIC_LVT_MASKED)
 }
 
 /// Build an IOAPIC redirection high dword for a physical destination APIC ID.
@@ -707,6 +714,17 @@ mod tests {
         assert_eq!(masked_ioapic_low(0x40, 0, 2), Err(ApicError::InvalidTriggerMode));
         assert_eq!(ioapic_destination_high(2), Ok(0x0200_0000));
         assert_eq!(ioapic_destination_high(256), Err(ApicError::InvalidDestination));
+    }
+
+    #[test]
+    fn ioapic_unmask_clears_only_mask_bit_and_rejects_invalid_vectors() {
+        let configured = 0x0001_a040u32 | (1 << 15) | (1 << 13);
+        assert_eq!(unmasked_ioapic_low(configured), Ok(configured & !APIC_LVT_MASKED));
+        assert_eq!(unmasked_ioapic_low(0x0001_0000), Err(ApicError::InvalidVector));
+        for vector in [0, 31, 0x20, 0x2f, APIC_TEST_RETURN_VECTOR, APIC_SPURIOUS_VECTOR] {
+            let low = (1 << 16) | u32::from(vector) | (1 << 13) | (1 << 15);
+            assert_eq!(unmasked_ioapic_low(low), Err(ApicError::InvalidVector), "vector {vector:#04x}");
+        }
     }
 
     #[repr(align(4096))]
