@@ -15,6 +15,7 @@ pub const APIC_BASE_ADDRESS_MASK: u64 = 0x000f_ffff_ffff_f000;
 pub const APIC_SPURIOUS_VECTOR_REGISTER: u32 = 0x0f0;
 pub const APIC_VERSION_REGISTER: u32 = 0x030;
 pub const APIC_TASK_PRIORITY_REGISTER: u32 = 0x080;
+pub const APIC_EOI_REGISTER: u32 = 0x0b0;
 pub const APIC_ICR_LOW_REGISTER: u32 = 0x300;
 pub const APIC_ICR_HIGH_REGISTER: u32 = 0x310;
 pub const APIC_ICR_DELIVERY_PENDING: u32 = 1 << 12;
@@ -176,7 +177,7 @@ impl LocalApic {
     /// Call only for an interrupt delivered through this CPU's enabled xAPIC,
     /// after its handler has completed and exactly once per acknowledged IRQ.
     pub unsafe fn end_of_interrupt(&self) {
-        unsafe { self.write_register(0x0b0, 0) };
+        unsafe { self.write_register(APIC_EOI_REGISTER, 0) };
     }
 
     /// Send a physical-destination IPI with a bounded wait for the APIC command
@@ -574,6 +575,20 @@ mod tests {
 
     #[repr(align(4096))]
     struct MockApicPage([u32; 1024]);
+
+    #[test]
+    fn local_apic_eoi_writes_zero_to_the_eoi_register() {
+        let mut page = MockApicPage([0; 1024]);
+        page.0[(APIC_EOI_REGISTER / 4) as usize] = 0xfeed_beef;
+        // SAFETY: this aligned writable mock page models the APIC register window.
+        let apic = unsafe {
+            LocalApic::from_mapped_base(page.0.as_mut_ptr()).expect("aligned mock page")
+        };
+
+        // SAFETY: the mock page is ordinary memory, not real APIC MMIO.
+        unsafe { apic.end_of_interrupt() };
+        assert_eq!(page.0[(APIC_EOI_REGISTER / 4) as usize], 0);
+    }
 
     #[test]
     fn ipi_delivery_pending_timeout_does_not_overwrite_destination() {
