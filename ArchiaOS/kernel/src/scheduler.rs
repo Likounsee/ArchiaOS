@@ -544,7 +544,7 @@ pub fn runtime_idle_wakeup_self_test() -> Result<(), SchedulerError> {
         if stage != 1
             || (&*scheduler).current().is_some()
             || (&*scheduler).state(task)? != TaskState::Blocked
-            || (&*scheduler).dispatch_or_idle()?
+            || (&mut *scheduler).dispatch_or_idle()?
                 != DispatchDecision::Idle(IdleReason::WaitingForWakeup)
             || (&*scheduler).check_invariants().is_err()
         {
@@ -564,7 +564,7 @@ pub fn runtime_idle_wakeup_self_test() -> Result<(), SchedulerError> {
         if core::ptr::read_volatile(core::ptr::addr_of!(RUNTIME_STAGES).cast::<usize>()) != 2
             || (&*scheduler).state(task)? != TaskState::Exited
             || (&*scheduler).current().is_some()
-            || (&*scheduler).dispatch_or_idle()?
+            || (&mut *scheduler).dispatch_or_idle()?
                 != DispatchDecision::Idle(IdleReason::AllTasksExited)
             || (&*scheduler).check_invariants().is_err()
         {
