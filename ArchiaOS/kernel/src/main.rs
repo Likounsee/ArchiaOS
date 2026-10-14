@@ -47,6 +47,11 @@ mod pic {
 
         let master_mask = unsafe { port_in(MASTER_DATA) };
         let slave_mask = unsafe { port_in(SLAVE_DATA) };
+        if !super::interrupt_vectors::pic_masks_are_consistent(master_mask, slave_mask) {
+            // Refuse to mutate an already inconsistent PIC state. Silently
+            // masking another line would hide the disconnected slave cascade.
+            return Err(());
+        }
         let Some((next_master, next_slave)) =
             super::interrupt_vectors::masks_after_masking_irq(master_mask, slave_mask, irq)
         else {
