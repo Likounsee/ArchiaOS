@@ -78,6 +78,7 @@ extern "C" {
     static isr_stub_table: [u64; IDT_ENTRY_COUNT];
     fn isr_test_return_stub();
     fn isr_spurious_return_stub();
+    fn isr_apic_return_stub();
     static isr_pic_stub_table: [u64; 16];
 }
 
@@ -94,6 +95,52 @@ pub type ApicVectorHandler = extern "C" fn(vector: u8) -> bool;
 /// remain masked until a returning IDT stub and EOI path are active.
 static APIC_VECTOR_HANDLERS: [AtomicUsize; IDT_ENTRY_COUNT] =
     [const { AtomicUsize::new(0) }; IDT_ENTRY_COUNT];
+
+/// Current CPU's mapped local APIC. Published before any APIC source is unmasked.
+static LOCAL_APIC_FOR_DISPATCH: AtomicUsize = AtomicUsize::new(0);
+
+/// Publish the current CPU's initialized xAPIC for interrupt-context EOI.
+///
+/// # Safety
+/// `apic` must point to a live, correctly mapped LocalApic for this CPU and
+/// remain valid forever. Call with interrupts disabled, before unmasking APIC
+/// sources. This kernel currently supports one active dispatch APIC per CPU.
+pub unsafe fn install_local_apic_dispatcher(
+    apic: &'static crate::apic::LocalApic,
+) -> Result<(), crate::apic::ApicError> {
+    LOCAL_APIC_FOR_DISPATCH
+        .compare_exchange(0, apic as *const _ as usize, Ordering::AcqRel, Ordering::Acquire)
+        .map(|_| ())
+        .map_err(|_| crate::apic::ApicError::HandlerAlreadyRegistered)
+}
+
+/// Common returning entry used by all assignable local-APIC hardware vectors.
+#[no_mangle]
+extern "C" fn archiaos_apic_interrupt_dispatch(frame: *mut u64) -> *mut u64 {
+    if frame.is_null() {
+        fatal_unhandled_apic_irq();
+    }
+    // The assembly stub saves 15 GPRs, followed by vector and synthetic error.
+    let vector = unsafe { *frame.add(15) as u8 };
+    let raw = LOCAL_APIC_FOR_DISPATCH.load(Ordering::Acquire);
+    if raw == 0 {
+        fatal_unhandled_apic_irq();
+    }
+    // SAFETY: install_local_apic_dispatcher documents lifetime, mapping, and CPU ownership.
+    let apic = unsafe { &*(raw as *const crate::apic::LocalApic) };
+    // SAFETY: this entry is installed only for valid hardware vectors and runs
+    // on the CPU whose local APIC was published above.
+    match unsafe { apic.dispatch_vector(vector, dispatch_registered_apic_vector) } {
+        Ok(_) => frame,
+        Err(_) => fatal_unhandled_apic_irq(),
+    }
+}
+
+#[cold]
+fn fatal_unhandled_apic_irq() -> ! {
+    unsafe { asm!("cli", options(nomem, nostack, preserves_flags)); }
+    loop { unsafe { asm!("hlt", options(nomem, nostack)); } }
+}
 
 /// Register a handler for a non-reserved local-APIC hardware vector.
 /// This only publishes the callback; it does not install an IDT gate or
@@ -359,6 +406,14 @@ pub unsafe fn install() {
             core::ptr::addr_of_mut!(IDT).cast::<IdtEntry>()
                 .add(usize::from(LEGACY_PIC_VECTOR_BASE) + irq).write(entry);
         }
+    }
+
+    // Install the returning APIC dispatcher for assignable vectors. The
+    // legacy PIC range, test vector, and spurious vector retain dedicated gates.
+    for vector in 0x30usize..0xff {
+        if vector == TEST_RETURN_VECTOR { continue; }
+        let gate = IdtEntry::interrupt_gate(isr_apic_return_stub as usize as u64, selector);
+        unsafe { core::ptr::addr_of_mut!(IDT).cast::<IdtEntry>().add(vector).write(gate) };
     }
 
     // The APIC spurious vector is special: return directly and do not send EOI.
@@ -1709,6 +1764,47 @@ global_asm!(
     "movq %rsp, %rdi",
     "andq $-16, %rsp",
     "call archiaos_test_interrupt_dispatch",
+    "movq %rax, %rsp",
+    "popq %r15",
+    "popq %r14",
+    "popq %r13",
+    "popq %r12",
+    "popq %r11",
+    "popq %r10",
+    "popq %r9",
+    "popq %r8",
+    "popq %rdi",
+    "popq %rsi",
+    "popq %rbp",
+    "popq %rbx",
+    "popq %rdx",
+    "popq %rcx",
+    "popq %rax",
+    "addq $16, %rsp",
+    "iretq",
+    ".global isr_apic_return_stub",
+    "isr_apic_return_stub:",
+    "pushq $0",
+    "pushq $0",
+    "movq 8(%rsp), %rax",
+    "pushq %rax",
+    "pushq %rcx",
+    "pushq %rdx",
+    "pushq %rbx",
+    "pushq %rbp",
+    "pushq %rsi",
+    "pushq %rdi",
+    "pushq %r8",
+    "pushq %r9",
+    "pushq %r10",
+    "pushq %r11",
+    "pushq %r12",
+    "pushq %r13",
+    "pushq %r14",
+    "pushq %r15",
+    "movq %rsp, %rdi",
+    "andq $-16, %rsp",
+    "call archiaos_apic_interrupt_dispatch",
     "movq %rax, %rsp",
     "popq %r15",
     "popq %r14",
