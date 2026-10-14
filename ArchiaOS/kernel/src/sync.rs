@@ -98,12 +98,11 @@ impl<T> IrqSpinLock<T> {
                 "pushfq",
                 "pop {flags}",
                 "cli",
-                flags = out(reg) flags,
-                options(nomem)
+                flags = out(reg) flags
             );
         }
         let guard = self.inner.lock();
-        IrqSpinLockGuard { guard: Some(guard), restore_if: flags & (1 << 9) != 0 }
+        IrqSpinLockGuard { guard: Some(guard), restore_if: saved_if_was_enabled(flags) }
     }
 }
 
