@@ -125,3 +125,37 @@ fn exited_slots_are_not_reused_for_new_task_ids() {
     assert_eq!(scheduler.state(later), Ok(TaskState::Runnable));
     assert_eq!(scheduler.check_invariants(), Ok(()));
 }
+
+#[test]
+fn yielding_with_one_task_keeps_the_same_task_running() {
+    let mut scheduler = Scheduler::new();
+    let only = scheduler.create_task().expect("task slot");
+
+    assert_eq!(scheduler.schedule(), Ok(only));
+    for _ in 0..(scheduler::MAX_TASKS * 3) {
+        assert_eq!(scheduler.yield_current(), Ok(only));
+        assert_eq!(scheduler.current(), Some(only));
+        assert_eq!(scheduler.state(only), Ok(TaskState::Running));
+        assert_eq!(scheduler.check_invariants(), Ok(()));
+    }
+}
+
+#[test]
+fn idle_dispatch_is_stable_until_a_blocked_task_is_woken() {
+    let mut scheduler = Scheduler::new();
+    let first = scheduler.create_task().expect("first task slot");
+    let second = scheduler.create_task().expect("second task slot");
+
+    assert_eq!(scheduler.schedule(), Ok(first));
+    assert_eq!(scheduler.block_current(), Ok(second));
+    assert_eq!(scheduler.block_current(), Err(SchedulerError::NoRunnableTask));
+    assert_eq!(scheduler.dispatch_or_idle(), Ok(scheduler::DispatchDecision::Idle));
+    assert_eq!(scheduler.dispatch_or_idle(), Ok(scheduler::DispatchDecision::Idle));
+    assert_eq!(scheduler.current(), None);
+    assert_eq!(scheduler.check_invariants(), Ok(()));
+
+    scheduler.wake(first).expect("first task wakes");
+    assert_eq!(scheduler.dispatch_or_idle(), Ok(scheduler::DispatchDecision::Run(first)));
+    assert_eq!(scheduler.current(), Some(first));
+    assert_eq!(scheduler.check_invariants(), Ok(()));
+}
