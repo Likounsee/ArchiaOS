@@ -116,6 +116,58 @@ pub fn map_physical_page(physical_address: u64) -> Result<*mut u8, VmmError> {
     Ok(address as *mut u8)
 }
 
+/// Map one physical MMIO page into the kernel's dedicated physical-alias window.
+///
+/// Unlike RAM mapping, device pages are firmware-reserved and must not be
+/// required to belong to the PMM allocation bitmap. The leaf is marked PCD+PWT
+/// so register accesses bypass ordinary write-back caching. This helper does
+/// not enable the device or claim ownership of its interrupt routes.
+///
+/// # Safety
+/// The caller must verify the physical range belongs to a real device register
+/// window, must keep the mapping for as long as any pointer is used, and must
+/// ensure no conflicting alias already exists. This bootstrap mapper is
+/// single-CPU only and does not perform remote TLB shootdowns.
+pub unsafe fn map_mmio_page(physical_address: u64) -> Result<*mut u8, VmmError> {
+    if physical_address == 0
+        || physical_address % PAGE_SIZE != 0
+        || physical_address >= TRACKED_PHYSICAL_LIMIT
+    {
+        return Err(VmmError::InvalidPhysicalAddress);
+    }
+    let address = PHYSICAL_MAP_BASE.checked_add(physical_address)
+        .ok_or(VmmError::InvalidVirtualAddress)?;
+    if !is_canonical(address) {
+        return Err(VmmError::InvalidVirtualAddress);
+    }
+
+    unsafe {
+        let mut cr3: u64;
+        asm!("mov {}, cr3", out(reg) cr3, options(nomem, nostack, preserves_flags));
+        let root = cr3 & ADDRESS_MASK;
+        if root >= FOUR_GIB {
+            return Err(VmmError::PageTableOutsideIdentityMap);
+        }
+        let pml4 = root as *mut u64;
+        let pml4_index = ((address >> 39) & 0x1ff) as usize;
+        let pdpt_index = ((address >> 30) & 0x1ff) as usize;
+        let pd_index = ((address >> 21) & 0x1ff) as usize;
+        let pt_index = ((address >> 12) & 0x1ff) as usize;
+
+        let pdpt = ensure_table(pml4.add(pml4_index), false)?;
+        let pd = ensure_table(pdpt.add(pdpt_index), true)?;
+        let pt = ensure_table(pd.add(pd_index), true)?;
+        let pte = pt.add(pt_index);
+        if ptr::read_volatile(pte) & PRESENT != 0 {
+            return Err(VmmError::AlreadyMapped);
+        }
+        // PCD (bit 4) + PWT (bit 3): conservative uncached device mapping.
+        ptr::write_volatile(pte, physical_address | PRESENT | WRITABLE | NO_EXECUTE | (1 << 4) | (1 << 3));
+        asm!("invlpg [{}]", in(reg) address, options(nostack, preserves_flags));
+    }
+    Ok(address as *mut u8)
+}
+
 /// Remove a physical alias through the common page-table cleanup path.
 pub fn unmap_physical_page(physical_address: u64) -> Result<(), VmmError> {
     let address = virtual_address(physical_address)?;
