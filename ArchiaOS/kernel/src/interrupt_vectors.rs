@@ -26,6 +26,20 @@ pub const fn legacy_pic_vector_for_irq(irq: u8) -> Option<u8> {
 }
 
 
+/// Describe the required legacy PIC EOI writes for an IRQ.
+///
+/// The tuple is (send slave EOI, send master EOI). Invalid IRQ lines have no
+/// acknowledgement plan. The hardware dispatcher must perform slave first.
+pub const fn eoi_plan_for_irq(irq: u8) -> Option<(bool, bool)> {
+    if irq >= LEGACY_PIC_IRQ_COUNT {
+        None
+    } else if irq >= 8 {
+        Some((true, true))
+    } else {
+        Some((false, true))
+    }
+}
+
 /// Compute PIC masks after masking one IRQ, without touching hardware.
 ///
 /// Returns `None` for an invalid IRQ. The cascade line (IRQ2) is masked when
@@ -105,6 +119,26 @@ mod tests {
     #[test]
     fn masking_last_enabled_slave_irq_masks_cascade() {
         assert_eq!(masks_after_masking_irq(0b0000_0000, 0b0111_1111, 15), Some((0b0000_0100, 0b1111_1111)));
+    }
+
+    #[test]
+    fn master_irq_eoi_only_targets_master_pic() {
+        for irq in 0..8 {
+            assert_eq!(eoi_plan_for_irq(irq), Some((false, true)));
+        }
+    }
+
+    #[test]
+    fn slave_irq_eoi_targets_slave_then_master() {
+        for irq in 8..16 {
+            assert_eq!(eoi_plan_for_irq(irq), Some((true, true)));
+        }
+    }
+
+    #[test]
+    fn invalid_irq_has_no_eoi_plan() {
+        assert_eq!(eoi_plan_for_irq(16), None);
+        assert_eq!(eoi_plan_for_irq(0xff), None);
     }
 
     #[test]
