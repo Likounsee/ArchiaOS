@@ -28,12 +28,24 @@ pub enum SchedulerError {
     InvariantViolation,
 }
 
+/// Why the scheduler has no runnable task. The caller can wait for a wakeup,
+/// stop scheduling permanently, or handle an as-yet empty task table differently.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum IdleReason {
+    /// At least one task is blocked and may become runnable after a wakeup.
+    WaitingForWakeup,
+    /// At least one task existed, and every created task has exited.
+    AllTasksExited,
+    /// No task has ever been created in this scheduler instance.
+    NoTasks,
+}
+
 /// Result of asking the scheduler for work when no task is currently running.
-/// `Idle` is a decision for the caller to enter its idle path; it is not a task.
+/// Idle decisions describe scheduler state; they do not halt the CPU themselves.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DispatchDecision {
     Run(TaskId),
-    Idle,
+    Idle(IdleReason),
 }
 
 #[derive(Clone, Copy)]
@@ -99,7 +111,18 @@ impl Scheduler {
         }
         match self.select_next() {
             Ok(id) => Ok(DispatchDecision::Run(id)),
-            Err(SchedulerError::NoRunnableTask) => Ok(DispatchDecision::Idle),
+            Err(SchedulerError::NoRunnableTask) => {
+                let has_blocked = self.tasks.iter().any(|task| task.state == TaskState::Blocked);
+                let has_created = self.tasks.iter().any(|task| task.state != TaskState::Empty);
+                let reason = if has_blocked {
+                    IdleReason::WaitingForWakeup
+                } else if has_created {
+                    IdleReason::AllTasksExited
+                } else {
+                    IdleReason::NoTasks
+                };
+                Ok(DispatchDecision::Idle(reason))
+            }
             Err(error) => Err(error),
         }
     }
@@ -452,7 +475,7 @@ mod tests {
 
         assert_eq!(scheduler.schedule(), Ok(task));
         assert_eq!(scheduler.block_current(), Err(SchedulerError::NoRunnableTask));
-        assert_eq!(scheduler.dispatch_or_idle(), Ok(DispatchDecision::Idle));
+        assert_eq!(scheduler.dispatch_or_idle(), Ok(DispatchDecision::Idle(IdleReason::WaitingForWakeup)));
         assert_eq!(scheduler.current(), None);
         assert_eq!(scheduler.state(task), Ok(TaskState::Blocked));
         assert_eq!(scheduler.check_invariants(), Ok(()));
@@ -470,8 +493,16 @@ mod tests {
 
         assert_eq!(scheduler.schedule(), Ok(task));
         assert_eq!(scheduler.exit_current(), Err(SchedulerError::NoRunnableTask));
-        assert_eq!(scheduler.dispatch_or_idle(), Ok(DispatchDecision::Idle));
+        assert_eq!(scheduler.dispatch_or_idle(), Ok(DispatchDecision::Idle(IdleReason::AllTasksExited)));
         assert_eq!(scheduler.state(task), Ok(TaskState::Exited));
+        assert_eq!(scheduler.check_invariants(), Ok(()));
+    }
+
+    #[test]
+    fn empty_scheduler_reports_no_tasks_not_a_waiting_idle_state() {
+        let mut scheduler = Scheduler::new();
+        assert_eq!(scheduler.dispatch_or_idle(), Ok(DispatchDecision::Idle(IdleReason::NoTasks)));
+        assert_eq!(scheduler.current(), None);
         assert_eq!(scheduler.check_invariants(), Ok(()));
     }
 
