@@ -344,8 +344,13 @@ pub fn parse_madt(bytes: &[u8]) -> Result<MadtInfo, MadtError> {
                 if entry_len < 10 { return Err(MadtError::InvalidEntryLength); }
                 if info.override_count == MAX_MADT_OVERRIDES { return Err(MadtError::TooManyOverrides); }
                 let flags = u16_at(e, 8).ok_or(MadtError::InvalidEntryLength)?;
-                // ACPI reserves polarity and trigger encodings 2; reject them.
-                if flags & 0b11 == 0b10 || (flags >> 2) & 0b11 == 0b10 {
+                // Only bits 0..=3 are defined by the MADT override flags:
+                // polarity in bits 0..1 and trigger mode in bits 2..3.
+                // Reject both reserved encodings and any reserved high bits.
+                if flags & !0x0f != 0
+                    || flags & 0b11 == 0b10
+                    || (flags >> 2) & 0b11 == 0b10
+                {
                     return Err(MadtError::InvalidOverride);
                 }
                 info.overrides[info.override_count] = Some(InterruptOverride {
@@ -457,6 +462,29 @@ mod tests {
         entries.extend_from_slice(&invalid_irq);
         let topology = parse_madt(&base(0, &entries)).unwrap();
         assert_eq!(validate_xapic_topology(&topology), Err(MadtError::InvalidOverride));
+    }
+
+    #[test]
+    fn rejects_duplicate_or_misaligned_local_apic_address_overrides() {
+        let first = [5, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let mut duplicate = first.to_vec();
+        duplicate.extend_from_slice(&first);
+        assert_eq!(
+            parse_madt(&base(0, &duplicate)),
+            Err(MadtError::InvalidLocalApicAddress)
+        );
+
+        let misaligned = [5, 12, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0];
+        assert_eq!(
+            parse_madt(&base(0, &misaligned)),
+            Err(MadtError::InvalidLocalApicAddress)
+        );
+    }
+
+    #[test]
+    fn rejects_reserved_high_bits_in_interrupt_override_flags() {
+        let entries = [2, 10, 0, 0, 0, 0, 0, 0, 0, 0x10];
+        assert_eq!(parse_madt(&base(0, &entries)), Err(MadtError::InvalidOverride));
     }
 
     #[test]
