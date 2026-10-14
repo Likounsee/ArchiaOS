@@ -30,6 +30,74 @@ pub enum ApicError {
     InvalidPolarity,
     InvalidTriggerMode,
     InvalidDestination,
+    InvalidMappedPointer,
+}
+
+/// xAPIC MMIO window whose 4 KiB register page has already been mapped.
+///
+/// Construction is unsafe because the caller must guarantee that the pointer
+/// refers to a live, uncached/device-mapped local APIC page for this CPU. This
+/// type deliberately does not enable the APIC or unmask interrupts by itself.
+pub struct LocalApic {
+    base: *mut u32,
+}
+
+impl LocalApic {
+    /// # Safety
+    /// The base pointer must refer to a writable 4 KiB xAPIC MMIO mapping,
+    /// mapped with appropriate device/uncached attributes, and remain mapped
+    /// for this value's lifetime. It must belong to the current processor.
+    pub unsafe fn from_mapped_base(base: *mut u32) -> Result<Self, ApicError> {
+        if base.is_null() || (base as usize & 0xfff) != 0 {
+            return Err(ApicError::InvalidMappedPointer);
+        }
+        Ok(Self { base })
+    }
+
+    #[inline]
+    unsafe fn write_register(&self, offset: u32, value: u32) {
+        // SAFETY: constructor contract; offsets are aligned xAPIC register offsets.
+        unsafe { core::ptr::write_volatile(self.base.add((offset / 4) as usize), value) };
+    }
+
+    #[inline]
+    unsafe fn read_register(&self, offset: u32) -> u32 {
+        // SAFETY: constructor contract; offsets are aligned xAPIC register offsets.
+        unsafe { core::ptr::read_volatile(self.base.add((offset / 4) as usize)) }
+    }
+
+    /// Send the local-APIC EOI after a local interrupt handler has completed.
+    ///
+    /// # Safety
+    /// Call only for an interrupt delivered through this CPU's enabled xAPIC,
+    /// after its handler has completed and exactly once per acknowledged IRQ.
+    pub unsafe fn end_of_interrupt(&self) {
+        unsafe { self.write_register(0x0b0, 0) };
+    }
+
+    /// Program the local APIC timer in a masked, non-firing state.
+    ///
+    /// # Safety
+    /// The mapping must be valid and xAPIC mode must be active. This does not
+    /// calibrate a timer or enable interrupt delivery.
+    pub unsafe fn configure_timer_masked(&self, vector: u8, divisor: u16) -> Result<(), ApicError> {
+        let lvt = masked_timer_lvt(vector)?;
+        let divide = timer_divide_encoding(divisor)?;
+        unsafe {
+            self.write_register(APIC_LVT_TIMER_REGISTER, lvt);
+            self.write_register(APIC_DIVIDE_CONFIGURATION_REGISTER, divide);
+            self.write_register(APIC_INITIAL_COUNT_REGISTER, 0);
+        }
+        Ok(())
+    }
+
+    /// Read the current timer count for diagnostics/calibration.
+    ///
+    /// # Safety
+    /// The mapping must be valid and xAPIC mode must be active.
+    pub unsafe fn timer_current_count(&self) -> u32 {
+        unsafe { self.read_register(APIC_CURRENT_COUNT_REGISTER) }
+    }
 }
 
 /// Validate the APIC base MSR before any local-APIC MMIO access.
