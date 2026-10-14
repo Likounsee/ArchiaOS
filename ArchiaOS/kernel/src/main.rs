@@ -379,7 +379,7 @@ pub extern "C" fn rust_kernel_main(
 /// Fatal early-kernel exception dispatcher called by the assembly stubs.
 /// The stubs normalize the stack to pass the vector and CPU error code.
 #[no_mangle]
-pub extern "C" fn archiaos_exception_dispatch(vector: u64, error_code: u64) -> ! {
+pub extern "C" fn archiaos_exception_dispatch(vector: u64, error_code: u64, instruction_pointer: u64) -> ! {
     let mut serial = Serial;
     serial.init();
     let name = match vector {
@@ -397,6 +397,7 @@ pub extern "C" fn archiaos_exception_dispatch(vector: u64, error_code: u64) -> !
     };
     let _ = writeln!(serial, "ArchiaOS: FATAL x86-64 exception vector={} ({})", vector, name);
     let _ = writeln!(serial, "ArchiaOS: exception error_code={:#018x}", error_code);
+    let _ = writeln!(serial, "ArchiaOS: exception RIP={:#018x}", instruction_pointer);
     if vector == 14 {
         let fault_address: u64;
         // SAFETY: CR2 is read only in the page-fault diagnostic path at kernel privilege.
