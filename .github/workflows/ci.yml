@@ -434,6 +434,8 @@ jobs:
           grep -Fq "VMM: explicit virtual access to physical RAM above 4 GiB passed" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "VMM: physical frame and intermediate page-table counts restored after unmap" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "ArchiaOS: kernel heap self-test passed" "$RUNNER_TEMP/archiaos-production-uefi.log"
+          grep -Fq "AddressSpace: isolated user mapping, CR3 switch, access, unmap and cleanup passed" "$RUNNER_TEMP/archiaos-production-uefi.log"
+          grep -Fq "ArchiaOS: address-space self-test passed" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "Heap: alignment, split/coalesce, page growth, access, free and reuse tests passed" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "VMM: explicit virtual access to physical RAM above 4 GiB passed" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "ArchiaOS: CPU family " "$RUNNER_TEMP/archiaos-production-uefi.log"

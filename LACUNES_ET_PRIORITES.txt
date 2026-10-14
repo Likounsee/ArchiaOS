@@ -43,15 +43,22 @@ PRIORITÉ 1 — MÉMOIRE VIRTUELLE ET ALLOCATION
 2. Développer/compléter le gestionnaire de mémoire virtuelle (VMM).
    Avancée : kernel/src/vmm.rs crée et retire des mappings noyau choisis, configure
    les permissions, refuse le W^X, alloue les tables intermédiaires sous 4 Gio,
-   vérifie la frame au retrait, invalide le TLB local et récupère les tables vides du PMM. Le démarrage teste l'accès
-   via mapping, la RAM >4 Gio et le retrait des mappings. kernel/src/heap.rs
-   fournit aussi un tas page-backed à liste libre, testé pour alignement, croissance,
-   libération et réutilisation. Restent la récupération des tables, les espaces
-   d'adressage isolés, les shootdowns TLB SMP et le verrouillage SMP/IRQ du tas.
+   vérifie la frame au retrait, invalide le TLB local et récupère les tables vides.
+   Le démarrage teste l'accès via mapping, la RAM >4 Gio et le retour du nombre
+   de frames après retrait. kernel/src/heap.rs fournit un tas page-backed à liste
+   libre, avec découpage/fusion des blocs et tests d'alignement, croissance, accès,
+   libération et réutilisation. kernel/src/address_space.rs crée des racines PML4
+   isolées, partage les mappings noyau et teste le mapping utilisateur, la bascule
+   CR3 et le nettoyage. Restent le shootdown TLB SMP, le verrouillage IRQ/SMP du
+   tas/PMM, et le placement ELF dans la fenêtre utilisateur réservée.
 
 3. Ajouter une gestion robuste des espaces d'adressage par processus.
-   Les mappings d'un processus doivent être isolés de ceux des autres processus
-   et du noyau.
+   Avancée : kernel/src/address_space.rs crée des racines indépendantes, partage
+   les mappings superviseur du noyau et réserve une fenêtre utilisateur séparée
+   à partir de 512 Gio virtuels afin d'éviter l'alias d'identité encore nécessaire
+   au noyau. Un test crée deux espaces, vérifie l'isolement d'une page, active et
+   restaure CR3, puis vérifie le nettoyage. Le chargement ELF, la disposition
+   utilisateur conventionnelle/relocalisée et la transition ring 3 restent P3.
 
 4. Définir une stratégie d'allocation mémoire complète.
    Avancée : kernel/src/heap.rs fournit un allocateur global à liste libre,
