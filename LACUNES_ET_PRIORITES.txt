@@ -41,12 +41,13 @@ PRIORITÉ 1 — MÉMOIRE VIRTUELLE ET ALLOCATION
    tables et la synchronisation SMP.
 
 2. Développer/compléter le gestionnaire de mémoire virtuelle (VMM).
-   Avancée : kernel/src/vmm.rs crée et retire un alias noyau NX/inscriptible
-   pour une frame allouée, alloue les tables intermédiaires sous 4 Gio, vérifie
-   la frame au retrait et invalide le TLB local. Le test de démarrage écrit et
-   relit un motif à travers le mapping et teste la RAM >4 Gio si disponible.
-   Restent la récupération des tables, les permissions configurables, les
-   espaces d'adressage isolés et le shootdown TLB SMP.
+   Avancée : kernel/src/vmm.rs crée et retire des mappings noyau choisis, configure
+   les permissions, refuse le W^X, alloue les tables intermédiaires sous 4 Gio,
+   vérifie la frame au retrait et invalide le TLB local. Le démarrage teste l'accès
+   via mapping, la RAM >4 Gio et le retrait des mappings. kernel/src/heap.rs
+   fournit aussi un tas page-backed à liste libre, testé pour alignement, croissance,
+   libération et réutilisation. Restent la récupération des tables, les espaces
+   d'adressage isolés, les shootdowns TLB SMP et le verrouillage SMP/IRQ du tas.
 
 3. Ajouter une gestion robuste des espaces d'adressage par processus.
    Les mappings d'un processus doivent être isolés de ceux des autres processus
