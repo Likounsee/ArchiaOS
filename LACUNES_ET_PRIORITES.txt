@@ -31,9 +31,14 @@ En attendant que l'implémentation Rust et ses interfaces soient prêtes :
 PRIORITÉ 1 — MÉMOIRE VIRTUELLE ET ALLOCATION
 -------------------------------------------
 1. Étendre et clarifier les limites du gestionnaire de mémoire physique (PMM).
-   La version actuelle est limitée à une plage physique de 4 Gio, alors que
-   l'ancienne version prévoit une plage bien plus large. Éviter que cette limite
-   reste implicite ou bloque les machines disposant de davantage de RAM.
+   État partiel : la fenêtre de suivi a été étendue de 4 Gio à 64 Gio dans
+   kernel/src/memory.rs ; les tests de calcul des plages couvrent désormais
+   également des adresses au-dessus de l'ancienne limite. Les deux bitmaps
+   occupent environ 4 Mio au total à cette capacité. La limite de 64 Gio reste
+   une capacité de suivi, pas une garantie de prise en charge de toute adresse
+   par chaque CPU. Restent à valider la compilation, les tests d'intégration,
+   les cartes mémoire QEMU et les cas de machines ayant de grandes quantités de
+   RAM. La prise en charge au-delà de 64 Gio n'est pas encore implémentée.
 
 2. Développer/compléter le gestionnaire de mémoire virtuelle (VMM).
    À vérifier et à porter selon les besoins : création et modification des
