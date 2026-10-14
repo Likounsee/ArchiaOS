@@ -18,7 +18,7 @@ Le workflow de démarrage local doit aussi exiger le marqueur série `ArchiaOS: 
 
 ## Premier VMM x86-64
 
-`kernel/src/vmm.rs` ajoute `map_physical_page` et `unmap_physical_page`. Le mapping physique à la demande utilise la base virtuelle canonique `0xffff900000000000`, crée les tables intermédiaires manquantes à partir de frames allouées sous 4 Gio et installe une feuille inscriptible/NX. `map_kernel_page` permet aussi de mapper une frame à une adresse noyau choisie, avec des permissions configurables et un refus explicite des mappings inscriptibles et exécutables simultanément. Le retrait vérifie que la feuille pointe toujours vers la frame attendue et invalide le TLB local. Le test d'intégration au démarrage écrit et relit un motif via l'alias, le retire puis libère la frame ; il teste aussi une frame au-dessus de 4 Gio si la carte UEFI en fournit.
+`kernel/src/vmm.rs` ajoute `map_physical_page` et `unmap_physical_page`. Le mapping physique à la demande utilise la base virtuelle canonique `0xffff900000000000`, crée les tables intermédiaires manquantes à partir de frames allouées sous 4 Gio et installe une feuille inscriptible/NX. `map_kernel_page` permet aussi de mapper une frame à une adresse noyau choisie, avec des permissions configurables et un refus explicite des mappings inscriptibles et exécutables simultanément. Le retrait vérifie que la feuille pointe toujours vers la frame attendue, invalide le TLB local et récupère les tables intermédiaires vides possédées par le PMM. Le test d'intégration au démarrage écrit et relit un motif via l'alias, le retire puis libère la frame ; il teste aussi une frame au-dessus de 4 Gio si la carte UEFI en fournit.
 
 ## Tas noyau initial
 

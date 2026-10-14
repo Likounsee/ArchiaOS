@@ -43,7 +43,7 @@ PRIORITÉ 1 — MÉMOIRE VIRTUELLE ET ALLOCATION
 2. Développer/compléter le gestionnaire de mémoire virtuelle (VMM).
    Avancée : kernel/src/vmm.rs crée et retire des mappings noyau choisis, configure
    les permissions, refuse le W^X, alloue les tables intermédiaires sous 4 Gio,
-   vérifie la frame au retrait et invalide le TLB local. Le démarrage teste l'accès
+   vérifie la frame au retrait, invalide le TLB local et récupère les tables vides du PMM. Le démarrage teste l'accès
    via mapping, la RAM >4 Gio et le retrait des mappings. kernel/src/heap.rs
    fournit aussi un tas page-backed à liste libre, testé pour alignement, croissance,
    libération et réutilisation. Restent la récupération des tables, les espaces
