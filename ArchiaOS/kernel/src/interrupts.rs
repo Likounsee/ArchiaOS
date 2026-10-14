@@ -293,6 +293,56 @@ pub fn apic_dispatch_self_test() -> bool {
             == u64::from(APIC_DISPATCH_TEST_VECTOR)
 }
 
+/// Verify a real local-APIC timer interrupt reaches the registered handler,
+/// returns through IRETQ, and is acknowledged by the common dispatcher.
+/// The timer is one-shot, has a finite wait budget, and is masked on all exits.
+const APIC_TIMER_TEST_VECTOR: u8 = 0x40;
+static APIC_TIMER_TEST_COUNT: AtomicU64 = AtomicU64::new(0);
+
+extern "C" fn apic_timer_self_test_handler(vector: u8) -> bool {
+    if vector != APIC_TIMER_TEST_VECTOR {
+        return false;
+    }
+    APIC_TIMER_TEST_COUNT.fetch_add(1, Ordering::SeqCst);
+    true
+}
+
+pub fn apic_timer_interrupt_self_test(apic: &'static crate::apic::LocalApic) -> bool {
+    if register_apic_vector_handler(APIC_TIMER_TEST_VECTOR, apic_timer_self_test_handler).is_err() {
+        return false;
+    }
+
+    let flags: u64;
+    unsafe {
+        asm!("pushfq", "pop {flags}", "cli", flags = out(reg) flags);
+    }
+    let before = APIC_TIMER_TEST_COUNT.load(Ordering::SeqCst);
+    // SAFETY: the local APIC was initialized and published before this call;
+    // the returning IDT gate and handler are registered above. The count is
+    // intentionally small and one-shot, not a scheduler timer configuration.
+    let armed = unsafe { apic.start_timer_one_shot(APIC_TIMER_TEST_VECTOR, 16, 100_000) }.is_ok();
+    let mut delivered = false;
+    if armed {
+        // Temporarily permit delivery, but immediately disable IF after each
+        // pause so the polling loop can enforce a finite upper bound.
+        for _ in 0..10_000_000usize {
+            unsafe { asm!("sti", "pause", "cli", options(nomem, nostack)); }
+            if APIC_TIMER_TEST_COUNT.load(Ordering::SeqCst) != before {
+                delivered = true;
+                break;
+            }
+        }
+    }
+
+    // Always stop the timer before restoring the caller's IF state.
+    let masked = unsafe { apic.mask_timer(APIC_TIMER_TEST_VECTOR) }.is_ok();
+    if flags & (1 << 9) != 0 {
+        unsafe { asm!("sti", options(nomem, nostack)); }
+    }
+    armed && delivered && masked
+        && APIC_TIMER_TEST_COUNT.load(Ordering::SeqCst) == before.wrapping_add(1)
+}
+
 const TEST_RETURN_VECTOR: usize = 0xF1;
 const SPURIOUS_VECTOR: usize = 0xFF;
 static TEST_INTERRUPT_COUNT: AtomicU64 = AtomicU64::new(0);
