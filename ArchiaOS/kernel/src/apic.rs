@@ -187,13 +187,13 @@ impl IoApic {
         let version = unsafe { self.read_register_locked(1) };
         let count = ((version >> 16) & 0xff) + 1;
         if pin >= count { return Err(ApicError::InvalidGlobalInterrupt); }
-        let low_register = 0x10u32 + pin * 2;
-        if low_register + 1 > u8::MAX as u32 { return Err(ApicError::InvalidGlobalInterrupt); }
+        let (low_register, high_register) =
+            ioapic_redirection_registers(gsi, self.gsi_base, count)?;
         // Keep the low dword masked before changing destination or trigger data.
         unsafe {
-            self.write_register_locked(low_register as u8, low | APIC_LVT_MASKED);
-            self.write_register_locked((low_register + 1) as u8, high);
-            self.write_register_locked(low_register as u8, low | APIC_LVT_MASKED);
+            self.write_register_locked(low_register, low | APIC_LVT_MASKED);
+            self.write_register_locked(high_register, high);
+            self.write_register_locked(low_register, low | APIC_LVT_MASKED);
         }
         Ok(())
     }
@@ -208,10 +208,10 @@ impl IoApic {
         let version = unsafe { self.read_register_locked(1) };
         let count = ((version >> 16) & 0xff) + 1;
         if pin >= count { return Err(ApicError::InvalidGlobalInterrupt); }
-        let low_register = 0x10u32 + pin * 2;
-        if low_register > u8::MAX as u32 { return Err(ApicError::InvalidGlobalInterrupt); }
-        let low = unsafe { self.read_register_locked(low_register as u8) };
-        unsafe { self.write_register_locked(low_register as u8, low | APIC_LVT_MASKED) };
+        let (low_register, _) =
+            ioapic_redirection_registers(gsi, self.gsi_base, count)?;
+        let low = unsafe { self.read_register_locked(low_register) };
+        unsafe { self.write_register_locked(low_register, low | APIC_LVT_MASKED) };
         Ok(())
     }
 }
@@ -221,6 +221,27 @@ impl Drop for IoApicGuard<'_> {
     fn drop(&mut self) {
         self.0.store(false, Ordering::Release);
     }
+}
+
+/// Resolve a GSI to the IOAPIC's low/high redirection registers after the
+/// controller's redirection count has been read and validated.
+pub fn ioapic_redirection_registers(
+    gsi: u32,
+    gsi_base: u32,
+    redirection_count: u32,
+) -> Result<(u8, u8), ApicError> {
+    let pin = gsi.checked_sub(gsi_base).ok_or(ApicError::InvalidGlobalInterrupt)?;
+    if pin >= redirection_count {
+        return Err(ApicError::InvalidGlobalInterrupt);
+    }
+    let low = 0x10u32
+        .checked_add(pin.checked_mul(2).ok_or(ApicError::InvalidGlobalInterrupt)?)
+        .ok_or(ApicError::InvalidGlobalInterrupt)?;
+    let high = low.checked_add(1).ok_or(ApicError::InvalidGlobalInterrupt)?;
+    if high > u8::MAX as u32 {
+        return Err(ApicError::InvalidGlobalInterrupt);
+    }
+    Ok((low as u8, high as u8))
 }
 
 /// Validate the APIC base MSR before any local-APIC MMIO access.
@@ -324,6 +345,17 @@ mod tests {
         assert_eq!(timer_divide_encoding(1), Ok(0b1011));
         assert_eq!(timer_divide_encoding(16), Ok(0b0011));
         assert_eq!(timer_divide_encoding(3), Err(ApicError::InvalidDivide));
+    }
+
+    #[test]
+    fn ioapic_gsi_mapping_checks_ranges_and_register_overflow() {
+        assert_eq!(ioapic_redirection_registers(0, 0, 24), Ok((0x10, 0x11)));
+        assert_eq!(ioapic_redirection_registers(23, 0, 24), Ok((0x3e, 0x3f)));
+        assert_eq!(ioapic_redirection_registers(24, 0, 24), Err(ApicError::InvalidGlobalInterrupt));
+        assert_eq!(ioapic_redirection_registers(9, 10, 24), Err(ApicError::InvalidGlobalInterrupt));
+        assert_eq!(ioapic_redirection_registers(u32::MAX, 0, u32::MAX), Err(ApicError::InvalidGlobalInterrupt));
+        assert_eq!(ioapic_redirection_registers(119, 0, 120), Ok((0xfe, 0xff)));
+        assert_eq!(ioapic_redirection_registers(120, 0, 121), Err(ApicError::InvalidGlobalInterrupt));
     }
 
     #[test]
