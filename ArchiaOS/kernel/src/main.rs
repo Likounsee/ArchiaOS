@@ -9,6 +9,69 @@ mod pci;
 mod scheduler;
 mod context;
 mod interrupts;
+mod pic;
+
+/// Legacy dual 8259 PIC setup. All lines stay masked until matching IDT
+/// handlers and an interrupt-safe wakeup path are implemented.
+mod pic {
+    use super::{port_out, port_in};
+
+    const MASTER_COMMAND: u16 = 0x20;
+    const MASTER_DATA: u16 = 0x21;
+    const SLAVE_COMMAND: u16 = 0xA0;
+    const SLAVE_DATA: u16 = 0xA1;
+    const ICW1_INITIALIZE: u8 = 0x11;
+    const ICW4_8086: u8 = 0x01;
+    const MASTER_VECTOR_BASE: u8 = 0x20;
+    const SLAVE_VECTOR_BASE: u8 = 0x28;
+
+    #[inline]
+    unsafe fn wait() {
+        // Port 0x80 is the conventional legacy I/O delay port.
+        unsafe { port_out(0x80, 0) };
+    }
+
+    /// Remap legacy PIC vectors away from CPU exceptions and mask every IRQ.
+    ///
+    /// This deliberately does not enable interrupts or unmask any line. The
+    /// IDT currently installs exception vectors only; IRQs must remain masked
+    /// until their handlers and acknowledgement path are installed.
+    pub unsafe fn initialize_masked() {
+        // Mask first so stale firmware/PIC state cannot deliver an IRQ during
+        // the remapping sequence. IF is also kept clear by the boot entry.
+        unsafe {
+            port_out(MASTER_DATA, 0xFF);
+            port_out(SLAVE_DATA, 0xFF);
+
+            let master_mask = port_in(MASTER_DATA);
+            let slave_mask = port_in(SLAVE_DATA);
+
+            port_out(MASTER_COMMAND, ICW1_INITIALIZE);
+            wait();
+            port_out(SLAVE_COMMAND, ICW1_INITIALIZE);
+            wait();
+            port_out(MASTER_DATA, MASTER_VECTOR_BASE);
+            wait();
+            port_out(SLAVE_DATA, SLAVE_VECTOR_BASE);
+            wait();
+            port_out(MASTER_DATA, 1 << 2);
+            wait();
+            port_out(SLAVE_DATA, 2);
+            wait();
+            port_out(MASTER_DATA, ICW4_8086);
+            wait();
+            port_out(SLAVE_COMMAND, ICW4_8086);
+            wait();
+
+            // Keep all lines masked even if firmware left some enabled.
+            // Read prior masks only to make the destructive reset explicit;
+            // they are intentionally not restored.
+            let _ = (master_mask, slave_mask);
+            port_out(MASTER_DATA, 0xFF);
+            port_out(SLAVE_DATA, 0xFF);
+        }
+    }
+}
 
 use core::arch::{asm, global_asm};
 use core::fmt::{self, Write};
@@ -198,6 +261,10 @@ pub extern "C" fn rust_kernel_main(
     // SAFETY: early boot is single-threaded and maskable interrupts remain disabled.
     unsafe { interrupts::install() };
     let _ = writeln!(serial, "ArchiaOS: x86-64 exception IDT installed (vectors 0-31)");
+    // Remap the legacy PIC away from CPU exception vectors, but keep every
+    // hardware IRQ masked until dedicated IRQ gates and dispatch are ready.
+    unsafe { pic::initialize_masked() };
+    let _ = writeln!(serial, "ArchiaOS: legacy PIC remapped to vectors 32-47 (all IRQs masked)");
     let _ = writeln!(serial, "ArchiaOS: custom UEFI bootloader entered production kernel");
     let _ = writeln!(serial, "ArchiaOS: validating ARCHIABI BootInfo and UEFI memory map");
 
