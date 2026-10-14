@@ -238,6 +238,7 @@ global_asm!(
     "isr_common:",
     "movq (%rsp), %rdi",
     "movq 8(%rsp), %rsi",
+    "movq 16(%rsp), %rdx",
     "andq $-16, %rsp",
     "call archiaos_exception_dispatch",
     ".Larchiaos_exception_halt:",
