@@ -396,7 +396,7 @@ static mut IOAPIC_STORAGE: [core::mem::MaybeUninit<apic::IoApic>; acpi_madt::MAX
 /// can be enabled. The bootloader already audited the MADT's physical metadata.
 unsafe fn initialize_ioapics_masked(
     topology: &acpi_madt::MadtInfo,
-) -> Result<usize, &'static str> {
+) -> Result<(usize, usize), &'static str> {
     acpi_madt::validate_xapic_topology(topology)
         .map_err(|_| "MADT topology failed validation before IOAPIC setup")?;
     let storage = core::ptr::addr_of_mut!(IOAPIC_STORAGE);
@@ -471,8 +471,7 @@ unsafe fn initialize_ioapics_masked(
     }
     // Routes use vectors 0x50..=0x5f and are still masked; handlers and a
     // deliberate unmask policy are required before these can be delivered.
-    let _ = configured;
-    Ok(initialized)
+    Ok((initialized, configured))
 }
 
 fn halt_forever() -> ! {
@@ -715,8 +714,8 @@ pub extern "C" fn rust_kernel_main(
                         topology.local_apic_address, topology.enabled_processor_count(),
                         topology.io_apic_count, topology.override_count, topology.has_legacy_pic);
                     match unsafe { initialize_ioapics_masked(&topology) } {
-                        Ok(count) => {
-                            let _ = writeln!(serial, "ArchiaOS: {} IOAPIC controller(s) mapped; all redirection entries masked and ISA routes staged", count);
+                        Ok((count, routes)) => {
+                            let _ = writeln!(serial, "ArchiaOS: {} IOAPIC controller(s) mapped; {} ISA routes configured and kept masked", count, routes);
                         }
                         Err(reason) => {
                             let _ = writeln!(serial, "ArchiaOS: IOAPIC initialization deferred: {}", reason);
