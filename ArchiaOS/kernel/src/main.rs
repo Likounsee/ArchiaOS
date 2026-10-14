@@ -316,6 +316,73 @@ unsafe fn initialize_local_apic() -> Result<(), &'static str> {
     Ok(())
 }
 
+
+/// Follow the bootloader-audited, identity-mapped ACPI chain and parse the MADT.
+/// The loader validates and retains RSDP, root table, and child SDT ranges before
+/// handoff; this routine still validates each table's own length/checksum again.
+unsafe fn discover_madt(rsdp_physical: u64) -> Result<acpi_madt::MadtInfo, &'static str> {
+    if rsdp_physical == 0 || rsdp_physical > usize::MAX as u64 {
+        return Err("BootInfo has no usable ACPI RSDP address");
+    }
+    let rsdp_ptr = rsdp_physical as *const u8;
+    // SAFETY: the bootloader retained and identity-mapped the minimum RSDP prefix.
+    let prefix = unsafe { core::slice::from_raw_parts(rsdp_ptr, 20) };
+    let revision = *prefix.get(15).ok_or("truncated ACPI RSDP")?;
+    let rsdp_len = if revision >= 2 {
+        // SAFETY: the bootloader audited the full extended RSDP range.
+        let extended = unsafe { core::slice::from_raw_parts(rsdp_ptr, 36) };
+        u32::from_le_bytes([extended[20], extended[21], extended[22], extended[23]]) as usize
+    } else {
+        20
+    };
+    if rsdp_len < 20 || rsdp_len > 4096 {
+        return Err("ACPI RSDP length is outside the supported bounds");
+    }
+    // SAFETY: the complete RSDP was checked and retained by the bootloader.
+    let rsdp_bytes = unsafe { core::slice::from_raw_parts(rsdp_ptr, rsdp_len) };
+    let rsdp = acpi_madt::parse_rsdp(rsdp_bytes).map_err(|_| "ACPI RSDP validation failed")?;
+    let (root_address, expected_xsdt) = match rsdp.xsdt_address {
+        Some(address) => (address, true),
+        None => (u64::from(rsdp.rsdt_address), false),
+    };
+    if root_address == 0 || root_address > usize::MAX as u64 {
+        return Err("ACPI root table address is invalid");
+    }
+    let root_ptr = root_address as *const u8;
+    // SAFETY: the bootloader audited the root SDT header and its full mapping.
+    let root_prefix = unsafe { core::slice::from_raw_parts(root_ptr, 36) };
+    let root_len = u32::from_le_bytes([root_prefix[4], root_prefix[5], root_prefix[6], root_prefix[7]]) as usize;
+    if root_len < 36 || root_len > 1024 * 1024 {
+        return Err("ACPI root table length is outside the supported bounds");
+    }
+    // SAFETY: the bootloader audited and retained the full root table.
+    let root_bytes = unsafe { core::slice::from_raw_parts(root_ptr, root_len) };
+    let root = acpi_madt::parse_root_table(root_bytes).map_err(|_| "ACPI root table validation failed")?;
+    if root.xsdt != expected_xsdt {
+        return Err("ACPI root signature does not match RSDP revision metadata");
+    }
+
+    for address in root.addresses.iter().take(root.count).flatten() {
+        if *address == 0 || *address > usize::MAX as u64 {
+            continue;
+        }
+        let table_ptr = *address as *const u8;
+        // SAFETY: the bootloader audited every directly referenced root child SDT.
+        let header = unsafe { core::slice::from_raw_parts(table_ptr, 36) };
+        if header.get(0..4) != Some(b"APIC".as_slice()) {
+            continue;
+        }
+        let length = u32::from_le_bytes([header[4], header[5], header[6], header[7]]) as usize;
+        if length < 44 || length > 1024 * 1024 {
+            return Err("ACPI MADT length is outside the supported bounds");
+        }
+        // SAFETY: the complete child table range was validated by the bootloader.
+        let bytes = unsafe { core::slice::from_raw_parts(table_ptr, length) };
+        return acpi_madt::parse_madt(bytes).map_err(|_| "ACPI MADT validation failed");
+    }
+    Err("ACPI root table contains no MADT")
+}
+
 fn halt_forever() -> ! {
     loop { unsafe { asm!("cli; hlt", options(nomem, nostack)) }; }
 }
@@ -543,6 +610,26 @@ pub extern "C" fn rust_kernel_main(
         halt_forever();
     }
     let _ = writeln!(serial, "ArchiaOS: VMM mapping self-test passed");
+
+    // Discover ACPI topology from the firmware tables retained by the loader.
+    // This stage only reads/validates metadata; it does not program IOAPIC routes.
+    match unsafe { discover_madt(info.acpi_rsdp) } {
+        Ok(topology) => {
+            match acpi_madt::validate_xapic_topology(&topology) {
+                Ok(()) => {
+                    let _ = writeln!(serial, "ArchiaOS: ACPI MADT validated: local APIC={:#x}, CPUs={}, IOAPICs={}, overrides={}, legacy PIC={}",
+                        topology.local_apic_address, topology.enabled_processor_count(),
+                        topology.io_apic_count, topology.override_count, topology.has_legacy_pic);
+                }
+                Err(error) => {
+                    let _ = writeln!(serial, "ArchiaOS: ACPI MADT topology rejected: {:?}", error);
+                }
+            }
+        }
+        Err(reason) => {
+            let _ = writeln!(serial, "ArchiaOS: ACPI MADT unavailable: {}", reason);
+        }
+    }
 
     // Initialize the bootstrap CPU's xAPIC only after the page-table allocator
     // is operational. No IOAPIC routes or timer interrupts are enabled yet.
