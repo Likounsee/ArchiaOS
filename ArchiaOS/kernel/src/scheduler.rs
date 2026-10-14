@@ -18,6 +18,17 @@ pub enum TaskState {
     Exited,
 }
 
+/// Snapshot of scheduler occupancy for diagnostics and idle-path decisions.
+/// Counts are observational only; they never reserve slots or change task state.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct TaskCounts {
+    pub empty: usize,
+    pub runnable: usize,
+    pub running: usize,
+    pub blocked: usize,
+    pub exited: usize,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SchedulerError {
     NoTaskSlot,
@@ -89,6 +100,24 @@ impl Scheduler {
 
     pub fn current(&self) -> Option<TaskId> {
         self.current.map(TaskId)
+    }
+
+    /// Return a read-only count of tasks in each lifecycle state.
+    ///
+    /// This is intended for diagnostics and tests; callers must still validate
+    /// scheduler consistency separately when required.
+    pub fn task_counts(&self) -> TaskCounts {
+        let mut counts = TaskCounts::default();
+        for task in &self.tasks {
+            match task.state {
+                TaskState::Empty => counts.empty += 1,
+                TaskState::Runnable => counts.runnable += 1,
+                TaskState::Running => counts.running += 1,
+                TaskState::Blocked => counts.blocked += 1,
+                TaskState::Exited => counts.exited += 1,
+            }
+        }
+        counts
     }
 
     /// Start scheduling when no task is currently running.
@@ -620,6 +649,45 @@ mod tests {
     #[test]
     fn round_robin_block_wake_exit_and_capacity() {
         assert_eq!(Scheduler::self_test(), Ok(()));
+    }
+
+    #[test]
+    fn task_counts_track_create_block_wake_and_exit_without_mutating_state() {
+        let mut scheduler = Scheduler::new();
+        assert_eq!(scheduler.task_counts(), TaskCounts {
+            empty: MAX_TASKS, runnable: 0, running: 0, blocked: 0, exited: 0,
+        });
+
+        let first = scheduler.create_task().unwrap();
+        let second = scheduler.create_task().unwrap();
+        assert_eq!(scheduler.task_counts(), TaskCounts {
+            empty: MAX_TASKS - 2, runnable: 2, running: 0, blocked: 0, exited: 0,
+        });
+
+        assert_eq!(scheduler.schedule(), Ok(first));
+        assert_eq!(scheduler.task_counts(), TaskCounts {
+            empty: MAX_TASKS - 2, runnable: 1, running: 1, blocked: 0, exited: 0,
+        });
+
+        assert_eq!(scheduler.block_current_or_idle(), Ok(DispatchDecision::Run(second)));
+        assert_eq!(scheduler.task_counts(), TaskCounts {
+            empty: MAX_TASKS - 2, runnable: 0, running: 1, blocked: 1, exited: 0,
+        });
+
+        assert_eq!(scheduler.exit_current_or_idle(), Ok(DispatchDecision::Idle(IdleReason::WaitingForWakeup)));
+        assert_eq!(scheduler.task_counts(), TaskCounts {
+            empty: MAX_TASKS - 2, runnable: 0, running: 0, blocked: 1, exited: 1,
+        });
+
+        scheduler.wake(first).unwrap();
+        assert_eq!(scheduler.task_counts(), TaskCounts {
+            empty: MAX_TASKS - 2, runnable: 1, running: 0, blocked: 0, exited: 1,
+        });
+        assert_eq!(scheduler.dispatch_or_idle(), Ok(DispatchDecision::Run(first)));
+        assert_eq!(scheduler.task_counts(), TaskCounts {
+            empty: MAX_TASKS - 2, runnable: 0, running: 1, blocked: 0, exited: 1,
+        });
+        scheduler.check_invariants().unwrap();
     }
 
     #[test]
