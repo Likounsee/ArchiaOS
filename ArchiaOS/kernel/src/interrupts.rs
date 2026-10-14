@@ -86,6 +86,45 @@ extern "C" {
 /// serviced; false enters the fatal unhandled-IRQ path without sending EOI.
 pub type PicIrqHandler = extern "C" fn(irq: u8) -> bool;
 
+/// Local-APIC vector handler, invoked from hard-interrupt context.
+/// Return true only if the interrupt source was serviced.
+pub type ApicVectorHandler = extern "C" fn(vector: u8) -> bool;
+
+/// APIC vectors are independently registered; the APIC routing layer must
+/// remain masked until a returning IDT stub and EOI path are active.
+static APIC_VECTOR_HANDLERS: [AtomicUsize; IDT_ENTRY_COUNT] =
+    [const { AtomicUsize::new(0) }; IDT_ENTRY_COUNT];
+
+/// Register a handler for a non-reserved local-APIC hardware vector.
+/// This only publishes the callback; it does not install an IDT gate or
+/// enable/unmask any interrupt source. Call before enabling delivery.
+pub fn register_apic_vector_handler(
+    vector: u8,
+    handler: ApicVectorHandler,
+) -> Result<(), crate::apic::ApicError> {
+    crate::apic::validate_hardware_irq_vector(vector)?;
+    APIC_VECTOR_HANDLERS[usize::from(vector)]
+        .compare_exchange(0, handler as usize, Ordering::AcqRel, Ordering::Acquire)
+        .map(|_| ())
+        .map_err(|_| crate::apic::ApicError::InvalidVector)
+}
+
+/// Invoke a previously registered APIC callback. The IDT/assembly entry path
+/// must call this only after validating the frame and before issuing exactly
+/// one local-APIC EOI for a real hardware vector.
+pub(crate) fn dispatch_registered_apic_vector(vector: u8) -> bool {
+    if crate::apic::validate_hardware_irq_vector(vector).is_err() {
+        return false;
+    }
+    let raw = APIC_VECTOR_HANDLERS[usize::from(vector)].load(Ordering::Acquire);
+    if raw == 0 {
+        return false;
+    }
+    // SAFETY: registration stores only function pointers with this ABI.
+    let handler: ApicVectorHandler = unsafe { core::mem::transmute(raw) };
+    handler(vector)
+}
+
 static PIC_IRQ_HANDLERS: [AtomicUsize; 16] =
     [const { AtomicUsize::new(0) }; 16];
 
