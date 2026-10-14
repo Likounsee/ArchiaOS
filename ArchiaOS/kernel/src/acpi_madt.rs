@@ -307,6 +307,10 @@ pub fn parse_madt(bytes: &[u8]) -> Result<MadtInfo, MadtError> {
         u32_at(bytes, 40).ok_or(MadtError::InvalidLength)? & 1 != 0,
     );
     let mut cursor = MADT_FIXED;
+    // ACPI permits one Local APIC Address Override. Accepting several and
+    // silently taking the last would make the effective MMIO base depend on
+    // record order, even though every individual record is structurally valid.
+    let mut saw_local_apic_override = false;
     while cursor < length {
         if length - cursor < 2 { return Err(MadtError::TruncatedEntry); }
         let kind = bytes[cursor];
@@ -354,7 +358,15 @@ pub fn parse_madt(bytes: &[u8]) -> Result<MadtInfo, MadtError> {
             }
             5 => {
                 if entry_len < 12 { return Err(MadtError::InvalidEntryLength); }
-                info.local_apic_address = u64_at(e, 4).ok_or(MadtError::InvalidEntryLength)?;
+                if saw_local_apic_override {
+                    return Err(MadtError::InvalidLocalApicAddress);
+                }
+                let address = u64_at(e, 4).ok_or(MadtError::InvalidEntryLength)?;
+                if address == 0 || address & 0xfff != 0 {
+                    return Err(MadtError::InvalidLocalApicAddress);
+                }
+                info.local_apic_address = address;
+                saw_local_apic_override = true;
             }
             // Unknown ACPI-defined/future records are skipped by their validated length.
             _ => {}
