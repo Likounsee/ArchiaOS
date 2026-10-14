@@ -372,6 +372,16 @@ pub extern "C" fn rust_kernel_main(
             halt_forever();
         }
     }
+    match scheduler::runtime_idle_wakeup_self_test() {
+        Ok(()) => {
+            let _ = writeln!(serial, "ArchiaOS: block-to-idle, wakeup and task-resume self-test passed");
+        }
+        Err(error) => {
+            paint_status_line(info, 5, FB_FAIL);
+            let _ = writeln!(serial, "ArchiaOS: idle/wakeup runtime self-test failed: {:?}", error);
+            halt_forever();
+        }
+    }
     let _ = writeln!(serial, "ArchiaOS: UEFI kernel entry validated");
     halt_forever();
 }
