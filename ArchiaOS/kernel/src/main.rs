@@ -13,7 +13,7 @@ mod interrupts;
 /// Legacy dual 8259 PIC setup. All lines stay masked until matching IDT
 /// handlers and an interrupt-safe wakeup path are implemented.
 mod pic {
-    use super::port_out;
+    use super::{port_in, port_out};
 
     const MASTER_COMMAND: u16 = 0x20;
     const MASTER_DATA: u16 = 0x21;
@@ -35,6 +35,49 @@ mod pic {
     /// This deliberately does not enable interrupts or unmask any line. The
     /// IDT currently installs exception vectors only; IRQs must remain masked
     /// until their handlers and acknowledgement path are installed.
+    /// Mask one legacy IRQ line without enabling any other line.
+    ///
+    /// This is intentionally the only mask-control API until real IRQ stubs
+    /// and handlers are installed in the IDT.
+    pub unsafe fn mask_irq(irq: u8) -> Result<(), ()> {
+        if irq >= 16 {
+            return Err(());
+        }
+
+        unsafe {
+            if irq < 8 {
+                let mask = port_in(MASTER_DATA) | (1u8 << irq);
+                port_out(MASTER_DATA, mask);
+            } else {
+                let slave_mask = port_in(SLAVE_DATA) | (1u8 << (irq - 8));
+                port_out(SLAVE_DATA, slave_mask);
+                // The cascade line is unnecessary when every slave IRQ is masked.
+                if slave_mask == 0xFF {
+                    let master_mask = port_in(MASTER_DATA) | (1u8 << 2);
+                    port_out(MASTER_DATA, master_mask);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Acknowledge a delivered legacy PIC IRQ (slave first, then master).
+    ///
+    /// Call only from a future, validated IRQ dispatcher. It does not enable
+    /// interrupts and does not alter masks.
+    pub unsafe fn end_of_interrupt(irq: u8) -> Result<(), ()> {
+        if irq >= 16 {
+            return Err(());
+        }
+        unsafe {
+            if irq >= 8 {
+                port_out(SLAVE_COMMAND, 0x20);
+            }
+            port_out(MASTER_COMMAND, 0x20);
+        }
+        Ok(())
+    }
+
     pub unsafe fn initialize_masked() {
         // Mask first so stale firmware/PIC state cannot deliver an IRQ during
         // the remapping sequence. IF is also kept clear by the boot entry.
