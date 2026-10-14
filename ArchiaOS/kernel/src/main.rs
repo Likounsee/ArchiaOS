@@ -34,8 +34,8 @@ mod pic {
     /// Remap legacy PIC vectors away from CPU exceptions and mask every IRQ.
     ///
     /// This deliberately does not enable interrupts or unmask any line. The
-    /// IDT currently installs exception vectors only; IRQs must remain masked
-    /// until their handlers and acknowledgement path are installed.
+    /// IDT has vector-specific stubs, but IRQs must remain masked until a
+    /// returning dispatcher and acknowledgement path are installed.
     /// Mask one legacy IRQ line without enabling any other line.
     ///
     /// This is intentionally the only mask-control API until real IRQ stubs
