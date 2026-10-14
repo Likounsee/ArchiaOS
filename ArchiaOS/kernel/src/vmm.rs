@@ -116,43 +116,11 @@ pub fn map_physical_page(physical_address: u64) -> Result<*mut u8, VmmError> {
     Ok(address as *mut u8)
 }
 
-/// Remove an alias after verifying that its leaf still references the requested frame.
+/// Remove a physical alias through the common page-table cleanup path.
 pub fn unmap_physical_page(physical_address: u64) -> Result<(), VmmError> {
     let address = virtual_address(physical_address)?;
-    unsafe {
-        let mut cr3: u64;
-        asm!("mov {}, cr3", out(reg) cr3, options(nomem, nostack, preserves_flags));
-        let root = cr3 & ADDRESS_MASK;
-        if root >= FOUR_GIB {
-            return Err(VmmError::PageTableOutsideIdentityMap);
-        }
-        let pml4 = root as *mut u64;
-        let pml4_index = ((address >> 39) & 0x1ff) as usize;
-        let pdpt_index = ((address >> 30) & 0x1ff) as usize;
-        let pd_index = ((address >> 21) & 0x1ff) as usize;
-        let pt_index = ((address >> 12) & 0x1ff) as usize;
-
-        let pml4e = ptr::read_volatile(pml4.add(pml4_index));
-        if pml4e & PRESENT == 0 { return Err(VmmError::NotMapped); }
-        let pdpt = table_pointer(pml4e)?;
-        let pdpte = ptr::read_volatile(pdpt.add(pdpt_index));
-        if pdpte & PRESENT == 0 { return Err(VmmError::NotMapped); }
-        if pdpte & LARGE_PAGE != 0 { return Err(VmmError::LargePageConflict); }
-        let pd = table_pointer(pdpte)?;
-        let pde = ptr::read_volatile(pd.add(pd_index));
-        if pde & PRESENT == 0 { return Err(VmmError::NotMapped); }
-        if pde & LARGE_PAGE != 0 { return Err(VmmError::LargePageConflict); }
-        let pt = table_pointer(pde)?;
-        let pte = pt.add(pt_index);
-        let leaf = ptr::read_volatile(pte);
-        if leaf & PRESENT == 0 { return Err(VmmError::NotMapped); }
-        if leaf & ADDRESS_MASK != physical_address { return Err(VmmError::MappingConflict); }
-        ptr::write_volatile(pte, 0);
-        asm!("invlpg [{}]", in(reg) address, options(nostack, preserves_flags));
-    }
-    Ok(())
+    unmap_kernel_page(address, physical_address)
 }
-
 
 /// Map a physical frame at a caller-selected kernel virtual address.
 ///
@@ -213,6 +181,15 @@ pub fn map_kernel_page(
     Ok(())
 }
 
+unsafe fn table_is_empty(table: *mut u64) -> bool {
+    for index in 0..512usize {
+        if unsafe { ptr::read_volatile(table.add(index)) } & PRESENT != 0 {
+            return false;
+        }
+    }
+    true
+}
+
 /// Remove a kernel mapping only if its leaf still references the expected frame.
 pub fn unmap_kernel_page(
     target_virtual_address: u64,
@@ -260,8 +237,32 @@ pub fn unmap_kernel_page(
         if leaf & ADDRESS_MASK != expected_physical_address {
             return Err(VmmError::MappingConflict);
         }
+        let pt_physical = pde & ADDRESS_MASK;
+        let pd_physical = pdpte & ADDRESS_MASK;
+        let pdpt_physical = pml4e & ADDRESS_MASK;
         ptr::write_volatile(pte, 0);
         asm!("invlpg [{}]", in(reg) target_virtual_address, options(nostack, preserves_flags));
+
+        // Reclaim only empty tables that the PMM confirms are allocated. UEFI-owned
+        // tables are reserved and must never be returned to the physical allocator.
+        if memory::is_allocated_page(pt_physical) && table_is_empty(pt) {
+            ptr::write_volatile(pd.add(pd_index), 0);
+            if !memory::free_page(pt_physical) {
+                return Err(VmmError::FreeFailed);
+            }
+            if memory::is_allocated_page(pd_physical) && table_is_empty(pd) {
+                ptr::write_volatile(pdpt.add(pdpt_index), 0);
+                if !memory::free_page(pd_physical) {
+                    return Err(VmmError::FreeFailed);
+                }
+                if memory::is_allocated_page(pdpt_physical) && table_is_empty(pdpt) {
+                    ptr::write_volatile(pml4.add(pml4_index), 0);
+                    if !memory::free_page(pdpt_physical) {
+                        return Err(VmmError::FreeFailed);
+                    }
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -315,6 +316,7 @@ fn test_one<W: Write>(log: &mut W, physical_address: u64) -> Result<(), VmmError
 
 /// Boot-time integration test against the active CR3, including high RAM if available.
 pub fn self_test<W: Write>(log: &mut W) -> Result<(), VmmError> {
+    let free_before = memory::free_page_count();
     test_general_mapping(log)?;
     let low = memory::alloc_page_below_4g().ok_or(VmmError::OutOfPageTables)?;
     test_one(log, low)?;
@@ -327,5 +329,9 @@ pub fn self_test<W: Write>(log: &mut W) -> Result<(), VmmError> {
             let _ = writeln!(log, "VMM: no allocatable RAM above 4 GiB in this boot; high-memory path not exercised");
         }
     }
+    if memory::free_page_count() != free_before {
+        return Err(VmmError::FreeFailed);
+    }
+    let _ = writeln!(log, "VMM: physical frame and intermediate page-table counts restored after unmap");
     Ok(())
 }
