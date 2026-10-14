@@ -24,7 +24,7 @@ def fail(message: str) -> None:
 def main() -> None:
     source = SOURCE.read_text(encoding="utf-8")
     vector_source = VECTOR_SOURCE.read_text(encoding="utf-8")
-    count_match = re.search(r'const IDT_ENTRY_COUNT: usize = (\\d+);', source)
+    count_match = re.search(r'const IDT_ENTRY_COUNT: usize = (\d+);', source)
     if not count_match or int(count_match.group(1)) != 256:
         fail("IDT_ENTRY_COUNT must remain exactly 256")
     metadata_match = re.search(
