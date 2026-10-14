@@ -431,6 +431,12 @@ unsafe fn initialize_ioapics_masked(
     // redirection masked. This makes polarity/trigger and GSI selection explicit
     // before any device handler is allowed to receive an interrupt.
     let bsp_apic_id = (unsafe { core::arch::x86_64::__cpuid(1) }.ebx >> 24) & 0xff;
+    let bsp_is_in_madt = topology.processors.iter()
+        .take(topology.processor_count).flatten()
+        .any(|cpu| cpu.apic_id as u32 == bsp_apic_id && (cpu.enabled || cpu.online_capable));
+    if !bsp_is_in_madt {
+        return Err("bootstrap CPU APIC ID is absent from the validated MADT");
+    }
     let mut configured = 0usize;
     for irq in 0u8..16 {
         let mut gsi = u32::from(irq);
@@ -703,7 +709,7 @@ pub extern "C" fn rust_kernel_main(
     let _ = writeln!(serial, "ArchiaOS: VMM mapping self-test passed");
 
     // Discover ACPI topology from the firmware tables retained by the loader.
-    // This stage only reads/validates metadata; it does not program IOAPIC routes.
+    // Validate the firmware topology, then stage ISA routes with every entry masked.
     let mut validated_madt_local_apic_base = None;
     match unsafe { discover_madt(info.acpi_rsdp) } {
         Ok(topology) => {
