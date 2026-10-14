@@ -761,6 +761,25 @@ mod tests {
     }
 
     #[test]
+    fn block_and_exit_without_current_task_fail_without_mutating_idle_state() {
+        let mut scheduler = Scheduler::new();
+        let task = scheduler.create_task().unwrap();
+
+        assert_eq!(scheduler.block_current_or_idle(), Err(SchedulerError::NoCurrentTask));
+        assert_eq!(scheduler.exit_current_or_idle(), Err(SchedulerError::NoCurrentTask));
+        assert_eq!(scheduler.current(), None);
+        assert_eq!(scheduler.state(task), Ok(TaskState::Runnable));
+        assert_eq!(scheduler.check_invariants(), Ok(()));
+
+        assert_eq!(scheduler.schedule(), Ok(task));
+        assert_eq!(scheduler.block_current_or_idle(), Ok(DispatchDecision::Idle(IdleReason::WaitingForWakeup)));
+        assert_eq!(scheduler.block_current_or_idle(), Err(SchedulerError::NoCurrentTask));
+        assert_eq!(scheduler.current(), None);
+        assert_eq!(scheduler.state(task), Ok(TaskState::Blocked));
+        assert_eq!(scheduler.check_invariants(), Ok(()));
+    }
+
+    #[test]
     fn no_runnable_task_errors_leave_blocked_or_exited_state_consistent() {
         let mut blocked = Scheduler::new();
         let blocked_task = blocked.create_task().unwrap();
