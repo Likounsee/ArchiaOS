@@ -76,10 +76,13 @@ static mut IDT: [IdtEntry; IDT_ENTRY_COUNT] = [IdtEntry::MISSING; IDT_ENTRY_COUN
 extern "C" {
     static isr_stub_table: [u64; IDT_ENTRY_COUNT];
     fn isr_test_return_stub();
+    fn isr_spurious_return_stub();
 }
 
 const TEST_RETURN_VECTOR: usize = 0xF1;
+const SPURIOUS_VECTOR: usize = 0xFF;
 static TEST_INTERRUPT_COUNT: AtomicU64 = AtomicU64::new(0);
+static SPURIOUS_INTERRUPT_COUNT: AtomicU64 = AtomicU64::new(0);
 
 #[repr(C)]
 struct TestInterruptFrame {
@@ -91,6 +94,12 @@ struct TestInterruptFrame {
 #[no_mangle]
 extern "C" fn archiaos_test_interrupt_dispatch(frame: *mut TestInterruptFrame) -> *mut TestInterruptFrame {
     TEST_INTERRUPT_COUNT.fetch_add(1, Ordering::SeqCst);
+    frame
+}
+
+#[no_mangle]
+extern "C" fn archiaos_spurious_interrupt_dispatch(frame: *mut TestInterruptFrame) -> *mut TestInterruptFrame {
+    SPURIOUS_INTERRUPT_COUNT.fetch_add(1, Ordering::SeqCst);
     frame
 }
 
@@ -110,6 +119,22 @@ pub fn return_path_self_test() -> bool {
         }
     }
     TEST_INTERRUPT_COUNT.load(Ordering::SeqCst) == before.wrapping_add(1)
+}
+
+/// Exercise the dedicated spurious-vector gate. A local-APIC spurious interrupt
+/// returns without EOI, so this path only records the event.
+pub fn spurious_return_path_self_test() -> bool {
+    let before = SPURIOUS_INTERRUPT_COUNT.load(Ordering::SeqCst);
+    let flags: u64;
+    // SAFETY: install() installs the dedicated 0xFF gate before this test runs.
+    unsafe {
+        asm!("pushfq", "pop {flags}", "cli", flags = out(reg) flags);
+        asm!("int 0xFF");
+        if saved_interrupts_enabled(flags) {
+            asm!("sti", options(nostack));
+        }
+    }
+    SPURIOUS_INTERRUPT_COUNT.load(Ordering::SeqCst) == before.wrapping_add(1)
 }
 
 #[inline]
@@ -138,6 +163,10 @@ pub unsafe fn install() {
     // software-interrupt return stub. Hardware IRQ vectors remain fatal/masked.
     let test_gate = IdtEntry::interrupt_gate(isr_test_return_stub as usize as u64, selector);
     unsafe { core::ptr::addr_of_mut!(IDT).cast::<IdtEntry>().add(TEST_RETURN_VECTOR).write(test_gate) };
+
+    // The APIC spurious vector is special: return directly and do not send EOI.
+    let spurious_gate = IdtEntry::interrupt_gate(isr_spurious_return_stub as usize as u64, selector);
+    unsafe { core::ptr::addr_of_mut!(IDT).cast::<IdtEntry>().add(SPURIOUS_VECTOR).write(spurious_gate) };
 
     let descriptor = Idtr {
         limit: (core::mem::size_of::<IdtEntry>() * IDT_ENTRY_COUNT - 1) as u16,
@@ -1443,6 +1472,46 @@ global_asm!(
     "movq %rsp, %rdi",
     "andq $-16, %rsp",
     "call archiaos_test_interrupt_dispatch",
+    "movq %rax, %rsp",
+    "popq %r15",
+    "popq %r14",
+    "popq %r13",
+    "popq %r12",
+    "popq %r11",
+    "popq %r10",
+    "popq %r9",
+    "popq %r8",
+    "popq %rdi",
+    "popq %rsi",
+    "popq %rbp",
+    "popq %rbx",
+    "popq %rdx",
+    "popq %rcx",
+    "popq %rax",
+    "addq $16, %rsp",
+    "iretq",
+    ".global isr_spurious_return_stub",
+    "isr_spurious_return_stub:",
+    "pushq $0",
+    "pushq $255",
+    "pushq %rax",
+    "pushq %rcx",
+    "pushq %rdx",
+    "pushq %rbx",
+    "pushq %rbp",
+    "pushq %rsi",
+    "pushq %rdi",
+    "pushq %r8",
+    "pushq %r9",
+    "pushq %r10",
+    "pushq %r11",
+    "pushq %r12",
+    "pushq %r13",
+    "pushq %r14",
+    "pushq %r15",
+    "movq %rsp, %rdi",
+    "andq $-16, %rsp",
+    "call archiaos_spurious_interrupt_dispatch",
     "movq %rax, %rsp",
     "popq %r15",
     "popq %r14",
