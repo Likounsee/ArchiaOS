@@ -400,6 +400,9 @@ unsafe fn initialize_ioapics_masked(
     acpi_madt::validate_xapic_topology(topology)
         .map_err(|_| "MADT topology failed validation before IOAPIC setup")?;
     let storage = core::ptr::addr_of_mut!(IOAPIC_STORAGE);
+    // Keep hardware-reported GSI window sizes so overlapping controllers are
+    // rejected before any firmware route is assigned to an arbitrary owner.
+    let mut redirection_counts = [0u32; acpi_madt::MAX_MADT_IOAPICS];
     let mut initialized = 0usize;
 
     for record in topology.io_apics.iter().take(topology.io_apic_count).flatten() {
@@ -419,6 +422,24 @@ unsafe fn initialize_ioapics_masked(
         // The hardware-reported count is authoritative. Mask every input while
         // preserving its existing vector, destination and electrical mode.
         let count = unsafe { ioapic.redirection_count() };
+        // IOAPIC redirection registers occupy selector indices 0x10..=0xfe,
+        // so larger reported windows cannot be addressed through this driver.
+        if count == 0 || count > 120 {
+            return Err("IOAPIC reports an unsupported redirection-table size");
+        }
+        let end = record.global_irq_base.checked_add(count)
+            .ok_or("IOAPIC GSI range overflows")?;
+        for previous_index in 0..initialized {
+            let previous = topology.io_apics[previous_index]
+                .ok_or("validated IOAPIC prefix unexpectedly contains a hole")?;
+            let previous_start = previous.global_irq_base;
+            let previous_end = previous_start.checked_add(redirection_counts[previous_index])
+                .ok_or("previous IOAPIC GSI range overflows")?;
+            if record.global_irq_base < previous_end && previous_start < end {
+                return Err("IOAPIC GSI ranges overlap");
+            }
+        }
+        redirection_counts[initialized] = count;
         for pin in 0..count {
             let gsi = record.global_irq_base.checked_add(pin)
                 .ok_or("IOAPIC GSI range overflows")?;
@@ -458,7 +479,7 @@ unsafe fn initialize_ioapics_masked(
             .take(topology.io_apic_count).flatten().enumerate()
         {
             let ioapic = unsafe { (*storage)[index].assume_init_ref() };
-            let count = unsafe { ioapic.redirection_count() };
+            let count = redirection_counts[index];
             let end = record.global_irq_base.checked_add(count)
                 .ok_or("IOAPIC GSI range overflows while resolving ISA IRQ")?;
             if gsi < record.global_irq_base || gsi >= end { continue; }
