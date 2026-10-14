@@ -265,7 +265,7 @@ static mut LOCAL_APIC_STORAGE: core::mem::MaybeUninit<apic::LocalApic> =
 
 /// Enable xAPIC mode and install its EOI dispatcher without enabling any device
 /// routes. All external sources and the local timer remain masked at this stage.
-unsafe fn initialize_local_apic() -> Result<(), &'static str> {
+unsafe fn initialize_local_apic(madt_base: u64) -> Result<(), &'static str> {
     // CPUID.1:EDX[9] advertises the architectural local APIC.
     if unsafe { core::arch::x86_64::__cpuid(1) }.edx & (1 << 9) == 0 {
         return Err("CPU does not advertise the local APIC");
@@ -282,6 +282,11 @@ unsafe fn initialize_local_apic() -> Result<(), &'static str> {
     if base_msr & apic::APIC_X2_MODE_ENABLE != 0 {
         return Err("firmware enabled x2APIC; xAPIC MMIO mode is not selected");
     }
+    if madt_base == 0 || madt_base & 0xfff != 0
+        || (base_msr & apic::APIC_BASE_ADDRESS_MASK) != madt_base
+    {
+        return Err("IA32_APIC_BASE does not match the validated MADT address");
+    }
     if base_msr & apic::APIC_BASE_ENABLE == 0 {
         base_msr |= apic::APIC_BASE_ENABLE;
         unsafe {
@@ -291,10 +296,8 @@ unsafe fn initialize_local_apic() -> Result<(), &'static str> {
         }
     }
 
-    let physical_base = base_msr & apic::APIC_BASE_ADDRESS_MASK;
-    if physical_base == 0 || physical_base & 0xfff != 0 {
-        return Err("IA32_APIC_BASE contains an invalid physical address");
-    }
+    let physical_base = apic::validate_apic_base(base_msr, madt_base)
+        .map_err(|_| "IA32_APIC_BASE failed validation against MADT")?;
     // SAFETY: the architectural APIC-base MSR supplies the device address;
     // VMM installs a dedicated uncached mapping, not a RAM allocation alias.
     let mapped = unsafe { vmm::map_mmio_page(physical_base) }
@@ -657,10 +660,12 @@ pub extern "C" fn rust_kernel_main(
 
     // Discover ACPI topology from the firmware tables retained by the loader.
     // This stage only reads/validates metadata; it does not program IOAPIC routes.
+    let mut validated_madt_local_apic_base = None;
     match unsafe { discover_madt(info.acpi_rsdp) } {
         Ok(topology) => {
             match acpi_madt::validate_xapic_topology(&topology) {
                 Ok(()) => {
+                    validated_madt_local_apic_base = Some(topology.local_apic_address);
                     let _ = writeln!(serial, "ArchiaOS: ACPI MADT validated: local APIC={:#x}, CPUs={}, IOAPICs={}, overrides={}, legacy PIC={}",
                         topology.local_apic_address, topology.enabled_processor_count(),
                         topology.io_apic_count, topology.override_count, topology.has_legacy_pic);
@@ -685,12 +690,17 @@ pub extern "C" fn rust_kernel_main(
 
     // Initialize the bootstrap CPU's xAPIC only after the page-table allocator
     // is operational. No IOAPIC routes or timer interrupts are enabled yet.
-    match unsafe { initialize_local_apic() } {
+    match validated_madt_local_apic_base {
+        Some(madt_base) => match unsafe { initialize_local_apic(madt_base) } {
         Ok(()) => {
             let _ = writeln!(serial, "ArchiaOS: local xAPIC initialized; dispatcher published; sources remain masked");
         }
         Err(reason) => {
             let _ = writeln!(serial, "ArchiaOS: local xAPIC initialization skipped: {}", reason);
+        }
+    },
+        None => {
+            let _ = writeln!(serial, "ArchiaOS: local xAPIC initialization skipped: no validated MADT base address");
         }
     }
 
