@@ -373,9 +373,17 @@ mod tests {
                     assert_eq!(next_slave | slave_mask, next_slave);
                     if irq < 8 {
                         assert_ne!(next_master & (1u8 << irq), 0);
+                        assert_eq!(next_master, master_mask | (1u8 << irq));
                         assert_eq!(next_slave, slave_mask);
                     } else {
-                        assert_ne!(next_slave & (1u8 << (irq - 8)), 0);
+                        let expected_slave = slave_mask | (1u8 << (irq - 8));
+                        let expected_master = if expected_slave == 0xff {
+                            master_mask | (1u8 << 2)
+                        } else {
+                            master_mask
+                        };
+                        assert_eq!(next_slave, expected_slave);
+                        assert_eq!(next_master, expected_master);
                     }
                 }
             }
