@@ -104,7 +104,7 @@ pub fn return_path_self_test() -> bool {
     // path is not interrupted by unrelated maskable IRQs.
     unsafe {
         asm!("pushfq", "pop {flags}", "cli", flags = out(reg) flags);
-        asm!("int 0xF1", options(nostack));
+        asm!("int 0xF1");
         if saved_interrupts_enabled(flags) {
             asm!("sti", options(nostack));
         }
