@@ -9,6 +9,7 @@ mod pci;
 mod scheduler;
 mod context;
 mod interrupts;
+mod interrupt_vectors;
 
 /// Legacy dual 8259 PIC setup. All lines stay masked until matching IDT
 /// handlers and an interrupt-safe wakeup path are implemented.
