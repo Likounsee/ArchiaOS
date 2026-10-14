@@ -240,12 +240,19 @@ pub fn validate_xapic_topology(info: &MadtInfo) -> Result<(), MadtError> {
         let Some(io) = info.io_apics[i] else {
             return Err(MadtError::InvalidTopologyCounts);
         };
-        if io.physical_address == 0 || io.physical_address & 0xfff != 0 {
+        if io.physical_address == 0 || io.physical_address & 0xfff != 0
+            || u64::from(io.physical_address) == info.local_apic_address
+        {
+            // Local APIC and IOAPIC register windows must never alias: the
+            // drivers use different register protocols at these MMIO pages.
             return Err(MadtError::InvalidIoApicAddress);
         }
         for other in 0..i {
             if let Some(previous) = info.io_apics[other] {
                 if previous.id == io.id { return Err(MadtError::DuplicateIoApicId); }
+                if previous.physical_address == io.physical_address {
+                    return Err(MadtError::InvalidIoApicAddress);
+                }
             }
         }
     }
