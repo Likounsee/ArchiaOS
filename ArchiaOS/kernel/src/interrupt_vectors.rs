@@ -19,12 +19,11 @@ pub enum InterruptVectorClass {
     Other,
 }
 
-/// Classify a vector without hardware access so dispatch decisions are testable.
-/// Whether an architectural exception pushes an error-code word.
+/// Whether an architectural CPU exception pushes an error-code word.
 ///
-/// The ISR stubs use this architectural distinction to normalize their stack:
-/// exceptions with a CPU-pushed error code push only the vector, while all
-/// other vectors push a synthetic zero before the vector.
+/// ISR stubs use this distinction to normalize their stack: exceptions with a
+/// CPU-pushed error code push only the vector, while other vectors push a
+/// synthetic zero before the vector. Values outside 0..=31 return false.
 pub const fn cpu_exception_has_error_code(vector: u8) -> bool {
     matches!(vector, 8 | 10..=14 | 17 | 21 | 29 | 30)
 }
