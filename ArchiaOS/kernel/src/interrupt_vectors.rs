@@ -145,6 +145,31 @@ pub const fn masks_after_masking_irq(
     }
 }
 
+/// Action required when IRQ7/IRQ15 delivery is checked against the 8259 ISR.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PicSpuriousIrqDisposition {
+    /// Spurious IRQ7: return without sending an EOI.
+    Ignore,
+    /// Spurious IRQ15: acknowledge only the master PIC cascade.
+    MasterEoi,
+    /// The interrupt is real and normal handler dispatch may continue.
+    Real,
+}
+
+/// Classify a PIC IRQ after reading its in-service bit when applicable.
+/// For IRQs other than 7 and 15, in_service is ignored.
+pub const fn pic_spurious_irq_disposition(irq: u8, in_service: bool) -> Option<PicSpuriousIrqDisposition> {
+    if irq >= LEGACY_PIC_IRQ_COUNT {
+        None
+    } else if irq == 7 && !in_service {
+        Some(PicSpuriousIrqDisposition::Ignore)
+    } else if irq == 15 && !in_service {
+        Some(PicSpuriousIrqDisposition::MasterEoi)
+    } else {
+        Some(PicSpuriousIrqDisposition::Real)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -413,4 +438,19 @@ mod tests {
         }
     }
 
+    #[test]
+    fn classifies_spurious_pic_irq_eoi_behavior() {
+        use PicSpuriousIrqDisposition::*;
+        assert_eq!(pic_spurious_irq_disposition(7, false), Some(Ignore));
+        assert_eq!(pic_spurious_irq_disposition(7, true), Some(Real));
+        assert_eq!(pic_spurious_irq_disposition(15, false), Some(MasterEoi));
+        assert_eq!(pic_spurious_irq_disposition(15, true), Some(Real));
+        for irq in 0..16 {
+            if irq != 7 && irq != 15 {
+                assert_eq!(pic_spurious_irq_disposition(irq, false), Some(Real));
+            }
+        }
+        assert_eq!(pic_spurious_irq_disposition(16, false), None);
+        assert_eq!(pic_spurious_irq_disposition(u8::MAX, true), None);
+    }
 }
