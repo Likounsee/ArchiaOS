@@ -145,6 +145,41 @@ unsafe fn capture_fx_state(state: &mut FxState) {
     }
 }
 
+/// Errors detected before a checked context switch.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ContextSwitchError {
+    TargetUninitialized,
+    TargetStackCorrupted,
+    TargetContextOutsideStack,
+}
+
+/// Validate the destination task's stack and saved frame before switching.
+///
+/// This prevents the assembly restore path from popping registers from a
+/// corrupted stack or consuming a return address outside the task's stack.
+/// The caller must still ensure exclusive ownership and that the current
+/// context is valid; this check does not make switching from an IRQ safe.
+pub unsafe fn switch_checked(
+    old: &mut CpuContext,
+    new: &CpuContext,
+    target_stack: &TaskStack,
+) -> Result<(), ContextSwitchError> {
+    if !new.is_initialized() {
+        return Err(ContextSwitchError::TargetUninitialized);
+    }
+    if !target_stack.guards_intact() {
+        return Err(ContextSwitchError::TargetStackCorrupted);
+    }
+    if !target_stack.contains_context(new) {
+        return Err(ContextSwitchError::TargetContextOutsideStack);
+    }
+
+    // SAFETY: caller retains the base switch's ownership/mapping obligations;
+    // the destination's initialized frame and canaries were checked above.
+    unsafe { switch(old, new) };
+    Ok(())
+}
+
 /// Save the current callee-saved registers and switch to another saved stack.
 ///
 /// # Safety
@@ -298,6 +333,31 @@ mod tests {
         assert!(stack.contains_context(&context));
         assert!(!other_stack.contains_context(&context));
         assert!(!stack.contains_context(&CpuContext::empty()));
+    }
+
+    #[test]
+    fn checked_switch_rejects_invalid_destination_before_assembly() {
+        let mut stack = TaskStack::new();
+        let mut old = CpuContext::empty();
+        let uninitialized = CpuContext::empty();
+        assert_eq!(
+            unsafe { switch_checked(&mut old, &uninitialized, &stack) },
+            Err(ContextSwitchError::TargetUninitialized),
+        );
+
+        let mut context = CpuContext::empty();
+        stack.initialize(&mut context, never_run);
+        let other_stack = TaskStack::new();
+        assert_eq!(
+            unsafe { switch_checked(&mut old, &context, &other_stack) },
+            Err(ContextSwitchError::TargetContextOutsideStack),
+        );
+
+        stack.upper_guard[STACK_GUARD_WORDS - 1] ^= 1;
+        assert_eq!(
+            unsafe { switch_checked(&mut old, &context, &stack) },
+            Err(ContextSwitchError::TargetStackCorrupted),
+        );
     }
 
     #[test]
