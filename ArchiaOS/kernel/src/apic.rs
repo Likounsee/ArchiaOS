@@ -488,6 +488,31 @@ mod tests {
     }
 
     #[test]
+    fn hardware_irq_vector_policy_covers_every_possible_vector() {
+        for vector in 0u8..=u8::MAX {
+            let reserved = vector < 32
+                || (0x20..=0x2f).contains(&vector)
+                || vector == APIC_TEST_RETURN_VECTOR
+                || vector == APIC_SPURIOUS_VECTOR;
+            assert_eq!(
+                validate_hardware_irq_vector(vector),
+                if reserved { Err(ApicError::InvalidVector) } else { Ok(()) },
+                "vector {vector:#04x}"
+            );
+            assert_eq!(
+                masked_timer_lvt(vector).is_ok(),
+                !reserved,
+                "timer vector {vector:#04x}"
+            );
+            assert_eq!(
+                masked_ioapic_low(vector, 0, 0).is_ok(),
+                !reserved,
+                "IOAPIC vector {vector:#04x}"
+            );
+        }
+    }
+
+    #[test]
     fn timer_configuration_is_masked_and_validated() {
         assert_eq!(masked_timer_lvt(0x40), Ok(0x40 | APIC_LVT_MASKED));
         assert_eq!(masked_timer_lvt(31), Err(ApicError::InvalidVector));
