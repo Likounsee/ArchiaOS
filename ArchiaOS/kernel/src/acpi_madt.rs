@@ -260,6 +260,18 @@ pub fn validate_xapic_topology(info: &MadtInfo) -> Result<(), MadtError> {
         let Some(route) = info.overrides[i] else {
             return Err(MadtError::InvalidTopologyCounts);
         };
+        // This bring-up path implements ISA interrupt-source overrides only.
+        // Reject records that cannot be mapped to one of the 16 legacy ISA IRQs
+        // instead of silently ignoring them while constructing the route table.
+        // Also validate flags here because MadtInfo can be built by callers
+        // without going through parse_madt().
+        if route.bus != 0
+            || route.source_irq >= 16
+            || !matches!(route.polarity_flags, 0 | 1 | 3)
+            || !matches!(route.trigger_flags, 0 | 1 | 3)
+        {
+            return Err(MadtError::InvalidOverride);
+        }
         for other in 0..i {
             if let Some(previous) = info.overrides[other] {
                 if previous.bus == route.bus && previous.source_irq == route.source_irq {
@@ -422,6 +434,35 @@ mod tests {
     fn rejects_reserved_interrupt_override_flags() {
         let entries = [2, 10, 0, 0, 0, 0, 0, 0, 0x02, 0];
         assert_eq!(parse_madt(&base(0, &entries)), Err(MadtError::InvalidOverride));
+    }
+
+    #[test]
+    fn topology_rejects_isa_overrides_outside_implemented_irq_domain() {
+        let processor = [0, 8, 0, 2, 1, 0, 0, 0];
+        // Bus 0 is ISA; its source IRQ field must be in 0..=15.
+        let invalid_irq = [2, 10, 0, 16, 1, 0, 0, 0, 0, 0];
+        let mut entries = processor.to_vec();
+        entries.extend_from_slice(&invalid_irq);
+        let topology = parse_madt(&base(0, &entries)).unwrap();
+        assert_eq!(validate_xapic_topology(&topology), Err(MadtError::InvalidOverride));
+    }
+
+    #[test]
+    fn topology_rejects_unsupported_override_bus_and_invalid_raw_flags() {
+        let processor = [0, 8, 0, 2, 1, 0, 0, 0];
+        let non_isa_bus = [2, 10, 1, 0, 1, 0, 0, 0, 0, 0];
+        let mut entries = processor.to_vec();
+        entries.extend_from_slice(&non_isa_bus);
+        let topology = parse_madt(&base(0, &entries)).unwrap();
+        assert_eq!(validate_xapic_topology(&topology), Err(MadtError::InvalidOverride));
+
+        let mut topology = parse_madt(&base(0, &processor)).unwrap();
+        topology.override_count = 1;
+        topology.overrides[0] = Some(InterruptOverride {
+            bus: 0, source_irq: 0, global_irq: 0,
+            polarity_flags: 2, trigger_flags: 0,
+        });
+        assert_eq!(validate_xapic_topology(&topology), Err(MadtError::InvalidOverride));
     }
 
     #[test]
