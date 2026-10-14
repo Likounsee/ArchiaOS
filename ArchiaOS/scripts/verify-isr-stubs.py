@@ -13,6 +13,7 @@ from pathlib import Path
 
 SOURCE = Path(__file__).resolve().parents[1] / "kernel/src/interrupts.rs"
 VECTOR_SOURCE = Path(__file__).resolve().parents[1] / "kernel/src/interrupt_vectors.rs"
+MAIN_SOURCE = Path(__file__).resolve().parents[1] / "kernel/src/main.rs"
 ERROR_CODE_VECTORS = {8, 10, 11, 12, 13, 14, 17, 21, 29, 30}
 
 
@@ -24,6 +25,7 @@ def fail(message: str) -> None:
 def main() -> None:
     source = SOURCE.read_text(encoding="utf-8")
     vector_source = VECTOR_SOURCE.read_text(encoding="utf-8")
+    main_source = MAIN_SOURCE.read_text(encoding="utf-8")
     count_match = re.search(r'const IDT_ENTRY_COUNT: usize = (\d+);', source)
     if not count_match or int(count_match.group(1)) != 256:
         fail("IDT_ENTRY_COUNT must remain exactly 256")
@@ -116,12 +118,20 @@ def main() -> None:
 
     dispatcher_match = re.search(
         r'pub extern "C" fn archiaos_exception_dispatch\b(?P<signature>[^{]*)\{',
-        source,
+        main_source,
         re.DOTALL,
     )
     if not dispatcher_match:
-        fail("fatal exception dispatcher not found")
-    if not re.search(r'->\s*!\s*$', dispatcher_match.group("signature")):
+        fail("fatal exception dispatcher not found in kernel/src/main.rs")
+    signature = dispatcher_match.group("signature")
+    expected_parameters = (
+        r'vector:\s*u64',
+        r'error_code:\s*u64',
+        r'instruction_pointer:\s*u64',
+    )
+    if not all(re.search(parameter, signature) for parameter in expected_parameters):
+        fail("exception dispatcher ABI must accept vector, error code, and instruction pointer as u64")
+    if not re.search(r'->\s*!\s*$', signature):
         fail("exception dispatcher must be non-returning until a safe return path exists")
 
     install_match = re.search(
