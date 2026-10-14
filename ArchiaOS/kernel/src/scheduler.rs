@@ -376,7 +376,25 @@ static mut RUNTIME_STACKS: [crate::context::TaskStack; RUNTIME_TASKS] = [
 ];
 static mut RUNTIME_BOOT_CONTEXT: crate::context::CpuContext =
     crate::context::CpuContext::empty();
+// A dedicated, persistent idle context is separate from ordinary task slots.
+// The boot-time test idle entry returns to the harness; it intentionally does
+// not execute HLT because this self-test runs before the interrupt/wakeup path.
+static mut RUNTIME_IDLE_CONTEXT: crate::context::CpuContext =
+    crate::context::CpuContext::empty();
+static mut RUNTIME_IDLE_STACK: crate::context::TaskStack = crate::context::TaskStack::new();
 static mut RUNTIME_STAGES: [usize; RUNTIME_TASKS] = [0; RUNTIME_TASKS];
+
+extern "C" fn runtime_idle_context_entry() -> ! {
+    unsafe {
+        crate::context::switch(
+            &mut *core::ptr::addr_of_mut!(RUNTIME_IDLE_CONTEXT),
+            &*core::ptr::addr_of!(RUNTIME_BOOT_CONTEXT),
+        );
+    }
+    // The harness may later resume this saved idle context, but this test
+    // never schedules it again. Do not return through a synthetic entry frame.
+    runtime_halt()
+}
 
 extern "C" fn runtime_task_a() -> ! {
     // A records entry and blocks. Task B must wake it explicitly before it can
@@ -487,9 +505,12 @@ fn runtime_block_current_to_boot() -> Result<(), SchedulerError> {
                 crate::context::switch(&mut *contexts.add(previous), &*contexts.add(next.0));
             }
             DispatchDecision::Idle(IdleReason::WaitingForWakeup) => {
+                // This test path now crosses a dedicated idle stack/context
+                // before returning to the boot harness to inject a wakeup.
+                // It remains a deterministic harness, not a hardware idle loop.
                 crate::context::switch(
                     &mut *core::ptr::addr_of_mut!(RUNTIME_CONTEXTS).cast::<crate::context::CpuContext>().add(previous),
-                    &*core::ptr::addr_of!(RUNTIME_BOOT_CONTEXT),
+                    &*core::ptr::addr_of!(RUNTIME_IDLE_CONTEXT),
                 );
             }
             DispatchDecision::Idle(_) => return Err(SchedulerError::InvariantViolation),
@@ -613,6 +634,8 @@ pub fn runtime_idle_wakeup_self_test() -> Result<(), SchedulerError> {
             [crate::context::CpuContext::empty(); RUNTIME_TASKS],
         );
         core::ptr::write(core::ptr::addr_of_mut!(RUNTIME_BOOT_CONTEXT), crate::context::CpuContext::empty());
+        core::ptr::write(core::ptr::addr_of_mut!(RUNTIME_IDLE_CONTEXT), crate::context::CpuContext::empty());
+        core::ptr::write(core::ptr::addr_of_mut!(RUNTIME_IDLE_STACK), crate::context::TaskStack::new());
         core::ptr::write(core::ptr::addr_of_mut!(RUNTIME_STAGES), [0; RUNTIME_TASKS]);
 
         let scheduler = core::ptr::addr_of_mut!(RUNTIME_SCHEDULER);
@@ -620,6 +643,10 @@ pub fn runtime_idle_wakeup_self_test() -> Result<(), SchedulerError> {
         let stacks = core::ptr::addr_of_mut!(RUNTIME_STACKS).cast::<crate::context::TaskStack>();
         let contexts = core::ptr::addr_of_mut!(RUNTIME_CONTEXTS).cast::<crate::context::CpuContext>();
         (&mut *stacks.add(task.0)).initialize(&mut *contexts.add(task.0), runtime_idle_task);
+        (&mut *core::ptr::addr_of_mut!(RUNTIME_IDLE_STACK)).initialize(
+            &mut *core::ptr::addr_of_mut!(RUNTIME_IDLE_CONTEXT),
+            runtime_idle_context_entry,
+        );
 
         if (&mut *scheduler).schedule()? != task {
             return Err(SchedulerError::InvariantViolation);
@@ -632,6 +659,8 @@ pub fn runtime_idle_wakeup_self_test() -> Result<(), SchedulerError> {
         let stage = core::ptr::read_volatile(core::ptr::addr_of!(RUNTIME_STAGES).cast::<usize>());
         if stage != 1
             || !(&*stacks.add(task.0)).guards_intact()
+            || !(&*core::ptr::addr_of!(RUNTIME_IDLE_STACK)).guards_intact()
+            || !(&*core::ptr::addr_of!(RUNTIME_IDLE_CONTEXT)).is_initialized()
             || (&*scheduler).current().is_some()
             || (&*scheduler).state(task)? != TaskState::Blocked
             || (&mut *scheduler).dispatch_or_idle()?
