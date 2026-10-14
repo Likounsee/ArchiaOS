@@ -25,6 +25,7 @@ const ADDRESS_MASK: u64 = 0x000f_ffff_ffff_f000;
 pub enum VmmError {
     InvalidPhysicalAddress,
     InvalidVirtualAddress,
+    InvalidPermissions,
     PageNotAllocated,
     OutOfPageTables,
     PageTableOutsideIdentityMap,
@@ -152,6 +153,147 @@ pub fn unmap_physical_page(physical_address: u64) -> Result<(), VmmError> {
     Ok(())
 }
 
+
+/// Map a physical frame at a caller-selected kernel virtual address.
+///
+/// User-space addresses are rejected and writable+executable mappings are
+/// forbidden. This bootstrap mapper is single-CPU only; it does not yet perform
+/// TLB shootdowns on other CPUs or manage per-process address spaces.
+pub fn map_kernel_page(
+    target_virtual_address: u64,
+    physical_address: u64,
+    writable: bool,
+    executable: bool,
+) -> Result<(), VmmError> {
+    if target_virtual_address < 0xffff_8000_0000_0000
+        || !is_canonical(target_virtual_address)
+        || target_virtual_address % PAGE_SIZE != 0
+    {
+        return Err(VmmError::InvalidVirtualAddress);
+    }
+    if writable && executable {
+        return Err(VmmError::InvalidPermissions);
+    }
+    if physical_address == 0
+        || physical_address % PAGE_SIZE != 0
+        || physical_address >= TRACKED_PHYSICAL_LIMIT
+    {
+        return Err(VmmError::InvalidPhysicalAddress);
+    }
+    if !memory::is_allocated_page(physical_address) {
+        return Err(VmmError::PageNotAllocated);
+    }
+
+    unsafe {
+        let mut cr3: u64;
+        asm!("mov {}, cr3", out(reg) cr3, options(nomem, nostack, preserves_flags));
+        let root = cr3 & ADDRESS_MASK;
+        if root >= FOUR_GIB {
+            return Err(VmmError::PageTableOutsideIdentityMap);
+        }
+        let pml4 = root as *mut u64;
+        let pml4_index = ((target_virtual_address >> 39) & 0x1ff) as usize;
+        let pdpt_index = ((target_virtual_address >> 30) & 0x1ff) as usize;
+        let pd_index = ((target_virtual_address >> 21) & 0x1ff) as usize;
+        let pt_index = ((target_virtual_address >> 12) & 0x1ff) as usize;
+
+        let pdpt = ensure_table(pml4.add(pml4_index), false)?;
+        let pd = ensure_table(pdpt.add(pdpt_index), true)?;
+        let pt = ensure_table(pd.add(pd_index), true)?;
+        let pte = pt.add(pt_index);
+        if ptr::read_volatile(pte) & PRESENT != 0 {
+            return Err(VmmError::AlreadyMapped);
+        }
+        let mut flags = PRESENT;
+        if writable { flags |= WRITABLE; }
+        if !executable { flags |= NO_EXECUTE; }
+        ptr::write_volatile(pte, physical_address | flags);
+        asm!("invlpg [{}]", in(reg) target_virtual_address, options(nostack, preserves_flags));
+    }
+    Ok(())
+}
+
+/// Remove a kernel mapping only if its leaf still references the expected frame.
+pub fn unmap_kernel_page(
+    target_virtual_address: u64,
+    expected_physical_address: u64,
+) -> Result<(), VmmError> {
+    if target_virtual_address < 0xffff_8000_0000_0000
+        || !is_canonical(target_virtual_address)
+        || target_virtual_address % PAGE_SIZE != 0
+    {
+        return Err(VmmError::InvalidVirtualAddress);
+    }
+    if expected_physical_address == 0
+        || expected_physical_address % PAGE_SIZE != 0
+        || expected_physical_address >= TRACKED_PHYSICAL_LIMIT
+    {
+        return Err(VmmError::InvalidPhysicalAddress);
+    }
+    unsafe {
+        let mut cr3: u64;
+        asm!("mov {}, cr3", out(reg) cr3, options(nomem, nostack, preserves_flags));
+        let root = cr3 & ADDRESS_MASK;
+        if root >= FOUR_GIB {
+            return Err(VmmError::PageTableOutsideIdentityMap);
+        }
+        let pml4 = root as *mut u64;
+        let pml4_index = ((target_virtual_address >> 39) & 0x1ff) as usize;
+        let pdpt_index = ((target_virtual_address >> 30) & 0x1ff) as usize;
+        let pd_index = ((target_virtual_address >> 21) & 0x1ff) as usize;
+        let pt_index = ((target_virtual_address >> 12) & 0x1ff) as usize;
+
+        let pml4e = ptr::read_volatile(pml4.add(pml4_index));
+        if pml4e & PRESENT == 0 { return Err(VmmError::NotMapped); }
+        let pdpt = table_pointer(pml4e)?;
+        let pdpte = ptr::read_volatile(pdpt.add(pdpt_index));
+        if pdpte & PRESENT == 0 { return Err(VmmError::NotMapped); }
+        if pdpte & LARGE_PAGE != 0 { return Err(VmmError::LargePageConflict); }
+        let pd = table_pointer(pdpte)?;
+        let pde = ptr::read_volatile(pd.add(pd_index));
+        if pde & PRESENT == 0 { return Err(VmmError::NotMapped); }
+        if pde & LARGE_PAGE != 0 { return Err(VmmError::LargePageConflict); }
+        let pt = table_pointer(pde)?;
+        let pte = pt.add(pt_index);
+        let leaf = ptr::read_volatile(pte);
+        if leaf & PRESENT == 0 { return Err(VmmError::NotMapped); }
+        if leaf & ADDRESS_MASK != expected_physical_address {
+            return Err(VmmError::MappingConflict);
+        }
+        ptr::write_volatile(pte, 0);
+        asm!("invlpg [{}]", in(reg) target_virtual_address, options(nostack, preserves_flags));
+    }
+    Ok(())
+}
+
+fn test_general_mapping<W: Write>(log: &mut W) -> Result<(), VmmError> {
+    const TEST_VIRTUAL_ADDRESS: u64 = 0xffff_a000_0000_0000;
+    let physical = memory::alloc_page_below_4g().ok_or(VmmError::OutOfPageTables)?;
+    if map_kernel_page(TEST_VIRTUAL_ADDRESS, physical, true, true)
+        != Err(VmmError::InvalidPermissions)
+    {
+        let _ = memory::free_page(physical);
+        return Err(VmmError::InvalidPermissions);
+    }
+    map_kernel_page(TEST_VIRTUAL_ADDRESS, physical, true, false)?;
+    let word = TEST_VIRTUAL_ADDRESS as *mut u64;
+    let expected = 0x6b65_726e_656c_7631u64;
+    unsafe { ptr::write_volatile(word, expected) };
+    let actual = unsafe { ptr::read_volatile(word) };
+    let unmapped = unmap_kernel_page(TEST_VIRTUAL_ADDRESS, physical);
+    if actual != expected {
+        let _ = unmapped;
+        let _ = memory::free_page(physical);
+        return Err(VmmError::MemoryVerificationFailed);
+    }
+    unmapped?;
+    if !memory::free_page(physical) {
+        return Err(VmmError::FreeFailed);
+    }
+    let _ = writeln!(log, "VMM: arbitrary kernel mapping, W^X rejection, access and unmap passed");
+    Ok(())
+}
+
 fn test_one<W: Write>(log: &mut W, physical_address: u64) -> Result<(), VmmError> {
     let alias = map_physical_page(physical_address)?;
     let word = alias.cast::<u64>();
@@ -173,6 +315,7 @@ fn test_one<W: Write>(log: &mut W, physical_address: u64) -> Result<(), VmmError
 
 /// Boot-time integration test against the active CR3, including high RAM if available.
 pub fn self_test<W: Write>(log: &mut W) -> Result<(), VmmError> {
+    test_general_mapping(log)?;
     let low = memory::alloc_page_below_4g().ok_or(VmmError::OutOfPageTables)?;
     test_one(log, low)?;
     match memory::alloc_page_above_4g() {
