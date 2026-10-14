@@ -98,11 +98,23 @@ extern "C" fn archiaos_test_interrupt_dispatch(frame: *mut TestInterruptFrame) -
 /// This does not enable maskable interrupts or unmask any hardware IRQ.
 pub fn return_path_self_test() -> bool {
     let before = TEST_INTERRUPT_COUNT.load(Ordering::SeqCst);
-    // SAFETY: vector 0xF1 is installed as a DPL-0 returning software interrupt
-    // gate; its dispatcher only increments an atomic counter and returns the
-    // exact saved frame pointer. IF remains disabled throughout this test.
-    unsafe { asm!("int 0xF1", options(nostack)) };
+    let flags: u64;
+    // SAFETY: this runs only after the kernel has installed vector 0xF1.
+    // Save the caller's IF state and force IF=0 during the test so the return
+    // path is not interrupted by unrelated maskable IRQs.
+    unsafe {
+        asm!("pushfq", "pop {flags}", "cli", flags = out(reg) flags);
+        asm!("int 0xF1", options(nostack));
+        if saved_interrupts_enabled(flags) {
+            asm!("sti", options(nostack));
+        }
+    }
     TEST_INTERRUPT_COUNT.load(Ordering::SeqCst) == before.wrapping_add(1)
+}
+
+#[inline]
+const fn saved_interrupts_enabled(rflags: u64) -> bool {
+    rflags & (1 << 9) != 0
 }
 
 /// Install all 256 IDT entries with vector-specific stubs.
