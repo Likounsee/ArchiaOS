@@ -94,6 +94,7 @@ impl Scheduler {
     /// after all runnable tasks were blocked. It deliberately refuses to replace
     /// an active task; real CPU context switching is implemented separately.
     pub fn schedule(&mut self) -> Result<TaskId, SchedulerError> {
+        self.check_invariants()?;
         if self.current.is_some() {
             return Err(SchedulerError::InvariantViolation);
         }
@@ -106,6 +107,7 @@ impl Scheduler {
     /// all tasks may be blocked or exited. The caller must still provide the
     /// architecture-specific idle loop/context; this method does not halt the CPU.
     pub fn dispatch_or_idle(&mut self) -> Result<DispatchDecision, SchedulerError> {
+        self.check_invariants()?;
         if self.current.is_some() {
             return Err(SchedulerError::InvariantViolation);
         }
@@ -169,6 +171,8 @@ impl Scheduler {
     }
 
     pub fn wake(&mut self, id: TaskId) -> Result<(), SchedulerError> {
+        // Never mutate task state on top of a scheduler that is already corrupt.
+        self.check_invariants()?;
         let task = self.tasks.get_mut(id.0).ok_or(SchedulerError::InvalidTask)?;
         if task.state != TaskState::Blocked {
             return Err(SchedulerError::TaskNotBlocked);
@@ -779,6 +783,8 @@ mod tests {
         assert_eq!(scheduler.schedule(), Err(SchedulerError::InvariantViolation));
         assert_eq!(scheduler.state(TaskId(0)), Ok(TaskState::Runnable));
         assert_eq!(scheduler.current(), None);
+        assert_eq!(scheduler.wake(TaskId(0)), Err(SchedulerError::InvariantViolation));
+        assert_eq!(scheduler.state(TaskId(0)), Ok(TaskState::Runnable));
 
         let mut active = Scheduler::new();
         let active_task = active.create_task().unwrap();
