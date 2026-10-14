@@ -428,7 +428,6 @@ pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
         // Addresses above both the old 4 GiB and interim 64 GiB limits are now tracked.
         ((1u64 << 32, PAGE_SIZE), Some(((1u64 << 32) / PAGE_SIZE, ((1u64 << 32) / PAGE_SIZE) + 1))),
         ((1u64 << 36, PAGE_SIZE), Some(((1u64 << 36) / PAGE_SIZE, ((1u64 << 36) / PAGE_SIZE) + 1))),
-        ((1u64 << 36, PAGE_SIZE), Some(((1u64 << 36) / PAGE_SIZE, ((1u64 << 36) / PAGE_SIZE) + 1))),
         ((MAX_PHYSICAL_ADDRESS, PAGE_SIZE), Some((MAX_FRAMES, MAX_FRAMES))),
         ((u64::MAX - 1, 8), None),
         ((0, 0), Some((0, 0))),
@@ -511,6 +510,7 @@ pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
     if free_page(0)
         || free_page(1)
         || free_page(ONE_MIB - PAGE_SIZE)
+        || free_page(MAX_ALLOCATABLE_PHYSICAL_ADDRESS)
         || free_page(MAX_PHYSICAL_ADDRESS)
     {
         return Err(MemoryError::InvalidFreeAccepted);
