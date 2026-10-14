@@ -29,6 +29,12 @@ pub const fn cpu_exception_has_error_code(vector: u8) -> bool {
     matches!(vector, 8 | 10..=14 | 17 | 21 | 29 | 30)
 }
 
+/// Split a 64-bit handler address into the three offset fields of an x86-64 IDT gate.
+/// Kept pure so boundary and high-half addresses can be tested without privileged CPU state.
+pub const fn split_x86_64_idt_handler_address(handler: u64) -> (u16, u16, u32) {
+    (handler as u16, (handler >> 16) as u16, (handler >> 32) as u32)
+}
+
 pub const fn classify_interrupt_vector(vector: u8) -> InterruptVectorClass {
     if vector < LEGACY_PIC_VECTOR_BASE {
         InterruptVectorClass::CpuException
@@ -140,6 +146,14 @@ mod tests {
                 _ => assert_eq!(class, InterruptVectorClass::Other),
             }
         }
+    }
+
+    #[test]
+    fn splits_idt_handler_address_without_losing_bits() {
+        assert_eq!(split_x86_64_idt_handler_address(0), (0, 0, 0));
+        assert_eq!(split_x86_64_idt_handler_address(0x0000_0000_0000_ffff), (0xffff, 0, 0));
+        assert_eq!(split_x86_64_idt_handler_address(0x0000_0000_1234_5678), (0x5678, 0x1234, 0));
+        assert_eq!(split_x86_64_idt_handler_address(0xffff_8123_4567_89ab), (0x89ab, 0x4567, 0xffff_8123));
     }
 
     #[test]
