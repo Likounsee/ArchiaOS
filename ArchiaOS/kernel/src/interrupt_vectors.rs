@@ -56,6 +56,21 @@ pub const fn pic_masks_are_consistent(master_mask: u8, slave_mask: u8) -> bool {
     slave_mask == 0xff || (master_mask & (1u8 << 2)) == 0
 }
 
+/// Return an EOI plan only after a handler has explicitly claimed the IRQ.
+///
+/// Unhandled IRQs must not be acknowledged as if service succeeded; callers
+/// should route them to the fatal/unhandled path instead.
+pub const fn eoi_plan_for_handled_irq(
+    irq: u8,
+    handler_handled: bool,
+) -> Option<(bool, bool)> {
+    if !handler_handled {
+        None
+    } else {
+        eoi_plan_for_irq(irq)
+    }
+}
+
 /// Describe the required legacy PIC EOI writes for an IRQ.
 ///
 /// The tuple is (send slave EOI, send master EOI). Invalid IRQ lines have no
@@ -192,6 +207,15 @@ mod tests {
         for irq in 8..16 {
             assert_eq!(eoi_plan_for_irq(irq), Some((true, true)));
         }
+    }
+
+    #[test]
+    fn only_claimed_irqs_receive_an_eoi_plan() {
+        for irq in 0..16 {
+            assert_eq!(eoi_plan_for_handled_irq(irq, false), None);
+            assert_eq!(eoi_plan_for_handled_irq(irq, true), eoi_plan_for_irq(irq));
+        }
+        assert_eq!(eoi_plan_for_handled_irq(16, true), None);
     }
 
     #[test]
