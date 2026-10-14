@@ -35,6 +35,7 @@ pub enum MadtError {
     InvalidRsdpChecksum,
     UnsupportedRsdpRevision,
     InvalidTopologyCounts,
+    DuplicateResolvedGlobalIrq,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -197,6 +198,34 @@ pub fn parse_root_table(root: &[u8]) -> Result<AcpiRootTable, MadtError> {
         table.addresses[index] = Some(address);
     }
     Ok(table)
+}
+
+/// Reject ISA route aliases before IOAPIC registers are programmed.
+pub fn validate_isa_gsi_uniqueness(info: &MadtInfo) -> Result<(), MadtError> {
+    if info.override_count > MAX_MADT_OVERRIDES
+        || info.overrides[..info.override_count].iter().any(Option::is_none)
+    {
+        return Err(MadtError::InvalidTopologyCounts);
+    }
+    let mut resolved = [u32::MAX; 16];
+    for irq in 0u8..16 {
+        // IRQ2 is the legacy 8259 cascade and is deliberately not routed as a device IRQ.
+        if irq == 2 { continue; }
+        let mut gsi = u32::from(irq);
+        for record in info.overrides.iter().take(info.override_count).flatten() {
+            if record.bus == 0 && record.source_irq == irq {
+                gsi = record.global_irq;
+                break;
+            }
+        }
+        for previous_irq in 0u8..irq {
+            if previous_irq != 2 && resolved[previous_irq as usize] == gsi {
+                return Err(MadtError::DuplicateResolvedGlobalIrq);
+            }
+        }
+        resolved[irq as usize] = gsi;
+    }
+    Ok(())
 }
 
 /// Validate topology invariants required before enabling xAPIC routing.
@@ -569,6 +598,32 @@ mod tests {
         let xsdt = parse_root_table(&root(b"XSDT", &[0x1_0000_1234], true)).unwrap();
         assert!(xsdt.xsdt);
         assert_eq!(xsdt.addresses[0], Some(0x1_0000_1234));
+    }
+
+    #[test]
+    fn rejects_distinct_isa_irqs_resolving_to_the_same_gsi() {
+        let mut info = MadtInfo::empty(0xfee0_0000, true);
+        info.override_count = 2;
+        info.overrides[0] = Some(InterruptOverride {
+            bus: 0, source_irq: 0, global_irq: 5,
+            polarity_flags: 0, trigger_flags: 0,
+        });
+        info.overrides[1] = Some(InterruptOverride {
+            bus: 0, source_irq: 1, global_irq: 5,
+            polarity_flags: 0, trigger_flags: 0,
+        });
+        assert_eq!(
+            validate_isa_gsi_uniqueness(&info),
+            Err(MadtError::DuplicateResolvedGlobalIrq)
+        );
+
+        // The skipped legacy cascade IRQ2 must not cause a false collision.
+        info.override_count = 1;
+        info.overrides[0] = Some(InterruptOverride {
+            bus: 0, source_irq: 0, global_irq: 2,
+            polarity_flags: 0, trigger_flags: 0,
+        });
+        assert_eq!(validate_isa_gsi_uniqueness(&info), Ok(()));
     }
 
     #[test]
