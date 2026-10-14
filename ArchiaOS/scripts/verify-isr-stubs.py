@@ -120,10 +120,24 @@ def main() -> None:
     if not install_match:
         fail("IDT install routine not found")
     install_body = install_match.group("body")
-    if "for vector in 0..IDT_ENTRY_COUNT" not in install_body:
+    population = install_body.find("for vector in 0..IDT_ENTRY_COUNT")
+    descriptor_position = install_body.find("let descriptor = Idtr")
+    lidt_position = install_body.find('asm!("lidt [{0}]"')
+    if population < 0:
         fail("IDT install must populate every vector entry")
-    if 'asm!("lidt [{0}]"' not in install_body:
+    if descriptor_position < 0:
+        fail("IDT install must construct the IDTR descriptor")
+    if lidt_position < 0:
         fail("IDT install must load the completed descriptor with LIDT")
+    if not population < descriptor_position < lidt_position:
+        fail("IDT entries must be populated before constructing and loading the IDTR")
+
+    if "asm!(\\"mov {0:x}, cs\\" " not in install_body and 'asm!("mov {0:x}, cs"' not in install_body:
+        fail("IDT install must obtain the current code-segment selector from CS")
+    if "addr_of!(isr_stub_table)" not in install_body or ".add(vector).read()" not in install_body:
+        fail("IDT install must read each handler from the bounded ISR stub table")
+    if "addr_of_mut!(IDT)" not in install_body or ".add(vector).write(entry)" not in install_body:
+        fail("IDT install must write each constructed gate into the bounded IDT")
 
     gate_match = re.search(r'const INTERRUPT_GATE: u8 = (0x[0-9a-fA-F]+);', source)
     if not gate_match or int(gate_match.group(1), 16) != 0x8e:
