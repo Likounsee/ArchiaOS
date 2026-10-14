@@ -25,7 +25,7 @@ def main() -> None:
     source = SOURCE.read_text(encoding="utf-8")
     vector_source = VECTOR_SOURCE.read_text(encoding="utf-8")
     metadata_match = re.search(
-        r'pub const fn cpu_exception_has_error_code\\(vector: u8\\) -> bool \\{\\s*matches!\\(vector, ([^)]*)\\)',
+        r'pub const fn cpu_exception_has_error_code\(vector: u8\) -> bool \{\s*matches!\(vector, ([^)]*)\)',
         vector_source,
         re.DOTALL,
     )
