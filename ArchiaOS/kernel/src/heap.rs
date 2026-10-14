@@ -166,18 +166,33 @@ impl KernelHeap {
                     (block_end, payload, allocation_end)
                 {
                     if allocation_end <= block_end {
+                        // Keep the unused tail as a free block instead of consuming
+                        // an entire multi-page region for a tiny allocation.
+                        let split_start = align_up(allocation_end, core::mem::align_of::<FreeBlock>())
+                            .unwrap_or(block_end);
+                        let can_split = split_start <= block_end
+                            && block_end - split_start >= core::mem::size_of::<FreeBlock>();
+                        let allocated_size = if can_split { split_start - start } else { block_size };
                         let next = unsafe { ptr::read(ptr::addr_of!((*current).next)) };
                         if previous.is_null() {
                             unsafe { ptr::write(ptr::addr_of_mut!(FREE_LIST), next) };
                         } else {
                             unsafe { ptr::write(ptr::addr_of_mut!((*previous).next), next) };
                         }
+                        if can_split {
+                            unsafe {
+                                insert_free_block(
+                                    split_start as u64,
+                                    block_end - split_start,
+                                );
+                            }
+                        }
                         let header = (payload - core::mem::size_of::<AllocationHeader>())
                             as *mut AllocationHeader;
                         unsafe {
                             ptr::write(header, AllocationHeader {
                                 block_start: start as *mut u8,
-                                block_size,
+                                block_size: allocated_size,
                                 magic: ALLOCATION_MAGIC,
                             });
                         }
@@ -280,13 +295,25 @@ pub fn self_test<W: Write>(log: &mut W) -> Result<(), HeapError> {
     if first.is_null() || (first as usize) % 64 != 0 {
         return Err(HeapError::AllocationTestFailed);
     }
+    let simultaneous = unsafe { GLOBAL_ALLOCATOR.alloc(small) };
+    if simultaneous.is_null() || simultaneous == first || (simultaneous as usize) % 64 != 0 {
+        unsafe { GLOBAL_ALLOCATOR.dealloc(first, small) };
+        return Err(HeapError::AllocationTestFailed);
+    }
     unsafe {
         ptr::write_bytes(first, 0x5a, small.size());
-        if ptr::read(first) != 0x5a || ptr::read(first.add(small.size() - 1)) != 0x5a {
+        ptr::write_bytes(simultaneous, 0xa5, small.size());
+        if ptr::read(first) != 0x5a
+            || ptr::read(first.add(small.size() - 1)) != 0x5a
+            || ptr::read(simultaneous) != 0xa5
+            || ptr::read(simultaneous.add(small.size() - 1)) != 0xa5
+        {
+            GLOBAL_ALLOCATOR.dealloc(simultaneous, small);
             GLOBAL_ALLOCATOR.dealloc(first, small);
             return Err(HeapError::AllocationTestFailed);
         }
         GLOBAL_ALLOCATOR.dealloc(first, small);
+        GLOBAL_ALLOCATOR.dealloc(simultaneous, small);
     }
 
     let second = unsafe { GLOBAL_ALLOCATOR.alloc(large) };
@@ -310,6 +337,6 @@ pub fn self_test<W: Write>(log: &mut W) -> Result<(), HeapError> {
         return Err(HeapError::AllocationTestFailed);
     }
     unsafe { GLOBAL_ALLOCATOR.dealloc(reused, small) };
-    let _ = writeln!(log, "Heap: alignment, page growth, access, free and reuse tests passed");
+    let _ = writeln!(log, "Heap: alignment, split/coalesce, page growth, access, free and reuse tests passed");
     Ok(())
 }
