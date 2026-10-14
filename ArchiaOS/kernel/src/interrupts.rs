@@ -323,15 +323,19 @@ pub fn apic_timer_interrupt_self_test(apic: &'static crate::apic::LocalApic) -> 
     let armed = unsafe { apic.start_timer_one_shot(APIC_TIMER_TEST_VECTOR, 16, 100_000) }.is_ok();
     let mut delivered = false;
     if armed {
-        // Temporarily permit delivery, but immediately disable IF after each
-        // pause so the polling loop can enforce a finite upper bound.
+        // Keep IF enabled for the bounded polling window. Repeatedly executing
+        // CLI after a single PAUSE can starve a short one-shot timer under TCG:
+        // the countdown may expire while delivery is disabled on almost every
+        // iteration. Only the APIC timer is unmasked during this boot-time test.
+        unsafe { asm!("sti", options(nomem, nostack)); }
         for _ in 0..10_000_000usize {
-            unsafe { asm!("sti", "pause", "cli", options(nomem, nostack)); }
             if APIC_TIMER_TEST_COUNT.load(Ordering::SeqCst) != before {
                 delivered = true;
                 break;
             }
+            unsafe { asm!("pause", options(nomem, nostack, preserves_flags)); }
         }
+        unsafe { asm!("cli", options(nomem, nostack)); }
     }
 
     // Always stop the timer before restoring the caller's IF state.
