@@ -93,13 +93,11 @@ pub fn validate_hardware_irq_vector(vector: u8) -> Result<(), ApicError> {
 
 /// Build the software-enable register while selecting a valid spurious vector.
 pub fn spurious_vector_value(vector: u8) -> Result<u32, ApicError> {
-    // The spurious vector is an IDT vector, not a hardware IRQ destination.
-    // Keep CPU exceptions, remapped PIC vectors, and the software test gate
-    // unavailable; 0xff is the default architectural choice.
-    if vector < 32
-        || (0x20..=0x2f).contains(&vector)
-        || vector == APIC_TEST_RETURN_VECTOR
-    {
+    // This kernel installs the returning spurious handler only at 0xff.
+    // Accepting another architecturally legal vector would route a spurious
+    // APIC event into the generic fatal ISR stub instead of the safe return
+    // path. Keep the configured vector tied to the gate we actually install.
+    if vector != APIC_SPURIOUS_VECTOR {
         return Err(ApicError::InvalidVector);
     }
     Ok(u32::from(vector) | APIC_SPURIOUS_ENABLE)
@@ -491,6 +489,8 @@ mod tests {
         assert_eq!(spurious_vector_value(0x20), Err(ApicError::InvalidVector));
         assert_eq!(spurious_vector_value(0x2f), Err(ApicError::InvalidVector));
         assert_eq!(spurious_vector_value(APIC_TEST_RETURN_VECTOR), Err(ApicError::InvalidVector));
+        assert_eq!(spurious_vector_value(0x80), Err(ApicError::InvalidVector));
+        assert_eq!(spurious_vector_value(0xfe), Err(ApicError::InvalidVector));
     }
 
     #[test]
