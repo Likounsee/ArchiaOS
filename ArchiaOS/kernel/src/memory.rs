@@ -7,10 +7,10 @@ use core::slice;
 use crate::memory_ranges::{frame_range, overlapping_frames, reserved_frame_range, MAX_FRAMES, MAX_PHYSICAL_ADDRESS, PAGE_SIZE};
 const ONE_MIB: u64 = 1024 * 1024;
 const BITMAP_WORDS: usize = (MAX_FRAMES / 64) as usize;
-// The loader currently identity-maps ordinary RAM only below 4 GiB. Keep
-// allocations inside that mapped window until the kernel VMM can map high RAM.
-const MAX_ALLOCATABLE_PHYSICAL_ADDRESS: u64 = 1u64 << 32;
-const MAX_ALLOCATABLE_FRAMES: u64 = MAX_ALLOCATABLE_PHYSICAL_ADDRESS / PAGE_SIZE;
+// The PMM tracks and allocates physical frames throughout its 512 GiB window.
+// Callers must map a frame virtually before dereferencing it, especially above 4 GiB.
+const MAX_ALLOCATABLE_PHYSICAL_ADDRESS: u64 = MAX_PHYSICAL_ADDRESS;
+const MAX_ALLOCATABLE_FRAMES: u64 = MAX_FRAMES;
 const BITMAP_STORAGE_BYTES: u64 = (BITMAP_WORDS as u64) * 8 * 2;
 const MAX_MEMMAP_ENTRIES: u64 = 4096;
 const PMM_SELF_TEST_PAGES: usize = 130;
@@ -103,11 +103,8 @@ fn apply_range(base: u64, length: u64, managed: bool, free: bool) {
     if let Some((first, last)) = frame_range(base, length) {
         unsafe {
             set_bit_range(managed_bitmap_ptr(), first, last, managed);
-            // A physical frame is not allocatable merely because the PMM can
-            // describe it: it must also be reachable through the active mapping.
-            let free_last = if free { last.min(MAX_ALLOCATABLE_FRAMES) } else { last };
-            if first < free_last {
-                set_bit_range(free_bitmap_ptr(), first, free_last, free);
+            if first < last {
+                set_bit_range(free_bitmap_ptr(), first, last, free);
             }
         }
     }
@@ -201,13 +198,11 @@ pub unsafe fn initialize_from_bootinfo<W: Write>(
         let length = descriptor.byte_length()
             .map_err(|_| MemoryError::InvalidMemoryRange)?;
         if descriptor.is_conventional() {
-            // The PMM tracks frames through 512 GiB, but allocation remains limited to
-            // the currently identity-mapped range below 4 GiB. Count only pages
-            // that alloc_page() can safely return, excluding all reservations.
+            // Count every usable frame in the PMM's 512 GiB physical window,
+            // excluding low memory, framebuffer pages and the bitmap backing store.
             let (first, last) = frame_range(descriptor.physical_start, length)
                 .ok_or(MemoryError::InvalidMemoryRange)?;
             let first = first.max(ONE_MIB / PAGE_SIZE);
-            let last = last.min(MAX_ALLOCATABLE_FRAMES);
             let (fb_first, fb_last) = reserved_frame_range(info.framebuffer_base, info.framebuffer_size)
                 .ok_or(MemoryError::InvalidMemoryRange)?;
             let framebuffer_overlap = overlapping_frames(first, last, fb_first, fb_last);
@@ -345,7 +340,7 @@ fn first_free_frame(
     None
 }
 
-pub fn alloc_page() -> Option<u64> {
+fn alloc_page_in_range(first_frame: u64, frame_limit: u64) -> Option<u64> {
     if !unsafe { ptr::read_volatile(ptr::addr_of!(PMM_INITIALIZED)) } {
         return None;
     }
@@ -354,10 +349,26 @@ pub fn alloc_page() -> Option<u64> {
     // SAFETY: both global bitmaps have exactly BITMAP_WORDS elements.
     let free = unsafe { slice::from_raw_parts(free_ptr, BITMAP_WORDS) };
     let managed = unsafe { slice::from_raw_parts(managed_ptr, BITMAP_WORDS) };
-    let frame = first_free_frame(free, managed, ONE_MIB / PAGE_SIZE, MAX_ALLOCATABLE_FRAMES)?;
+    let frame = first_free_frame(free, managed, first_frame, frame_limit)?;
     // Clear the free bit only after selecting a frame that is also managed.
     unsafe { set_bit(free_bitmap_ptr(), frame, false) };
     Some(frame * PAGE_SIZE)
+}
+
+/// Allocate any free physical frame tracked by the PMM. The result is a physical
+/// address; callers must not dereference it without an active virtual mapping.
+pub fn alloc_page() -> Option<u64> {
+    alloc_page_in_range(ONE_MIB / PAGE_SIZE, MAX_ALLOCATABLE_FRAMES)
+}
+
+/// Allocate a frame below 4 GiB for page tables reachable through the boot map.
+pub fn alloc_page_below_4g() -> Option<u64> {
+    alloc_page_in_range(ONE_MIB / PAGE_SIZE, (1u64 << 32) / PAGE_SIZE)
+}
+
+/// Allocate a frame above 4 GiB, for explicit high-memory mapping tests.
+pub fn alloc_page_above_4g() -> Option<u64> {
+    alloc_page_in_range((1u64 << 32) / PAGE_SIZE, MAX_ALLOCATABLE_FRAMES)
 }
 
 pub fn free_page(physical_address: u64) -> bool {
