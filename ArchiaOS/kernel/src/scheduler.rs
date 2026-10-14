@@ -386,6 +386,11 @@ static mut RUNTIME_IDLE_STACK: crate::context::TaskStack = crate::context::TaskS
 static mut RUNTIME_STAGES: [usize; RUNTIME_TASKS] = [0; RUNTIME_TASKS];
 
 extern "C" fn runtime_idle_context_entry() -> ! {
+    // The idle stack is live here, so validate its canaries and the scheduler
+    // state before handing control back to the boot-time wakeup harness.
+    if runtime_validate_boundary().is_err() {
+        runtime_halt();
+    }
     unsafe {
         crate::context::switch(
             &mut *core::ptr::addr_of_mut!(RUNTIME_IDLE_CONTEXT),
@@ -468,12 +473,20 @@ fn runtime_stack_guards_intact() -> bool {
     }
 }
 
-/// Yield from the currently running runtime task and resume when it is selected
-/// again. Call only on the single boot CPU with maskable interrupts disabled.
-fn runtime_yield() -> Result<(), SchedulerError> {
+/// Validate the scheduler bookkeeping and every runtime stack at a
+/// context boundary. Keep the checks together so new transition paths cannot
+/// accidentally validate only one half of the runtime invariants.
+fn runtime_validate_boundary() -> Result<(), SchedulerError> {
     if !runtime_stack_guards_intact() {
         return Err(SchedulerError::StackCorrupted);
     }
+    unsafe { (&*core::ptr::addr_of!(RUNTIME_SCHEDULER)).check_invariants() }
+}
+
+/// Yield from the currently running runtime task and resume when it is selected
+/// again. Call only on the single boot CPU with maskable interrupts disabled.
+fn runtime_yield() -> Result<(), SchedulerError> {
+    runtime_validate_boundary()?;
     unsafe {
         let scheduler = core::ptr::addr_of_mut!(RUNTIME_SCHEDULER);
         let previous = (*scheduler).current.ok_or(SchedulerError::NoCurrentTask)?;
@@ -486,9 +499,7 @@ fn runtime_yield() -> Result<(), SchedulerError> {
         // contexts are static, and their stacks remain alive for this test.
         crate::context::switch(&mut *contexts.add(previous), &*contexts.add(next));
     }
-    if !runtime_stack_guards_intact() {
-        return Err(SchedulerError::StackCorrupted);
-    }
+    runtime_validate_boundary()?;
     Ok(())
 }
 
@@ -498,9 +509,7 @@ fn runtime_yield() -> Result<(), SchedulerError> {
 /// a dedicated idle context, but production blocking still needs an interrupt
 /// and wakeup path before this helper can be generalized.
 fn runtime_block_current() -> Result<(), SchedulerError> {
-    if !runtime_stack_guards_intact() {
-        return Err(SchedulerError::StackCorrupted);
-    }
+    runtime_validate_boundary()?;
     unsafe {
         let scheduler = core::ptr::addr_of_mut!(RUNTIME_SCHEDULER);
         let previous = (*scheduler).current.ok_or(SchedulerError::NoCurrentTask)?;
@@ -510,9 +519,7 @@ fn runtime_block_current() -> Result<(), SchedulerError> {
         // are static and interrupts are disabled for this single-CPU test.
         crate::context::switch(&mut *contexts.add(previous), &*contexts.add(next));
     }
-    if !runtime_stack_guards_intact() {
-        return Err(SchedulerError::StackCorrupted);
-    }
+    runtime_validate_boundary()?;
     Ok(())
 }
 
@@ -522,9 +529,7 @@ fn runtime_block_current() -> Result<(), SchedulerError> {
 /// boot context regains control so the test can inject a wakeup without enabling
 /// interrupts.
 fn runtime_block_current_to_boot() -> Result<(), SchedulerError> {
-    if !runtime_stack_guards_intact() {
-        return Err(SchedulerError::StackCorrupted);
-    }
+    runtime_validate_boundary()?;
     unsafe {
         let scheduler = core::ptr::addr_of_mut!(RUNTIME_SCHEDULER);
         let previous = (*scheduler).current.ok_or(SchedulerError::NoCurrentTask)?;
@@ -545,21 +550,24 @@ fn runtime_block_current_to_boot() -> Result<(), SchedulerError> {
             DispatchDecision::Idle(_) => return Err(SchedulerError::InvariantViolation),
         }
     }
-    if !runtime_stack_guards_intact() {
-        return Err(SchedulerError::StackCorrupted);
-    }
+    runtime_validate_boundary()?;
     Ok(())
 }
 
 /// Wake a blocked task in the boot-time runtime.
 fn runtime_wake(id: TaskId) -> Result<(), SchedulerError> {
-    unsafe { (&mut *core::ptr::addr_of_mut!(RUNTIME_SCHEDULER)).wake(id) }
+    runtime_validate_boundary()?;
+    unsafe { (&mut *core::ptr::addr_of_mut!(RUNTIME_SCHEDULER)).wake(id)?; }
+    runtime_validate_boundary()
 }
 
 /// Exit a runtime task permanently. An exited task is never dispatched again.
 /// When no runnable task remains, return to the boot context rather than
 /// continuing on a task stack that is logically dead.
 fn runtime_exit() -> ! {
+    if runtime_validate_boundary().is_err() {
+        runtime_halt();
+    }
     unsafe {
         let scheduler = core::ptr::addr_of_mut!(RUNTIME_SCHEDULER);
         let previous = match (*scheduler).current {
