@@ -149,8 +149,8 @@ fn idle_dispatch_is_stable_until_a_blocked_task_is_woken() {
     assert_eq!(scheduler.schedule(), Ok(first));
     assert_eq!(scheduler.block_current(), Ok(second));
     assert_eq!(scheduler.block_current(), Err(SchedulerError::NoRunnableTask));
-    assert_eq!(scheduler.dispatch_or_idle(), Ok(scheduler::DispatchDecision::Idle));
-    assert_eq!(scheduler.dispatch_or_idle(), Ok(scheduler::DispatchDecision::Idle));
+    assert_eq!(scheduler.dispatch_or_idle(), Ok(scheduler::DispatchDecision::Idle(scheduler::IdleReason::WaitingForWakeup)));
+    assert_eq!(scheduler.dispatch_or_idle(), Ok(scheduler::DispatchDecision::Idle(scheduler::IdleReason::WaitingForWakeup)));
     assert_eq!(scheduler.current(), None);
     assert_eq!(scheduler.check_invariants(), Ok(()));
 
