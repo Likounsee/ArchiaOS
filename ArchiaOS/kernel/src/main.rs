@@ -460,6 +460,13 @@ unsafe fn initialize_ioapics_masked(
     }
     let mut configured = 0usize;
     for irq in 0u8..16 {
+        // ISA IRQ2 is the legacy 8259 master-to-slave cascade, not an
+        // independent device input. On common MADTs IRQ0 is overridden to GSI2;
+        // programming a second IRQ2 route there would overwrite IRQ0's vector.
+        // The PIC remains fully masked, so do not synthesize an IOAPIC route for
+        // the obsolete cascade line.
+        if irq == 2 { continue; }
+
         let mut gsi = u32::from(irq);
         let mut polarity = 0u16; // ISA default: active-high.
         let mut trigger = 0u16;  // ISA default: edge-triggered.
