@@ -7,20 +7,38 @@
 use core::arch::global_asm;
 
 pub const TASK_STACK_SIZE: usize = 16 * 1024;
+const STACK_GUARD_WORDS: usize = 8;
+const STACK_GUARD_PATTERN: u64 = 0xA11C_57AC_C0DE_F00D;
 
+/// Statically allocated task stack with canaries on both sides of the usable area.
+/// The guards detect many over/underflows during diagnostics; they are not MMU guard pages.
 #[repr(C, align(16))]
-pub struct TaskStack([u8; TASK_STACK_SIZE]);
+pub struct TaskStack {
+    lower_guard: [u64; STACK_GUARD_WORDS],
+    bytes: [u8; TASK_STACK_SIZE],
+    upper_guard: [u64; STACK_GUARD_WORDS],
+}
 
 impl TaskStack {
     pub const fn new() -> Self {
-        Self([0; TASK_STACK_SIZE])
+        Self {
+            lower_guard: [STACK_GUARD_PATTERN; STACK_GUARD_WORDS],
+            bytes: [0; TASK_STACK_SIZE],
+            upper_guard: [STACK_GUARD_PATTERN; STACK_GUARD_WORDS],
+        }
+    }
+
+    /// Check the stack canaries without changing the task stack.
+    pub fn guards_intact(&self) -> bool {
+        self.lower_guard.iter().all(|word| *word == STACK_GUARD_PATTERN)
+            && self.upper_guard.iter().all(|word| *word == STACK_GUARD_PATTERN)
     }
 
     /// Prepare a never-run task to begin at `entry` after the first context switch.
     pub fn initialize(&mut self, context: &mut CpuContext, entry: extern "C" fn() -> !) {
         // The stack type guarantees a 16-byte-aligned top. The extra final
         // slot preserves the SysV function-entry RSP alignment after `ret`.
-        let top = self.0.as_mut_ptr().wrapping_add(TASK_STACK_SIZE) as usize;
+        let top = self.bytes.as_mut_ptr().wrapping_add(TASK_STACK_SIZE) as usize;
         let frame = (top - 8 * core::mem::size_of::<u64>()) as *mut u64;
         // Seed a first-run task with the current x87/SSE state. Every
         // subsequent switch saves and restores this area independently.
@@ -192,6 +210,7 @@ pub fn self_test() -> Result<(), ()> {
 
         if !(&*core::ptr::addr_of!(TEST_TASK_CONTEXT)).is_initialized()
             || (&*core::ptr::addr_of!(TEST_TASK_CONTEXT)).rsp % 16 != 0
+            || !(&*core::ptr::addr_of!(TEST_TASK_STACK)).guards_intact()
         {
             return Err(());
         }
@@ -211,6 +230,7 @@ pub fn self_test() -> Result<(), ()> {
         );
 
         if *core::ptr::addr_of!(TEST_STAGE) != 1
+            || !(&*core::ptr::addr_of!(TEST_TASK_STACK)).guards_intact()
             || !(&*core::ptr::addr_of!(TEST_BOOT_CONTEXT)).is_initialized()
             || !(&*core::ptr::addr_of!(TEST_TASK_CONTEXT)).is_initialized()
         {
@@ -259,7 +279,8 @@ mod tests {
         assert_eq!(rsp - base, 0);
         assert_eq!(reserved - base, 8);
         assert_eq!(simd - base, 16);
-        assert_eq!(core::mem::size_of::<TaskStack>(), TASK_STACK_SIZE);
+        assert_eq!(core::mem::size_of::<TaskStack>(), TASK_STACK_SIZE + 2 * 8 * core::mem::size_of::<u64>());
+        assert!(TaskStack::new().guards_intact());
         assert_eq!(core::mem::align_of::<TaskStack>(), 16);
     }
 }
