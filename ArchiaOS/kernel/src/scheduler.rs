@@ -760,10 +760,11 @@ pub fn runtime_idle_wakeup_self_test() -> Result<(), SchedulerError> {
             DispatchDecision::Run(next) if next == task => {}
             _ => return Err(SchedulerError::InvariantViolation),
         }
-        crate::context::switch(
+        crate::context::switch_checked(
             &mut *core::ptr::addr_of_mut!(RUNTIME_BOOT_CONTEXT),
             &*contexts.add(task.0),
-        );
+            &*stacks.add(task.0),
+        ).map_err(|_| SchedulerError::StackCorrupted)?;
 
         if core::ptr::read_volatile(core::ptr::addr_of!(RUNTIME_STAGES).cast::<usize>()) != 2
             || !(&*stacks.add(task.0)).guards_intact()
