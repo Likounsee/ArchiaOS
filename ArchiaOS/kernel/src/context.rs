@@ -244,4 +244,22 @@ mod tests {
         assert_eq!(area % 16, 0);
         assert_eq!(area - base, 16);
     }
+
+    #[test]
+    fn context_layout_matches_offsets_used_by_switch_assembly() {
+        let context = CpuContext::empty();
+        let base = &context as *const CpuContext as usize;
+        let rsp = &context.rsp as *const u64 as usize;
+        let reserved = &context._reserved as *const u64 as usize;
+        let simd = &context.simd as *const FxState as usize;
+
+        // archiaos_context_switch uses (%rdi), (%rsi), and 16(%rdi/rsi).
+        assert_eq!(core::mem::size_of::<CpuContext>(), 528);
+        assert_eq!(core::mem::align_of::<CpuContext>(), 16);
+        assert_eq!(rsp - base, 0);
+        assert_eq!(reserved - base, 8);
+        assert_eq!(simd - base, 16);
+        assert_eq!(core::mem::size_of::<TaskStack>(), TASK_STACK_SIZE);
+        assert_eq!(core::mem::align_of::<TaskStack>(), 16);
+    }
 }
