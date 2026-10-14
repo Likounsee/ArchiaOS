@@ -250,6 +250,18 @@ mod tests {
     }
 
     #[test]
+    fn stack_canaries_detect_corruption_on_both_sides() {
+        let mut stack = TaskStack::new();
+        assert!(stack.guards_intact());
+        stack.lower_guard[0] ^= 1;
+        assert!(!stack.guards_intact());
+
+        let mut stack = TaskStack::new();
+        stack.upper_guard[STACK_GUARD_WORDS - 1] ^= 1;
+        assert!(!stack.guards_intact());
+    }
+
+    #[test]
     fn context_starts_uninitialized() {
         assert!(!CpuContext::empty().is_initialized());
     }
