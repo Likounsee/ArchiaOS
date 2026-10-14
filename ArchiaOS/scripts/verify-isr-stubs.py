@@ -54,7 +54,32 @@ def main() -> None:
     if table != list(range(256)):
         fail("isr_stub_table must list every stub exactly once in vector order")
 
-    print("ISR audit passed: 256 stubs, error-code normalization, common entry, and table order")
+    common_match = re.search(
+        r'"isr_common:",(?P<body>.*?)(?:"\\.section \\.rodata")',
+        source,
+        re.DOTALL,
+    )
+    if not common_match:
+        fail("isr_common body not found")
+    common = common_match.group("body")
+    required_common_instructions = [
+        '"movq (%rsp), %rdi",',
+        '"movq 8(%rsp), %rsi",',
+        '"movq 16(%rsp), %rdx",',
+        '"andq $-16, %rsp",',
+        '"call archiaos_exception_dispatch",',
+        '".Larchiaos_exception_halt:",',
+        '"cli",',
+        '"hlt",',
+        '"jmp .Larchiaos_exception_halt",',
+    ]
+    positions = [common.find(instruction) for instruction in required_common_instructions]
+    if any(position < 0 for position in positions):
+        fail("common entry is missing an argument, alignment, dispatch, or fatal-halt instruction")
+    if positions != sorted(positions):
+        fail("common entry instruction order changed; review the stack/ABI contract")
+
+    print("ISR audit passed: 256 stubs, error-code normalization, common-entry ABI safeguards, and table order")
 
 
 if __name__ == "__main__":
