@@ -53,6 +53,15 @@ def main() -> None:
         source,
         re.MULTILINE | re.DOTALL,
     ))
+    stub_vectors = [int(match.group(1)) for match in stubs]
+    if len(stub_vectors) != 256:
+        fail(f"expected exactly 256 ISR stub definitions, found {len(stub_vectors)}")
+    if len(set(stub_vectors)) != len(stub_vectors):
+        duplicates = sorted(
+            vector for vector in set(stub_vectors) if stub_vectors.count(vector) > 1
+        )
+        fail(f"duplicate ISR stub definitions: {duplicates}")
+
     by_vector = {int(match.group(1)): match.group("body") for match in stubs}
     expected_vectors = set(range(256))
     if set(by_vector) != expected_vectors:
