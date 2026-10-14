@@ -32,15 +32,13 @@ PRIORITÉ 1 — MÉMOIRE VIRTUELLE ET ALLOCATION
 -------------------------------------------
 1. Étendre et clarifier les limites du gestionnaire de mémoire physique (PMM).
    État partiel : la fenêtre de suivi du PMM est portée à 512 Gio dans
-   kernel/src/memory_ranges.rs. À cette capacité, les deux bitmaps occupent
-   environ 32 Mio de BSS (16 Mio chacun). Les tests hôte et le test au démarrage
-   couvrent les adresses au-dessus de 4 Gio et de l'ancienne limite intermédiaire
-   de 64 Gio, ainsi que la borne exclusive de 512 Gio. Cette limite de suivi ne
-   garantit pas que chaque CPU ou plateforme puisse adresser toute la plage.
-   Restent à valider la compilation, les tests d'intégration, les cartes mémoire
-   QEMU et les machines avec beaucoup de RAM. Le VMM et les mappings physiques
-   au-delà de l'espace effectivement mappé par le chargeur restent distincts du
-   simple suivi PMM.
+   kernel/src/memory_ranges.rs. Les deux bitmaps occupent environ 32 Mio et sont
+   désormais placés dynamiquement dans une plage de RAM conventionnelle réservée,
+   au lieu d'augmenter le BSS fixe du noyau. Le PMM suit les adresses au-dessus de
+   4 Gio et de 64 Gio, mais l'allocation sûre reste limitée à 4 Gio car le chargeur
+   ne mappe pas encore la RAM ordinaire au-delà. Les tests hôte et le démarrage
+   QEMU doivent confirmer cette nouvelle stratégie. L'extension des mappings
+   physiques et l'activation de l'allocation au-delà de 4 Gio restent à faire.
 
 2. Développer/compléter le gestionnaire de mémoire virtuelle (VMM).
    À vérifier et à porter selon les besoins : création et modification des
@@ -59,7 +57,7 @@ PRIORITÉ 1 — MÉMOIRE VIRTUELLE ET ALLOCATION
    d'adresses, alignement, libérations invalides et fragmentation.
    Avancée : les calculs purs des plages PMM sont isolés dans
    kernel/src/memory_ranges.rs et couverts par des tests hôte exécutés en CI
-   (alignement, débordement, chevauchements, réservations et adresses > 4 Gio et > 64 Gio, borne de 512 Gio).
+   (alignement, débordement, chevauchements, réservations et adresses > 4 Gio et > 64 Gio, borne de 512 Gio). Les bitmaps PMM sont réservés dynamiquement ; l'allocation effective reste limitée à 4 Gio en attendant les mappings haute mémoire.
    Ces tests ne valident pas à eux seuls le VMM ni l'intégration matérielle.
 
 PRIORITÉ 2 — INTERRUPTIONS, ORDONNANCEMENT ET SMP

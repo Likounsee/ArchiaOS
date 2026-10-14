@@ -7,12 +7,17 @@ use core::slice;
 use crate::memory_ranges::{frame_range, overlapping_frames, reserved_frame_range, MAX_FRAMES, MAX_PHYSICAL_ADDRESS, PAGE_SIZE};
 const ONE_MIB: u64 = 1024 * 1024;
 const BITMAP_WORDS: usize = (MAX_FRAMES / 64) as usize;
+// The loader currently identity-maps ordinary RAM only below 4 GiB. Keep
+// allocations inside that mapped window until the kernel VMM can map high RAM.
+const MAX_ALLOCATABLE_PHYSICAL_ADDRESS: u64 = 1u64 << 32;
+const MAX_ALLOCATABLE_FRAMES: u64 = MAX_ALLOCATABLE_PHYSICAL_ADDRESS / PAGE_SIZE;
+const BITMAP_STORAGE_BYTES: u64 = (BITMAP_WORDS as u64) * 8 * 2;
 const MAX_MEMMAP_ENTRIES: u64 = 4096;
 const PMM_SELF_TEST_PAGES: usize = 130;
 // A managed bit distinguishes usable frames from reserved frames; a free bit
 // distinguishes free from allocated frames. Reserved frames can never be freed.
-static mut MANAGED_BITMAP: [u64; BITMAP_WORDS] = [0; BITMAP_WORDS];
-static mut FREE_BITMAP: [u64; BITMAP_WORDS] = [0; BITMAP_WORDS];
+static mut MANAGED_BITMAP: *mut u64 = ptr::null_mut();
+static mut FREE_BITMAP: *mut u64 = ptr::null_mut();
 static mut PMM_INITIALIZED: bool = false;
 // Keep the stress-test buffer in reserved kernel BSS, not on the small boot stack.
 static mut PMM_TEST_PAGES: [u64; PMM_SELF_TEST_PAGES] = [0; PMM_SELF_TEST_PAGES];
@@ -32,6 +37,7 @@ pub enum MemoryError {
     ManagedBytesOverflow,
     UsableMemoryTotalOverflow,
     NoFreePages,
+    NoBitmapStorage,
     AllocationFailed,
     BitmapInvariantViolation,
     AllocationAddressInvalid,
@@ -53,11 +59,11 @@ pub struct MemoryStats {
 }
 
 fn managed_bitmap_ptr() -> *mut u64 {
-    ptr::addr_of_mut!(MANAGED_BITMAP).cast::<u64>()
+    unsafe { ptr::read_volatile(ptr::addr_of!(MANAGED_BITMAP)) }
 }
 
 fn free_bitmap_ptr() -> *mut u64 {
-    ptr::addr_of_mut!(FREE_BITMAP).cast::<u64>()
+    unsafe { ptr::read_volatile(ptr::addr_of!(FREE_BITMAP)) }
 }
 
 unsafe fn bit_is_set(bitmap: *const u64, frame: u64) -> bool {
@@ -97,9 +103,54 @@ fn apply_range(base: u64, length: u64, managed: bool, free: bool) {
     if let Some((first, last)) = frame_range(base, length) {
         unsafe {
             set_bit_range(managed_bitmap_ptr(), first, last, managed);
-            set_bit_range(free_bitmap_ptr(), first, last, free);
+            // A physical frame is not allocatable merely because the PMM can
+            // describe it: it must also be reachable through the active mapping.
+            let free_last = if free { last.min(MAX_ALLOCATABLE_FRAMES) } else { last };
+            if first < free_last {
+                set_bit_range(free_bitmap_ptr(), first, free_last, free);
+            }
         }
     }
+}
+
+/// Find contiguous conventional RAM for the two PMM metadata bitmaps.
+/// The storage must be below 4 GiB because the current loader identity-maps
+/// ordinary RAM only in that window. Conventional descriptors exclude the
+/// kernel, loader, handoff buffers and page-table arena already reserved by UEFI.
+fn find_bitmap_storage(
+    memory_map: &UefiMemoryMap<'_>,
+    framebuffer_base: u64,
+    framebuffer_size: u64,
+) -> Result<u64, MemoryError> {
+    let framebuffer_end = framebuffer_base.checked_add(framebuffer_size)
+        .ok_or(MemoryError::InvalidMemoryRange)?;
+    for index in 0..memory_map.len() {
+        let descriptor = memory_map.entry(index).map_err(|_| MemoryError::InvalidUefiMemoryMap)?;
+        if !descriptor.is_conventional() {
+            continue;
+        }
+        let descriptor_end = descriptor.physical_end().map_err(|_| MemoryError::InvalidMemoryRange)?
+            .min(MAX_ALLOCATABLE_PHYSICAL_ADDRESS);
+        let mut candidate = descriptor.physical_start.max(ONE_MIB);
+        candidate = candidate.checked_add(PAGE_SIZE - 1)
+            .ok_or(MemoryError::InvalidMemoryRange)? & !(PAGE_SIZE - 1);
+        let mut candidate_end = candidate.checked_add(BITMAP_STORAGE_BYTES)
+            .ok_or(MemoryError::InvalidMemoryRange)?;
+        if candidate_end > descriptor_end {
+            continue;
+        }
+        if framebuffer_size != 0 && candidate < framebuffer_end && framebuffer_base < candidate_end {
+            candidate = framebuffer_end.checked_add(PAGE_SIZE - 1)
+                .ok_or(MemoryError::InvalidMemoryRange)? & !(PAGE_SIZE - 1);
+            candidate_end = candidate.checked_add(BITMAP_STORAGE_BYTES)
+                .ok_or(MemoryError::InvalidMemoryRange)?;
+            if candidate_end > descriptor_end {
+                continue;
+            }
+        }
+        return Ok(candidate);
+    }
+    Err(MemoryError::NoBitmapStorage)
 }
 
 /// Initialize the physical-page allocator from the ArchiaOS UEFI handoff.
@@ -137,6 +188,19 @@ pub unsafe fn initialize_from_bootinfo<W: Write>(
         return Err(MemoryError::InvalidUefiMemoryMap);
     }
 
+    let bitmap_storage_base = find_bitmap_storage(&memory_map, info.framebuffer_base, info.framebuffer_size)?;
+    let bitmap_storage_first = bitmap_storage_base / PAGE_SIZE;
+    let bitmap_storage_last = bitmap_storage_first + BITMAP_STORAGE_BYTES / PAGE_SIZE;
+    unsafe {
+        ptr::write_volatile(ptr::addr_of_mut!(MANAGED_BITMAP), bitmap_storage_base as *mut u64);
+        ptr::write_volatile(
+            ptr::addr_of_mut!(FREE_BITMAP),
+            (bitmap_storage_base + (BITMAP_WORDS as u64) * 8) as *mut u64,
+        );
+        ptr::write_bytes(managed_bitmap_ptr(), 0, BITMAP_WORDS);
+        ptr::write_bytes(free_bitmap_ptr(), 0, BITMAP_WORDS);
+    }
+
     let mut usable_ranges = 0u64;
     let mut usable_bytes = 0u64;
     // Preflight every descriptor before touching the global allocator state.
@@ -147,16 +211,20 @@ pub unsafe fn initialize_from_bootinfo<W: Write>(
         let length = descriptor.byte_length()
             .map_err(|_| MemoryError::InvalidMemoryRange)?;
         if descriptor.is_conventional() {
-            // Report only complete pages the current bitmap can actually manage:
-            // frames below 1 MiB are reserved, and physical addresses at/above
-            // 512 GiB are outside this PMM's current supported window.
+            // The PMM tracks frames through 512 GiB, but allocation remains limited to
+            // the currently identity-mapped range below 4 GiB. Count only pages
+            // that alloc_page() can safely return, excluding all reservations.
             let (first, last) = frame_range(descriptor.physical_start, length)
                 .ok_or(MemoryError::InvalidMemoryRange)?;
             let first = first.max(ONE_MIB / PAGE_SIZE);
+            let last = last.min(MAX_ALLOCATABLE_FRAMES);
             let (fb_first, fb_last) = reserved_frame_range(info.framebuffer_base, info.framebuffer_size)
                 .ok_or(MemoryError::InvalidMemoryRange)?;
             let framebuffer_overlap = overlapping_frames(first, last, fb_first, fb_last);
-            let usable_pages = last.saturating_sub(first).saturating_sub(framebuffer_overlap);
+            let bitmap_overlap = overlapping_frames(first, last, bitmap_storage_first, bitmap_storage_last);
+            let usable_pages = last.saturating_sub(first)
+                .saturating_sub(framebuffer_overlap)
+                .saturating_sub(bitmap_overlap);
             if usable_pages != 0 {
                 usable_ranges = usable_ranges.checked_add(1)
                     .ok_or(MemoryError::UsableRangeCountOverflow)?;
@@ -176,10 +244,10 @@ pub unsafe fn initialize_from_bootinfo<W: Write>(
     // and descriptor preflight checks have passed, while PMM_INITIALIZED is false.
     // This also makes the failure path deterministic if the handoff map changes
     // unexpectedly between validation and population.
-    unsafe {
-        set_bit_range(managed_bitmap_ptr(), 0, MAX_FRAMES, false);
-        set_bit_range(free_bitmap_ptr(), 0, MAX_FRAMES, false);
-    }
+    // The bitmap backing storage lives inside conventional RAM. Remove it from
+    // both maps so it can never be handed back as an allocatable physical page.
+    // The freshly selected storage is already zeroed above; no giant per-frame
+    // clearing loop is needed before descriptor population.
 
     // Only UEFI EfiConventionalMemory ranges become allocatable; loader, runtime,
     // ACPI, MMIO and all other descriptor types remain reserved. Do not publish
@@ -219,6 +287,8 @@ pub unsafe fn initialize_from_bootinfo<W: Write>(
         set_bit_range(free_bitmap_ptr(), fb_first, fb_last, false);
         set_bit_range(managed_bitmap_ptr(), 0, ONE_MIB / PAGE_SIZE, false);
         set_bit_range(free_bitmap_ptr(), 0, ONE_MIB / PAGE_SIZE, false);
+        set_bit_range(managed_bitmap_ptr(), bitmap_storage_first, bitmap_storage_last, false);
+        set_bit_range(free_bitmap_ptr(), bitmap_storage_first, bitmap_storage_last, false);
     }
     let free_pages = count_free_bitmap_pages();
     if free_pages == 0 {
@@ -282,7 +352,7 @@ pub fn alloc_page() -> Option<u64> {
     // SAFETY: both global bitmaps have exactly BITMAP_WORDS elements.
     let free = unsafe { slice::from_raw_parts(free_ptr, BITMAP_WORDS) };
     let managed = unsafe { slice::from_raw_parts(managed_ptr, BITMAP_WORDS) };
-    let frame = first_free_frame(free, managed, ONE_MIB / PAGE_SIZE, MAX_FRAMES)?;
+    let frame = first_free_frame(free, managed, ONE_MIB / PAGE_SIZE, MAX_ALLOCATABLE_FRAMES)?;
     // Clear the free bit only after selecting a frame that is also managed.
     unsafe { set_bit(free_bitmap_ptr(), frame, false) };
     Some(frame * PAGE_SIZE)
@@ -294,7 +364,7 @@ pub fn free_page(physical_address: u64) -> bool {
     }
     if physical_address == 0
         || physical_address % PAGE_SIZE != 0
-        || physical_address >= MAX_PHYSICAL_ADDRESS
+        || physical_address >= MAX_ALLOCATABLE_PHYSICAL_ADDRESS
     {
         return false;
     }
@@ -350,13 +420,14 @@ pub fn free_page_count() -> u64 {
 pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
     // Exercise page-range calculations and framebuffer overlap accounting without
     // mutating the global bitmaps. All ranges are half-open and clipped to the PMM's
-    // supported [0, 512 GiB) window.
+    // tracked [0, 512 GiB) window; allocatable physical pages remain below 4 GiB until the VMM expands the mapping.
     let frame_cases = [
         ((0x1000, 0x1000), Some((1, 2))),
         ((0x1001, 0x0fff), Some((2, 2))),
         ((0x1000, 0x1001), Some((1, 2))),
         // Addresses above both the old 4 GiB and interim 64 GiB limits are now tracked.
         ((1u64 << 32, PAGE_SIZE), Some(((1u64 << 32) / PAGE_SIZE, ((1u64 << 32) / PAGE_SIZE) + 1))),
+        ((1u64 << 36, PAGE_SIZE), Some(((1u64 << 36) / PAGE_SIZE, ((1u64 << 36) / PAGE_SIZE) + 1))),
         ((1u64 << 36, PAGE_SIZE), Some(((1u64 << 36) / PAGE_SIZE, ((1u64 << 36) / PAGE_SIZE) + 1))),
         ((MAX_PHYSICAL_ADDRESS, PAGE_SIZE), Some((MAX_FRAMES, MAX_FRAMES))),
         ((u64::MAX - 1, 8), None),
@@ -463,7 +534,7 @@ pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
         if candidates != 0 {
             let bit = candidates.trailing_zeros() as u64;
             let frame = word_index as u64 * 64 + bit;
-            if frame >= first_frame && frame < MAX_FRAMES {
+            if frame >= first_frame && frame < MAX_ALLOCATABLE_FRAMES {
                 reserved_frame = Some(frame);
                 break;
             }
@@ -475,7 +546,7 @@ pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
         }
         let _ = writeln!(log, "PMM test: firmware-reserved frame cannot be freed");
     } else {
-        let _ = writeln!(log, "PMM test: no additional reserved frame in 1 MiB..512 GiB window");
+        let _ = writeln!(log, "PMM test: no additional reserved frame in 1 MiB..4 GiB allocatable window");
     }
 
     // Cross multiple 64-bit bitmap words to exercise allocation and fragmented frees.
@@ -483,7 +554,7 @@ pub fn self_test<W: Write>(log: &mut W) -> Result<(), MemoryError> {
     let pages = ptr::addr_of_mut!(PMM_TEST_PAGES).cast::<u64>();
     for index in 0..PMM_SELF_TEST_PAGES {
         let page = alloc_page().ok_or(MemoryError::AllocationFailed)?;
-        if page < ONE_MIB || page % PAGE_SIZE != 0 || page >= MAX_PHYSICAL_ADDRESS {
+        if page < ONE_MIB || page % PAGE_SIZE != 0 || page >= MAX_ALLOCATABLE_PHYSICAL_ADDRESS {
             return Err(MemoryError::AllocationAddressInvalid);
         }
         let frame = page / PAGE_SIZE;

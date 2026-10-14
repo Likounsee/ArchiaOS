@@ -6,9 +6,9 @@ ArchiaOS utilise son chargeur UEFI propre et un noyau Rust x86-64 lié en espace
 
 ## Mémoire
 
-Le PMM expérimental suit les frames physiques sous 512 Gio à l'aide de deux bitmaps : pages gérées et pages libres. À 512 Gio, ils occupent environ 32 Mio au total (16 Mio chacun). Cette limite reste une fenêtre de suivi et ne garantit pas que chaque CPU puisse adresser toute la plage. Les plages utilisables sont appliquées par mots bitmap ; les plages réservées prennent priorité. Le test au démarrage traverse plusieurs mots, vérifie les allocations distinctes, les libérations, les adresses invalides et le double-free.
+Le PMM expérimental suit les frames physiques sous 512 Gio à l'aide de deux bitmaps : pages gérées et pages libres. Ils occupent environ 32 Mio au total et sont placés dynamiquement dans de la RAM conventionnelle réservée au démarrage. L'allocation effective reste limitée à 4 Gio, car la RAM haute n'est pas encore mappée par le chargeur. Cette limite reste une fenêtre de suivi et ne garantit pas que chaque CPU puisse adresser toute la plage. Les plages utilisables sont appliquées par mots bitmap ; les plages réservées prennent priorité. Le test au démarrage traverse plusieurs mots, vérifie les allocations distinctes, les libérations, les adresses invalides et le double-free.
 
-La limite actuelle de 512 Gio est explicite ; les machines nécessitant davantage de suivi physique restent hors de cette capacité. Ce PMM ne remplace pas un VMM : les mappings virtuels, les permissions de pages, l'invalidation TLB, les espaces d'adressage isolés et un tas noyau général restent à compléter et à valider.
+La fenêtre de suivi est de 512 Gio, mais le plafond d'allocation sûr reste 4 Gio jusqu'à l'extension des mappings physiques. Ce PMM ne remplace pas un VMM : les mappings virtuels, les permissions de pages, l'invalidation TLB, les espaces d'adressage isolés et un tas noyau général restent à compléter et à valider.
 
 ## CPU, interruptions et ordonnancement
 

@@ -4,11 +4,11 @@
 
 Le noyau reçoit le contrat versionné `ARCHIABI BootInfo` du chargeur UEFI ArchiaOS. Il valide l'en-tête avant d'utiliser ses champs, puis parse la carte mémoire UEFI en respectant la taille et le pas des descripteurs. Les plages sont contrôlées contre les débordements et les entrées incohérentes ; une carte vide ou trop grande est rejetée.
 
-Seules les plages `EfiConventionalMemory` deviennent candidates à l'allocation. Les autres types UEFI (chargeur, runtime, ACPI, MMIO et autres réservations) restent indisponibles. Les pages sous 1 Mio sont réservées. Les plages sont bornées à la fenêtre physique gérée par le PMM, actuellement `[0, 512 Gio)`. Cette limite est une capacité de suivi du PMM, pas une garantie que tous les processeurs prennent en charge toute cette plage.
+Seules les plages `EfiConventionalMemory` deviennent candidates à l'allocation. Les autres types UEFI (chargeur, runtime, ACPI, MMIO et autres réservations) restent indisponibles. Les pages sous 1 Mio sont réservées. Le PMM suit les adresses physiques dans `[0, 512 Gio)`, mais l'allocateur ne remet actuellement que des pages sous 4 Gio, car le chargeur ne mappe pas encore la RAM ordinaire au-delà de cette limite. Cette limite est une capacité de suivi du PMM, pas une garantie que tous les processeurs prennent en charge toute cette plage.
 
 ## Allocateur physique expérimental
 
-L'allocateur bitmap gère des frames de 4 Kio sous 512 Gio. Un bitmap marque les frames gérées et un second les frames libres. Une frame n'est allouable que si elle est à la fois gérée et libre ; cela empêche de libérer une adresse arbitraire, une frame réservée, une adresse non alignée ou une frame déjà libérée.
+L'allocateur bitmap gère des frames de 4 Kio sous 512 Gio. Un bitmap marque les frames gérées et un second les frames libres. Les deux bitmaps (32 Mio au total pour 512 Gio suivis) sont placés dynamiquement dans une plage de RAM conventionnelle réservée au démarrage, afin de ne pas gonfler le segment BSS fixe du noyau. Une frame n'est allouable que si elle est à la fois gérée et libre ; cela empêche de libérer une adresse arbitraire, une frame réservée, une adresse non alignée ou une frame déjà libérée.
 
 Les plages sont appliquées par mots bitmap plutôt qu'en parcourant chaque page individuellement. Le calcul préliminaire vérifie les descripteurs avant de réinitialiser l'état global ; l'allocateur n'est marqué initialisé qu'après le remplissage et la vérification des invariants. Les pages couvrant le framebuffer sont réservées avec arrondi vers l'extérieur, même si le firmware les classait incorrectement comme mémoire conventionnelle.
 
@@ -18,4 +18,4 @@ Le workflow de démarrage local doit aussi exiger le marqueur série `ArchiaOS: 
 
 ## Limites importantes
 
-Le PMM est limité à une fenêtre de suivi de 512 Gio, s'initialise une seule fois et n'est pas synchronisé pour SMP. Le nombre d'octets de mémoire conventionnelle indiqué dans les statistiques est le total géré après exclusion des pages basses et du framebuffer, et non la totalité de la RAM installée. Il n'existe pas encore de tas général ni de gestionnaire complet de mémoire virtuelle. La stabilité des réservations et du démarrage doit encore être confirmée par une campagne matérielle répétable.
+Le PMM suit une fenêtre de 512 Gio, mais l'allocation réelle reste limitée à 4 Gio tant que le VMM/chargeur ne fournit pas de mapping direct pour la RAM haute. Les bitmaps sont réservés dans une plage conventionnelle sous 4 Gio. Le PMM s'initialise une seule fois et n'est pas synchronisé pour SMP. Le nombre d'octets de mémoire conventionnelle indiqué dans les statistiques est le total géré après exclusion des pages basses et du framebuffer, et non la totalité de la RAM installée. Il n'existe pas encore de tas général ni de gestionnaire complet de mémoire virtuelle. La stabilité des réservations et du démarrage doit encore être confirmée par une campagne matérielle répétable.
