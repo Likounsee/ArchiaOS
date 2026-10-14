@@ -436,6 +436,29 @@ impl IoApic {
         unsafe { self.write_register_locked(low_register, low | APIC_LVT_MASKED) };
         Ok(())
     }
+
+    /// Enable an already configured IOAPIC route by clearing only its mask bit.
+    ///
+    /// This intentionally refuses zero/invalid vectors, so an uninitialized
+    /// redirection entry cannot be accidentally enabled. The caller must have
+    /// installed a returning handler and EOI path, and must explicitly decide
+    /// that the device/source is ready before calling this method.
+    ///
+    /// # Safety
+    /// The IOAPIC mapping must remain valid, GSI must belong to this controller,
+    /// and the destination CPU must have an installed handler for this route.
+    pub unsafe fn unmask(&self, gsi: u32) -> Result<(), ApicError> {
+        let _guard = self.lock_selector();
+        let version = unsafe { self.read_register_locked(1) };
+        let count = ((version >> 16) & 0xff) + 1;
+        let (low_register, _) =
+            ioapic_redirection_registers(gsi, self.gsi_base, count)?;
+        let low = unsafe { self.read_register_locked(low_register) };
+        let vector = (low & 0xff) as u8;
+        validate_hardware_irq_vector(vector)?;
+        unsafe { self.write_register_locked(low_register, low & !APIC_LVT_MASKED) };
+        Ok(())
+    }
 }
 
 struct IoApicGuard<'a>(&'a AtomicBool);
