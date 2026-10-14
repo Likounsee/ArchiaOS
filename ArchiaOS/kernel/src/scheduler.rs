@@ -74,6 +74,9 @@ impl Scheduler {
     }
 
     pub fn create_task(&mut self) -> Result<TaskId, SchedulerError> {
+        // Keep task creation transactional: never allocate a slot on top of a
+        // scheduler whose current-task/cursor bookkeeping is already invalid.
+        self.check_invariants()?;
         let index = self.tasks.iter().position(|task| task.state == TaskState::Empty)
             .ok_or(SchedulerError::NoTaskSlot)?;
         self.tasks[index].state = TaskState::Runnable;
@@ -785,6 +788,8 @@ mod tests {
         assert_eq!(scheduler.current(), None);
         assert_eq!(scheduler.wake(TaskId(0)), Err(SchedulerError::InvariantViolation));
         assert_eq!(scheduler.state(TaskId(0)), Ok(TaskState::Runnable));
+        assert_eq!(scheduler.create_task(), Err(SchedulerError::InvariantViolation));
+        assert_eq!(scheduler.state(TaskId(1)), Err(SchedulerError::InvalidTask));
 
         let mut active = Scheduler::new();
         let active_task = active.create_task().unwrap();
