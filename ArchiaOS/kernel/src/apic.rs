@@ -13,6 +13,9 @@ pub const APIC_BASE_ENABLE: u64 = 1 << 11;
 pub const APIC_X2_MODE_ENABLE: u64 = 1 << 10;
 pub const APIC_BASE_ADDRESS_MASK: u64 = 0x000f_ffff_ffff_f000;
 pub const APIC_SPURIOUS_VECTOR_REGISTER: u32 = 0x0f0;
+pub const APIC_ICR_LOW_REGISTER: u32 = 0x300;
+pub const APIC_ICR_HIGH_REGISTER: u32 = 0x310;
+pub const APIC_ICR_DELIVERY_PENDING: u32 = 1 << 12;
 pub const APIC_LVT_TIMER_REGISTER: u32 = 0x320;
 pub const APIC_INITIAL_COUNT_REGISTER: u32 = 0x380;
 pub const APIC_CURRENT_COUNT_REGISTER: u32 = 0x390;
@@ -35,6 +38,32 @@ pub enum ApicError {
     InvalidDestination,
     InvalidMappedPointer,
     InvalidGlobalInterrupt,
+    InvalidIpiVector,
+    IpiTimeout,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum IpiKind {
+    Fixed,
+    InitAssert,
+    InitDeassert,
+    Startup,
+}
+
+/// Encode a physical-destination xAPIC IPI command without touching hardware.
+pub fn ipi_command(kind: IpiKind, vector: u8) -> Result<u32, ApicError> {
+    match kind {
+        IpiKind::Fixed => {
+            if vector < 32 { return Err(ApicError::InvalidIpiVector); }
+            Ok(u32::from(vector))
+        }
+        IpiKind::InitAssert => Ok((0b101 << 8) | (1 << 14) | (1 << 15)),
+        IpiKind::InitDeassert => Ok((0b101 << 8) | (1 << 14)),
+        IpiKind::Startup => {
+            if vector == 0 { return Err(ApicError::InvalidIpiVector); }
+            Ok((0b110 << 8) | u32::from(vector))
+        }
+    }
 }
 
 /// xAPIC MMIO window whose 4 KiB register page has already been mapped.
@@ -77,6 +106,34 @@ impl LocalApic {
     /// after its handler has completed and exactly once per acknowledged IRQ.
     pub unsafe fn end_of_interrupt(&self) {
         unsafe { self.write_register(0x0b0, 0) };
+    }
+
+    /// Send a physical-destination IPI with a bounded wait for the APIC command
+    /// register. INIT/SIPI sequencing and target readiness remain the caller's job.
+    ///
+    /// # Safety
+    /// The mapping must be valid, xAPIC mode active, and destination APIC ID
+    /// must identify a present processor. INIT/SIPI can reset or start CPUs;
+    /// callers must follow the platform's required delays and startup protocol.
+    pub unsafe fn send_ipi(&self, destination_apic_id: u8, kind: IpiKind, vector: u8) -> Result<(), ApicError> {
+        let command = ipi_command(kind, vector)?;
+        let mut remaining = 1_000_000usize;
+        while unsafe { self.read_register(APIC_ICR_LOW_REGISTER) } & APIC_ICR_DELIVERY_PENDING != 0 {
+            if remaining == 0 { return Err(ApicError::IpiTimeout); }
+            remaining -= 1;
+            spin_loop();
+        }
+        unsafe {
+            self.write_register(APIC_ICR_HIGH_REGISTER, u32::from(destination_apic_id) << 24);
+            self.write_register(APIC_ICR_LOW_REGISTER, command);
+        }
+        remaining = 1_000_000;
+        while unsafe { self.read_register(APIC_ICR_LOW_REGISTER) } & APIC_ICR_DELIVERY_PENDING != 0 {
+            if remaining == 0 { return Err(ApicError::IpiTimeout); }
+            remaining -= 1;
+            spin_loop();
+        }
+        Ok(())
     }
 
     /// Program the local APIC timer in a masked, non-firing state.
@@ -352,6 +409,16 @@ mod tests {
             validate_apic_base(0xfee0_0001 | APIC_BASE_ENABLE, 0xfee0_0001),
             Err(ApicError::InvalidPhysicalAddress)
         );
+    }
+
+    #[test]
+    fn ipi_commands_validate_vectors_and_encode_delivery_modes() {
+        assert_eq!(ipi_command(IpiKind::Fixed, 0x40), Ok(0x40));
+        assert_eq!(ipi_command(IpiKind::Fixed, 31), Err(ApicError::InvalidIpiVector));
+        assert_eq!(ipi_command(IpiKind::InitAssert, 0), Ok((5 << 8) | (1 << 14) | (1 << 15)));
+        assert_eq!(ipi_command(IpiKind::InitDeassert, 0), Ok((5 << 8) | (1 << 14)));
+        assert_eq!(ipi_command(IpiKind::Startup, 8), Ok((6 << 8) | 8));
+        assert_eq!(ipi_command(IpiKind::Startup, 0), Err(ApicError::InvalidIpiVector));
     }
 
     #[test]
