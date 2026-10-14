@@ -8,6 +8,28 @@ pub const LEGACY_PIC_VECTOR_BASE: u8 = 0x20;
 /// Number of IRQ lines exposed by the master and slave PICs together.
 pub const LEGACY_PIC_IRQ_COUNT: u8 = 16;
 
+/// High-level classification for a normalized x86-64 interrupt vector.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InterruptVectorClass {
+    /// CPU-defined exception range (0..=31).
+    CpuException,
+    /// Legacy 8259 PIC interrupt, carrying its IRQ line.
+    LegacyPicIrq(u8),
+    /// Any vector not owned by the CPU exception range or legacy PIC.
+    Other,
+}
+
+/// Classify a vector without hardware access so dispatch decisions are testable.
+pub const fn classify_interrupt_vector(vector: u8) -> InterruptVectorClass {
+    if vector < LEGACY_PIC_VECTOR_BASE {
+        InterruptVectorClass::CpuException
+    } else if let Some(irq) = legacy_pic_irq_for_vector(vector) {
+        InterruptVectorClass::LegacyPicIrq(irq)
+    } else {
+        InterruptVectorClass::Other
+    }
+}
+
 /// Convert a remapped PIC vector (0x20..=0x2f) into an IRQ line (0..=15).
 pub const fn legacy_pic_irq_for_vector(vector: u8) -> Option<u8> {
     match vector.checked_sub(LEGACY_PIC_VECTOR_BASE) {
@@ -83,6 +105,27 @@ pub const fn masks_after_masking_irq(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn classifies_all_256_vectors_without_overlap() {
+        for vector in 0u8..=u8::MAX {
+            let class = classify_interrupt_vector(vector);
+            match vector {
+                0..=31 => assert_eq!(class, InterruptVectorClass::CpuException),
+                32..=47 => assert_eq!(class, InterruptVectorClass::LegacyPicIrq(vector - 32)),
+                _ => assert_eq!(class, InterruptVectorClass::Other),
+            }
+        }
+    }
+
+    #[test]
+    fn classifies_pic_range_boundaries() {
+        assert_eq!(classify_interrupt_vector(0x1f), InterruptVectorClass::CpuException);
+        assert_eq!(classify_interrupt_vector(0x20), InterruptVectorClass::LegacyPicIrq(0));
+        assert_eq!(classify_interrupt_vector(0x2f), InterruptVectorClass::LegacyPicIrq(15));
+        assert_eq!(classify_interrupt_vector(0x30), InterruptVectorClass::Other);
+        assert_eq!(classify_interrupt_vector(0xff), InterruptVectorClass::Other);
+    }
 
     #[test]
     fn maps_every_legacy_irq_to_its_vector_and_back() {
