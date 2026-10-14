@@ -390,11 +390,11 @@ fn runtime_block_current() -> Result<(), SchedulerError> {
     Ok(())
 }
 
-/// Block a task and hand control to the boot-time scheduler owner if no task is runnable.
-////
-//// This is a deterministic test harness for the idle boundary, not a production
-//// idle loop: the saved boot context regains control so the test can inject a
-//// wakeup without enabling interrupts.
+/// Block a task and hand control to the boot-time scheduler owner at idle.
+///
+ /// This is a deterministic test harness, not a production idle loop: the saved
+ /// boot context regains control so the test can inject a wakeup without enabling
+ /// interrupts.
 fn runtime_block_current_to_boot() -> Result<(), SchedulerError> {
     unsafe {
         let scheduler = core::ptr::addr_of_mut!(RUNTIME_SCHEDULER);
@@ -431,15 +431,18 @@ fn runtime_exit() -> ! {
             Some(index) => index,
             None => runtime_halt(),
         };
-        match (&mut *scheduler).exit_current() {
-            Ok(next_id) => {
+        match (&mut *scheduler).exit_current_or_idle() {
+            Ok(DispatchDecision::Run(next_id)) => {
                 let contexts = core::ptr::addr_of_mut!(RUNTIME_CONTEXTS).cast::<crate::context::CpuContext>();
                 // SAFETY: scheduler returned a valid distinct runnable task.
                 crate::context::switch(&mut *contexts.add(previous), &*contexts.add(next_id.0));
             }
-            Err(SchedulerError::NoRunnableTask) => {
+            Ok(DispatchDecision::Idle(IdleReason::AllTasksExited))
+            | Ok(DispatchDecision::Idle(IdleReason::WaitingForWakeup))
+            | Ok(DispatchDecision::Idle(IdleReason::NoTasks)) => {
+                // This runtime is only a boot-time harness; production idle
+                // handling must switch to a persistent idle context instead.
                 let contexts = core::ptr::addr_of_mut!(RUNTIME_CONTEXTS).cast::<crate::context::CpuContext>();
-                // SAFETY: boot context was saved by the initial dispatch.
                 crate::context::switch(
                     &mut *contexts.add(previous),
                     &*core::ptr::addr_of!(RUNTIME_BOOT_CONTEXT),
