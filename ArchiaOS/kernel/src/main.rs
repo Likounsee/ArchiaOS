@@ -326,6 +326,11 @@ pub extern "C" fn rust_kernel_main(
         halt_forever();
     }
     let _ = writeln!(serial, "ArchiaOS: ring-0 software interrupt save/IRETQ self-test passed");
+    if !interrupts::register_preservation_self_test() {
+        let _ = writeln!(serial, "ArchiaOS: general-purpose register preservation self-test FAILED");
+        halt_forever();
+    }
+    let _ = writeln!(serial, "ArchiaOS: software interrupt preserved all 15 general-purpose registers");
     if !interrupts::spurious_return_path_self_test() {
         let _ = writeln!(serial, "ArchiaOS: APIC spurious-vector return-path self-test FAILED");
         halt_forever();
