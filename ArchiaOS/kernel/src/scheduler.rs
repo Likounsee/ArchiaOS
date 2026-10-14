@@ -640,6 +640,47 @@ mod tests {
     }
 
     #[test]
+    fn block_current_or_idle_reports_waiting_without_losing_blocked_tasks() {
+        let mut scheduler = Scheduler::new();
+        let first = scheduler.create_task().unwrap();
+        let second = scheduler.create_task().unwrap();
+
+        assert_eq!(scheduler.schedule(), Ok(first));
+        assert_eq!(scheduler.block_current_or_idle(), Ok(DispatchDecision::Run(second)));
+        assert_eq!(scheduler.state(first), Ok(TaskState::Blocked));
+        assert_eq!(scheduler.current(), Some(second));
+
+        assert_eq!(
+            scheduler.block_current_or_idle(),
+            Ok(DispatchDecision::Idle(IdleReason::WaitingForWakeup))
+        );
+        assert_eq!(scheduler.current(), None);
+        assert_eq!(scheduler.state(first), Ok(TaskState::Blocked));
+        assert_eq!(scheduler.state(second), Ok(TaskState::Blocked));
+        assert_eq!(scheduler.check_invariants(), Ok(()));
+    }
+
+    #[test]
+    fn exit_current_or_idle_distinguishes_remaining_work_from_completion() {
+        let mut scheduler = Scheduler::new();
+        let first = scheduler.create_task().unwrap();
+        let second = scheduler.create_task().unwrap();
+
+        assert_eq!(scheduler.schedule(), Ok(first));
+        assert_eq!(scheduler.exit_current_or_idle(), Ok(DispatchDecision::Run(second)));
+        assert_eq!(scheduler.state(first), Ok(TaskState::Exited));
+        assert_eq!(scheduler.current(), Some(second));
+
+        assert_eq!(
+            scheduler.exit_current_or_idle(),
+            Ok(DispatchDecision::Idle(IdleReason::AllTasksExited))
+        );
+        assert_eq!(scheduler.current(), None);
+        assert_eq!(scheduler.state(second), Ok(TaskState::Exited));
+        assert_eq!(scheduler.check_invariants(), Ok(()));
+    }
+
+    #[test]
     fn repeated_wake_is_rejected_without_corrupting_runnable_state() {
         let mut scheduler = Scheduler::new();
         let task = scheduler.create_task().unwrap();
