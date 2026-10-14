@@ -26,6 +26,14 @@ pub const fn legacy_pic_vector_for_irq(irq: u8) -> Option<u8> {
 }
 
 
+/// Validate the relationship between the PIC masks.
+ ///
+ /// If any slave IRQ is unmasked, master IRQ2 (the cascade) must also be
+ /// unmasked or those slave interrupts cannot reach the CPU.
+pub const fn pic_masks_are_consistent(master_mask: u8, slave_mask: u8) -> bool {
+    slave_mask == 0xff || (master_mask & (1u8 << 2)) == 0
+}
+
 /// Describe the required legacy PIC EOI writes for an IRQ.
 ///
 /// The tuple is (send slave EOI, send master EOI). Invalid IRQ lines have no
@@ -119,6 +127,14 @@ mod tests {
     #[test]
     fn masking_last_enabled_slave_irq_masks_cascade() {
         assert_eq!(masks_after_masking_irq(0b0000_0000, 0b0111_1111, 15), Some((0b0000_0100, 0b1111_1111)));
+    }
+
+    #[test]
+    fn mask_consistency_requires_open_cascade_for_enabled_slave_lines() {
+        assert!(pic_masks_are_consistent(0b0000_0000, 0b1111_1110));
+        assert!(!pic_masks_are_consistent(0b0000_0100, 0b1111_1110));
+        assert!(pic_masks_are_consistent(0b0000_0100, 0xff));
+        assert!(pic_masks_are_consistent(0b0000_0000, 0xff));
     }
 
     #[test]
