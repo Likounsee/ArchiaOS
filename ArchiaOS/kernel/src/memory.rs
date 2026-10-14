@@ -11,6 +11,8 @@ const BITMAP_WORDS: usize = (MAX_FRAMES / 64) as usize;
 // Callers must map a frame virtually before dereferencing it, especially above 4 GiB.
 const MAX_ALLOCATABLE_PHYSICAL_ADDRESS: u64 = MAX_PHYSICAL_ADDRESS;
 const MAX_ALLOCATABLE_FRAMES: u64 = MAX_FRAMES;
+const MAX_IDENTITY_MAPPED_PHYSICAL_ADDRESS: u64 = 1u64 << 32;
+const MAX_IDENTITY_MAPPED_FRAMES: u64 = MAX_IDENTITY_MAPPED_PHYSICAL_ADDRESS / PAGE_SIZE;
 const BITMAP_STORAGE_BYTES: u64 = (BITMAP_WORDS as u64) * 8 * 2;
 const MAX_MEMMAP_ENTRIES: u64 = 4096;
 const PMM_SELF_TEST_PAGES: usize = 130;
@@ -127,7 +129,7 @@ fn find_bitmap_storage(
             continue;
         }
         let descriptor_end = descriptor.physical_end().map_err(|_| MemoryError::InvalidMemoryRange)?
-            .min(MAX_ALLOCATABLE_PHYSICAL_ADDRESS);
+            .min(MAX_IDENTITY_MAPPED_PHYSICAL_ADDRESS);
         let mut candidate = descriptor.physical_start.max(ONE_MIB);
         candidate = candidate.checked_add(PAGE_SIZE - 1)
             .ok_or(MemoryError::InvalidMemoryRange)? & !(PAGE_SIZE - 1);
@@ -363,12 +365,28 @@ pub fn alloc_page() -> Option<u64> {
 
 /// Allocate a frame below 4 GiB for page tables reachable through the boot map.
 pub fn alloc_page_below_4g() -> Option<u64> {
-    alloc_page_in_range(ONE_MIB / PAGE_SIZE, (1u64 << 32) / PAGE_SIZE)
+    alloc_page_in_range(ONE_MIB / PAGE_SIZE, MAX_IDENTITY_MAPPED_FRAMES)
 }
 
 /// Allocate a frame above 4 GiB, for explicit high-memory mapping tests.
 pub fn alloc_page_above_4g() -> Option<u64> {
     alloc_page_in_range((1u64 << 32) / PAGE_SIZE, MAX_ALLOCATABLE_FRAMES)
+}
+
+/// Return whether a page-aligned physical frame is currently allocated.
+pub fn is_allocated_page(physical_address: u64) -> bool {
+    if !unsafe { ptr::read_volatile(ptr::addr_of!(PMM_INITIALIZED)) }
+        || physical_address == 0
+        || physical_address % PAGE_SIZE != 0
+        || physical_address >= MAX_ALLOCATABLE_PHYSICAL_ADDRESS
+    {
+        return false;
+    }
+    let frame = physical_address / PAGE_SIZE;
+    unsafe {
+        bit_is_set(managed_bitmap_ptr(), frame)
+            && !bit_is_set(free_bitmap_ptr(), frame)
+    }
 }
 
 pub fn free_page(physical_address: u64) -> bool {
