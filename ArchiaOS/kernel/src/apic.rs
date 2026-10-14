@@ -201,6 +201,36 @@ impl LocalApic {
         unsafe { self.write_register(APIC_EOI_REGISTER, 0) };
     }
 
+    /// Dispatch one vector received from this local APIC and acknowledge it.
+    ///
+    /// The callback runs in hard-interrupt context and must not block, allocate,
+    /// unwind, or acquire locks that can be held by interrupted code. The APIC
+    /// spurious vector is returned without invoking the callback or sending EOI.
+    /// Invalid/reserved vectors are rejected without touching the EOI register.
+    ///
+    /// # Safety
+    /// This APIC must be initialized and mapped for the current CPU, and this
+    /// method must only be called from the corresponding interrupt path.
+    pub unsafe fn dispatch_vector(
+        &self,
+        vector: u8,
+        handler: impl FnOnce(u8) -> bool,
+    ) -> Result<bool, ApicError> {
+        match local_apic_vector_disposition(vector) {
+            LocalApicVectorDisposition::SpuriousNoEoi => Ok(false),
+            LocalApicVectorDisposition::Invalid => Err(ApicError::InvalidVector),
+            LocalApicVectorDisposition::HardwareNeedsEoi => {
+                let handled = handler(vector);
+                // A real APIC-delivered interrupt must be acknowledged even if
+                // no device handler claims it, otherwise the CPU can be stuck
+                // in the in-service state. The caller decides how to report
+                // an unhandled vector after this method returns.
+                unsafe { self.end_of_interrupt() };
+                Ok(handled)
+            }
+        }
+    }
+
     /// Send a physical-destination IPI with a bounded wait for the APIC command
     /// register. INIT/SIPI sequencing and target readiness remain the caller's job.
     ///
