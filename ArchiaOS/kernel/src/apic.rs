@@ -58,7 +58,7 @@ pub fn ipi_command(kind: IpiKind, vector: u8) -> Result<u32, ApicError> {
             Ok(u32::from(vector))
         }
         IpiKind::InitAssert => Ok((0b101 << 8) | (1 << 14) | (1 << 15)),
-        IpiKind::InitDeassert => Ok((0b101 << 8) | (1 << 14)),
+        IpiKind::InitDeassert => Ok((0b101 << 8) | (1 << 15)),
         IpiKind::Startup => {
             if vector == 0 { return Err(ApicError::InvalidIpiVector); }
             Ok((0b110 << 8) | u32::from(vector))
@@ -416,7 +416,7 @@ mod tests {
         assert_eq!(ipi_command(IpiKind::Fixed, 0x40), Ok(0x40));
         assert_eq!(ipi_command(IpiKind::Fixed, 31), Err(ApicError::InvalidIpiVector));
         assert_eq!(ipi_command(IpiKind::InitAssert, 0), Ok((5 << 8) | (1 << 14) | (1 << 15)));
-        assert_eq!(ipi_command(IpiKind::InitDeassert, 0), Ok((5 << 8) | (1 << 14)));
+        assert_eq!(ipi_command(IpiKind::InitDeassert, 0), Ok((5 << 8) | (1 << 15)));
         assert_eq!(ipi_command(IpiKind::Startup, 8), Ok((6 << 8) | 8));
         assert_eq!(ipi_command(IpiKind::Startup, 0), Err(ApicError::InvalidIpiVector));
     }
