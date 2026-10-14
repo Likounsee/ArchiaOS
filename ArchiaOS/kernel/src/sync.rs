@@ -128,7 +128,7 @@ impl<T> Drop for IrqSpinLockGuard<'_, T> {
         if self.restore_if {
             // SAFETY: the lock was acquired only in kernel mode and IF was set
             // on entry; restore it only after releasing the protected data.
-            unsafe { core::arch::asm!("sti", options(nomem, nostack)) };
+            unsafe { core::arch::asm!("sti", options(nostack)) };
         }
     }
 }
