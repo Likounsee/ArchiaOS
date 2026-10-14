@@ -8,7 +8,7 @@ ArchiaOS utilise son chargeur UEFI propre et un noyau Rust x86-64 lié en espace
 
 Le PMM expérimental suit les frames physiques sous 64 Gio à l'aide de deux bitmaps : pages gérées et pages libres. Cette limite reste une fenêtre de suivi et ne garantit pas que chaque CPU puisse adresser toute la plage. Les plages utilisables sont appliquées par mots bitmap ; les plages réservées prennent priorité. Le test au démarrage traverse plusieurs mots, vérifie les allocations distinctes, les libérations, les adresses invalides et le double-free.
 
-La limite actuelle de 4 Gio est explicite et constitue une lacune connue. Ce PMM ne remplace pas un VMM : les mappings virtuels, les permissions de pages, l'invalidation TLB, les espaces d'adressage isolés et un tas noyau général restent à compléter et à valider.
+La limite actuelle de 64 Gio est explicite ; les machines nécessitant davantage de suivi physique restent hors de cette capacité. Ce PMM ne remplace pas un VMM : les mappings virtuels, les permissions de pages, l'invalidation TLB, les espaces d'adressage isolés et un tas noyau général restent à compléter et à valider.
 
 ## CPU, interruptions et ordonnancement
 
