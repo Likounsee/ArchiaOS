@@ -79,7 +79,34 @@ def main() -> None:
     if positions != sorted(positions):
         fail("common entry instruction order changed; review the stack/ABI contract")
 
-    print("ISR audit passed: 256 stubs, error-code normalization, common-entry ABI safeguards, and table order")
+    dispatcher_match = re.search(
+        r'pub extern "C" fn archiaos_exception_dispatch\\b(?P<signature>[^\\{]*)\\{',
+        source,
+        re.DOTALL,
+    )
+    if not dispatcher_match:
+        fail("fatal exception dispatcher not found")
+    if not re.search(r'->\\s*!\\s*
+
+if __name__ == "__main__":
+    main()
+, dispatcher_match.group("signature")):
+        fail("exception dispatcher must be non-returning until a safe return path exists")
+
+    install_match = re.search(
+        r'pub unsafe fn install\\(\\) \\{(?P<body>.*?)\\n\\}',
+        source,
+        re.DOTALL,
+    )
+    if not install_match:
+        fail("IDT install routine not found")
+    install_body = install_match.group("body")
+    if "for vector in 0..IDT_ENTRY_COUNT" not in install_body:
+        fail("IDT install must populate every vector entry")
+    if 'asm!("lidt [{0}]"' not in install_body:
+        fail("IDT install must load the completed descriptor with LIDT")
+
+    print("ISR audit passed: 256 stubs, error-code normalization, common-entry ABI safeguards, IDT installation, and fatal dispatcher contract")
 
 
 if __name__ == "__main__":
