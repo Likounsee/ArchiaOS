@@ -130,6 +130,7 @@ impl Scheduler {
     /// Select the next runnable task in deterministic round-robin order.
     /// The outgoing running task becomes runnable (cooperative yield).
     pub fn yield_current(&mut self) -> Result<TaskId, SchedulerError> {
+        self.check_invariants()?;
         let previous = self.current.ok_or(SchedulerError::NoCurrentTask)?;
         if self.tasks[previous].state != TaskState::Running {
             return Err(SchedulerError::InvariantViolation);
@@ -140,6 +141,7 @@ impl Scheduler {
     }
 
     pub fn block_current(&mut self) -> Result<TaskId, SchedulerError> {
+        self.check_invariants()?;
         let previous = self.current.ok_or(SchedulerError::NoCurrentTask)?;
         if self.tasks[previous].state != TaskState::Running {
             return Err(SchedulerError::InvariantViolation);
@@ -156,6 +158,7 @@ impl Scheduler {
     /// provide a safe architecture-level idle context before using this for
     /// real CPU blocking.
     pub fn block_current_or_idle(&mut self) -> Result<DispatchDecision, SchedulerError> {
+        self.check_invariants()?;
         let previous = self.current.ok_or(SchedulerError::NoCurrentTask)?;
         if self.tasks[previous].state != TaskState::Running {
             return Err(SchedulerError::InvariantViolation);
@@ -175,6 +178,7 @@ impl Scheduler {
     }
 
     pub fn exit_current(&mut self) -> Result<TaskId, SchedulerError> {
+        self.check_invariants()?;
         let previous = self.current.ok_or(SchedulerError::NoCurrentTask)?;
         if self.tasks[previous].state != TaskState::Running {
             return Err(SchedulerError::InvariantViolation);
@@ -189,6 +193,7 @@ impl Scheduler {
     /// An all-exited result is distinct from a temporary wait for blocked tasks.
     /// This is scheduler-state handling only; it does not switch CPU contexts.
     pub fn exit_current_or_idle(&mut self) -> Result<DispatchDecision, SchedulerError> {
+        self.check_invariants()?;
         let previous = self.current.ok_or(SchedulerError::NoCurrentTask)?;
         if self.tasks[previous].state != TaskState::Running {
             return Err(SchedulerError::InvariantViolation);
@@ -774,6 +779,14 @@ mod tests {
         assert_eq!(scheduler.schedule(), Err(SchedulerError::InvariantViolation));
         assert_eq!(scheduler.state(TaskId(0)), Ok(TaskState::Runnable));
         assert_eq!(scheduler.current(), None);
+
+        let mut active = Scheduler::new();
+        let active_task = active.create_task().unwrap();
+        assert_eq!(active.schedule(), Ok(active_task));
+        active.cursor = MAX_TASKS;
+        assert_eq!(active.yield_current(), Err(SchedulerError::InvariantViolation));
+        assert_eq!(active.state(active_task), Ok(TaskState::Running));
+        assert_eq!(active.current(), Some(active_task));
     }
 
     #[test]
