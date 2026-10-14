@@ -60,6 +60,14 @@ struct Idtr {
     base: u64,
 }
 
+// The x86-64 IDT gate is exactly 16 bytes; the IDTR operand is exactly
+// 10 bytes (a 16-bit limit followed by a 64-bit base). Keep these checked at
+// compile time so a future field or representation change cannot silently
+// corrupt LIDT or the IDT indexing arithmetic.
+const _: [(); 16] = [(); core::mem::size_of::<IdtEntry>()];
+const _: [(); 10] = [(); core::mem::size_of::<Idtr>()];
+const _: [(); IDT_ENTRY_COUNT] = [(); 256];
+
 static mut IDT: [IdtEntry; IDT_ENTRY_COUNT] = [IdtEntry::MISSING; IDT_ENTRY_COUNT];
 
 extern "C" {
