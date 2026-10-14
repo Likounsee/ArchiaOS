@@ -25,6 +25,33 @@ pub const fn legacy_pic_vector_for_irq(irq: u8) -> Option<u8> {
     }
 }
 
+
+/// Compute PIC masks after masking one IRQ, without touching hardware.
+///
+/// Returns `None` for an invalid IRQ. The cascade line (IRQ2) is masked when
+/// masking the last enabled slave IRQ leaves the entire slave PIC masked.
+pub const fn masks_after_masking_irq(
+    master_mask: u8,
+    slave_mask: u8,
+    irq: u8,
+) -> Option<(u8, u8)> {
+    if irq >= LEGACY_PIC_IRQ_COUNT {
+        return None;
+    }
+
+    if irq < 8 {
+        Some((master_mask | (1u8 << irq), slave_mask))
+    } else {
+        let next_slave = slave_mask | (1u8 << (irq - 8));
+        let next_master = if next_slave == 0xff {
+            master_mask | (1u8 << 2)
+        } else {
+            master_mask
+        };
+        Some((next_master, next_slave))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -59,4 +86,24 @@ mod tests {
         assert_eq!(legacy_pic_vector_for_irq(0), Some(0x20));
         assert_eq!(legacy_pic_vector_for_irq(15), Some(0x2f));
     }
+    #[test]
+    fn masking_master_irq_preserves_slave_mask_and_other_bits() {
+        assert_eq!(masks_after_masking_irq(0b0000_0000, 0b0101_0101, 1), Some((0b0000_0010, 0b0101_0101)));
+    }
+
+    #[test]
+    fn masking_slave_irq_preserves_cascade_while_slave_has_enabled_lines() {
+        assert_eq!(masks_after_masking_irq(0b0000_0000, 0b1111_1110, 8), Some((0b0000_0000, 0b1111_1111)));
+    }
+
+    #[test]
+    fn masking_last_enabled_slave_irq_masks_cascade() {
+        assert_eq!(masks_after_masking_irq(0b0000_0000, 0b0111_1111, 15), Some((0b0000_0100, 0b1111_1111)));
+    }
+
+    #[test]
+    fn invalid_irq_does_not_produce_masks() {
+        assert_eq!(masks_after_masking_irq(0, 0, 16), None);
+    }
+
 }
