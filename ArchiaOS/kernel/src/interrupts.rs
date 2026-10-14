@@ -269,7 +269,7 @@ fn fatal_unhandled_pic_irq() -> ! {
 /// Test the complete returning APIC dispatch path using a software interrupt.
 /// The APIC must already be initialized and published. The assigned vector's
 /// IOAPIC route remains masked, so this does not enable physical IRQ delivery.
-const APIC_DISPATCH_TEST_VECTOR: u8 = 0x50;
+const APIC_DISPATCH_TEST_VECTOR: u8 = 0x70;
 static APIC_DISPATCH_TEST_COUNT: AtomicU64 = AtomicU64::new(0);
 static APIC_DISPATCH_TEST_LAST_VECTOR: AtomicU64 = AtomicU64::new(u64::MAX);
 
@@ -287,7 +287,7 @@ pub fn apic_dispatch_self_test() -> bool {
     APIC_DISPATCH_TEST_LAST_VECTOR.store(u64::MAX, Ordering::SeqCst);
     // SAFETY: the caller invokes this only after publishing an initialized
     // local APIC dispatcher. IF stays disabled during this software interrupt.
-    unsafe { asm!("int 0x50", options(nostack)); }
+    unsafe { asm!("int 0x70", options(nostack)); }
     APIC_DISPATCH_TEST_COUNT.load(Ordering::SeqCst) == before.wrapping_add(1)
         && APIC_DISPATCH_TEST_LAST_VECTOR.load(Ordering::SeqCst)
             == u64::from(APIC_DISPATCH_TEST_VECTOR)
