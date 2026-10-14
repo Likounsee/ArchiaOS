@@ -14,7 +14,7 @@ mod pic;
 /// Legacy dual 8259 PIC setup. All lines stay masked until matching IDT
 /// handlers and an interrupt-safe wakeup path are implemented.
 mod pic {
-    use super::{port_out, port_in};
+    use super::port_out;
 
     const MASTER_COMMAND: u16 = 0x20;
     const MASTER_DATA: u16 = 0x21;
