@@ -70,14 +70,21 @@ mod pic {
     /// Call only from a future, validated IRQ dispatcher. It does not enable
     /// interrupts and does not alter masks.
     pub unsafe fn end_of_interrupt(irq: u8) -> Result<(), ()> {
-        if irq >= 16 {
+        let Some((send_slave_eoi, send_master_eoi)) =
+            super::interrupt_vectors::eoi_plan_for_irq(irq)
+        else {
             return Err(());
-        }
+        };
+
+        // The pure plan validates the IRQ and preserves the required slave-
+        // before-master acknowledgement order for cascaded IRQs.
         unsafe {
-            if irq >= 8 {
+            if send_slave_eoi {
                 port_out(SLAVE_COMMAND, 0x20);
             }
-            port_out(MASTER_COMMAND, 0x20);
+            if send_master_eoi {
+                port_out(MASTER_COMMAND, 0x20);
+            }
         }
         Ok(())
     }
