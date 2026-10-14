@@ -43,6 +43,11 @@ jobs:
           set -euo pipefail
           rustc --edition=2021 --test kernel/src/acpi_madt.rs -o "$RUNNER_TEMP/archiaos-madt-tests"
           "$RUNNER_TEMP/archiaos-madt-tests"
+      - name: Test xAPIC register planning on host
+        run: |
+          set -euo pipefail
+          rustc --edition=2021 --test kernel/src/apic.rs -o "$RUNNER_TEMP/archiaos-apic-tests"
+          "$RUNNER_TEMP/archiaos-apic-tests"
       - name: Audit x86-64 ISR stub normalization and coverage
         run: python3 scripts/verify-isr-stubs.py
       - name: Test kernel spin lock on host
