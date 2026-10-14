@@ -420,6 +420,9 @@ unsafe fn ioapic_irq0_interrupt_self_test() -> Option<bool> {
     // SAFETY: the pointer is published from static IOAPIC_STORAGE and stays live
     // for the kernel lifetime; the route was staged masked before publication.
     let ioapic = unsafe { &*(raw as *const apic::IoApic) };
+    // Preserve IF and disable delivery before touching the PIT or IOAPIC route.
+    let flags: u64;
+    unsafe { asm!("pushfq", "pop {}", "cli", out(reg) flags, options(nomem)); }
     PIT_IRQ0_COUNT.store(0, Ordering::Release);
 
     // Program PIT channel 0 to mode 2 at approximately 100 Hz.
@@ -430,13 +433,12 @@ unsafe fn ioapic_irq0_interrupt_self_test() -> Option<bool> {
         port_out(0x40, (11932u16 >> 8) as u8);
     }
     if unsafe { ioapic.unmask(gsi) }.is_err() {
+        if flags & (1 << 9) != 0 {
+            unsafe { asm!("sti", options(nomem, nostack)); }
+        }
         return Some(false);
     }
 
-    // Preserve IF exactly: early boot normally has interrupts disabled, but this
-    // helper remains correct if called later with IF already set.
-    let flags: u64;
-    unsafe { asm!("pushfq", "pop {}", "cli", out(reg) flags, options(nomem)); }
     unsafe { asm!("sti", options(nomem, nostack)); }
     for _ in 0..10_000_000 {
         if PIT_IRQ0_COUNT.load(Ordering::Acquire) != 0 {
