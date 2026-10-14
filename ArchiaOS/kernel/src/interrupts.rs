@@ -99,6 +99,20 @@ pub fn register_pic_irq_handler(irq: u8, handler: PicIrqHandler) -> Result<(), (
         .map_err(|_| ())
 }
 
+#[inline]
+fn pic_irq_in_service(command_port: u16, bit: u8) -> bool {
+    let value: u8;
+    // SAFETY: OCW3 selects the 8259 in-service register; the subsequent read
+    // observes whether the specified IRQ is currently in service.
+    unsafe {
+        asm!("out dx, al", in("dx") command_port, in("al") 0x0bu8,
+             options(nomem, nostack, preserves_flags));
+        asm!("in al, dx", in("dx") command_port, out("al") value,
+             options(nomem, nostack, preserves_flags));
+    }
+    value & (1u8 << bit) != 0
+}
+
 fn pic_eoi(irq: u8) {
     // SAFETY: the PIC has been remapped to 0x20..=0x2f and the caller has
     // confirmed that a registered handler explicitly claimed this IRQ.
@@ -121,6 +135,19 @@ extern "C" fn archiaos_pic_interrupt_dispatch(frame: *mut u64) -> *mut u64 {
     let Some(irq) = pic_irq_for_frame_vector(vector) else {
         fatal_unhandled_pic_irq();
     };
+    // IRQ7 and IRQ15 can be spurious on the 8259. Check the in-service
+    // register before invoking a device handler; a spurious IRQ7 needs no EOI,
+    // while a spurious IRQ15 needs only the master cascade EOI.
+    if irq == 7 && !pic_irq_in_service(0x20, 7) {
+        return frame;
+    }
+    if irq == 15 && !pic_irq_in_service(0xa0, 7) {
+        unsafe {
+            asm!("out dx, al", in("dx") 0x20u16, in("al") 0x20u8,
+                 options(nomem, nostack, preserves_flags));
+        }
+        return frame;
+    }
     let raw = PIC_IRQ_HANDLERS[irq].load(Ordering::Acquire);
     if raw == 0 {
         fatal_unhandled_pic_irq();
