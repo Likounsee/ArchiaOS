@@ -30,6 +30,8 @@ jobs:
       - name: Test pure CPU feature decoding and OS-state gates
         run: |
           set -euo pipefail
+          rustc --edition=2021 --test kernel/src/interrupt_vectors.rs -o "$RUNNER_TEMP/archiaos-interrupt-vector-tests"
+          "$RUNNER_TEMP/archiaos-interrupt-vector-tests"
           rustc --edition=2021 --test kernel/src/cpu_features.rs -o "$RUNNER_TEMP/archiaos-cpu-feature-tests"
           "$RUNNER_TEMP/archiaos-cpu-feature-tests"
           rustc --edition=2021 --test kernel/src/simd.rs -o "$RUNNER_TEMP/archiaos-simd-tests"
