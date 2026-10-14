@@ -132,7 +132,7 @@ def main() -> None:
     if not population < descriptor_position < lidt_position:
         fail("IDT entries must be populated before constructing and loading the IDTR")
 
-    if "asm!(\\"mov {0:x}, cs\\" " not in install_body and 'asm!("mov {0:x}, cs"' not in install_body:
+    if 'asm!("mov {0:x}, cs"' not in install_body:
         fail("IDT install must obtain the current code-segment selector from CS")
     if "addr_of!(isr_stub_table)" not in install_body or ".add(vector).read()" not in install_body:
         fail("IDT install must read each handler from the bounded ISR stub table")
