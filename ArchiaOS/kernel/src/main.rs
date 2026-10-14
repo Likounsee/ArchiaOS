@@ -9,7 +9,6 @@ mod pci;
 mod scheduler;
 mod context;
 mod interrupts;
-mod pic;
 
 /// Legacy dual 8259 PIC setup. All lines stay masked until matching IDT
 /// handlers and an interrupt-safe wakeup path are implemented.
@@ -57,7 +56,7 @@ mod pic {
             wait();
             port_out(MASTER_DATA, ICW4_8086);
             wait();
-            port_out(SLAVE_COMMAND, ICW4_8086);
+            port_out(SLAVE_DATA, ICW4_8086);
             wait();
 
             // Keep all lines masked even if firmware left some enabled.
