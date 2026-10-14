@@ -515,9 +515,14 @@ fn runtime_yield() -> Result<(), SchedulerError> {
             return Ok(());
         }
         let contexts = core::ptr::addr_of_mut!(RUNTIME_CONTEXTS).cast::<crate::context::CpuContext>();
-        // SAFETY: task IDs are bounded by the scheduler; the two distinct
-        // contexts are static, and their stacks remain alive for this test.
-        crate::context::switch(&mut *contexts.add(previous), &*contexts.add(next));
+        let stacks = core::ptr::addr_of!(RUNTIME_STACKS).cast::<crate::context::TaskStack>();
+        // SAFETY: task IDs are bounded by the scheduler; the destination
+        // context is checked against its persistent stack before assembly runs.
+        crate::context::switch_checked(
+            &mut *contexts.add(previous),
+            &*contexts.add(next),
+            &*stacks.add(next),
+        ).map_err(|_| SchedulerError::StackCorrupted)?;
     }
     runtime_validate_boundary()?;
     Ok(())
@@ -535,9 +540,14 @@ fn runtime_block_current() -> Result<(), SchedulerError> {
         let previous = (*scheduler).current.ok_or(SchedulerError::NoCurrentTask)?;
         let next = (&mut *scheduler).block_current()?.0;
         let contexts = core::ptr::addr_of_mut!(RUNTIME_CONTEXTS).cast::<crate::context::CpuContext>();
-        // SAFETY: scheduler selected a runnable task; both contexts and stacks
-        // are static and interrupts are disabled for this single-CPU test.
-        crate::context::switch(&mut *contexts.add(previous), &*contexts.add(next));
+        let stacks = core::ptr::addr_of!(RUNTIME_STACKS).cast::<crate::context::TaskStack>();
+        // SAFETY: scheduler selected a runnable task; checked switching verifies
+        // its destination frame and stack canaries before entering assembly.
+        crate::context::switch_checked(
+            &mut *contexts.add(previous),
+            &*contexts.add(next),
+            &*stacks.add(next),
+        ).map_err(|_| SchedulerError::StackCorrupted)?;
     }
     runtime_validate_boundary()?;
     Ok(())
@@ -556,16 +566,22 @@ fn runtime_block_current_to_boot() -> Result<(), SchedulerError> {
         match (&mut *scheduler).block_current_or_idle()? {
             DispatchDecision::Run(next) => {
                 let contexts = core::ptr::addr_of_mut!(RUNTIME_CONTEXTS).cast::<crate::context::CpuContext>();
-                crate::context::switch(&mut *contexts.add(previous), &*contexts.add(next.0));
+                let stacks = core::ptr::addr_of!(RUNTIME_STACKS).cast::<crate::context::TaskStack>();
+                crate::context::switch_checked(
+                    &mut *contexts.add(previous),
+                    &*contexts.add(next.0),
+                    &*stacks.add(next.0),
+                ).map_err(|_| SchedulerError::StackCorrupted)?;
             }
             DispatchDecision::Idle(IdleReason::WaitingForWakeup) => {
                 // This test path now crosses a dedicated idle stack/context
                 // before returning to the boot harness to inject a wakeup.
                 // It remains a deterministic harness, not a hardware idle loop.
-                crate::context::switch(
+                crate::context::switch_checked(
                     &mut *core::ptr::addr_of_mut!(RUNTIME_CONTEXTS).cast::<crate::context::CpuContext>().add(previous),
                     &*core::ptr::addr_of!(RUNTIME_IDLE_CONTEXT),
-                );
+                    &*core::ptr::addr_of!(RUNTIME_IDLE_STACK),
+                ).map_err(|_| SchedulerError::StackCorrupted)?;
             }
             DispatchDecision::Idle(_) => return Err(SchedulerError::InvariantViolation),
         }
@@ -598,7 +614,14 @@ fn runtime_exit() -> ! {
             Ok(DispatchDecision::Run(next_id)) => {
                 let contexts = core::ptr::addr_of_mut!(RUNTIME_CONTEXTS).cast::<crate::context::CpuContext>();
                 // SAFETY: scheduler returned a valid distinct runnable task.
-                crate::context::switch(&mut *contexts.add(previous), &*contexts.add(next_id.0));
+                let stacks = core::ptr::addr_of!(RUNTIME_STACKS).cast::<crate::context::TaskStack>();
+                if crate::context::switch_checked(
+                    &mut *contexts.add(previous),
+                    &*contexts.add(next_id.0),
+                    &*stacks.add(next_id.0),
+                ).is_err() {
+                    runtime_halt();
+                }
             }
             Ok(DispatchDecision::Idle(IdleReason::AllTasksExited))
             | Ok(DispatchDecision::Idle(IdleReason::WaitingForWakeup))
@@ -652,10 +675,11 @@ pub fn runtime_self_test() -> Result<(), SchedulerError> {
         }
         // SAFETY: boot/task contexts and both dedicated stacks are static,
         // initialized, and exclusively used by this single-threaded self-test.
-        crate::context::switch(
+        crate::context::switch_checked(
             &mut *core::ptr::addr_of_mut!(RUNTIME_BOOT_CONTEXT),
             &*contexts.add(initial.0),
-        );
+            &*stacks.add(initial.0),
+        ).map_err(|_| SchedulerError::StackCorrupted)?;
 
         let stages = core::ptr::addr_of!(RUNTIME_STAGES).cast::<usize>();
         if core::ptr::read_volatile(stages) != 2
@@ -711,10 +735,11 @@ pub fn runtime_idle_wakeup_self_test() -> Result<(), SchedulerError> {
         if (&mut *scheduler).schedule()? != task {
             return Err(SchedulerError::InvariantViolation);
         }
-        crate::context::switch(
+        crate::context::switch_checked(
             &mut *core::ptr::addr_of_mut!(RUNTIME_BOOT_CONTEXT),
             &*contexts.add(task.0),
-        );
+            &*stacks.add(task.0),
+        ).map_err(|_| SchedulerError::StackCorrupted)?;
 
         let stage = core::ptr::read_volatile(core::ptr::addr_of!(RUNTIME_STAGES).cast::<usize>());
         if stage != 1
