@@ -23,9 +23,9 @@
 
 Les phases **P8–P10 sont une piste produit parallèle** : elles ne doivent pas conduire à contourner la fiabilité du démarrage, la mémoire, les permissions ou la sécurité. Le but est un logiciel intégré inspiré des usages de CPU-Z, HWiNFO, GPU-Z, Fan Control et OpenRGB, mais conçu pour ArchiaOS et son matériel pris en charge.
 
-## Audit de référence — code et preuves au 13 octobre 2026
+## Audit de référence — code et preuves au 14 octobre 2026
 
-Cet audit porte sur les sources présentes et leurs raccordements visibles, pas sur les seuls noms de fichiers ou les déclarations de la documentation. Références distinctes : dernier commit de code noyau examiné `e18b1901e262f21838ab0484459d207ccf004442`; révision documentaire de référence `7bb1b9d1dd553e5fda68ea206ba3f035197f5751`. Sur cette révision, les workflows UEFI local et BootInfo négatif ont réussi (runs 38428246398 et 38428246551), tandis que la CI principale (run 38428246486) était encore en cours au dernier contrôle. Les tests restent limités aux scénarios automatisés et ne prouvent pas la stabilité sur matériel physique ; voir [la procédure de campagne physique](P1-PHYSICAL-VALIDATION.md).
+Cet audit porte sur les sources présentes et leurs raccordements visibles, pas sur les seuls noms de fichiers ou les déclarations de la documentation. Référence de code et de documentation contrôlée : `29644ef8bd95faf8f9b992cdc254523dcf44002b`. Sur ce SHA, la CI principale, le boot UEFI local et le test BootInfo négatif ont tous réussi (runs 38580438801, 38580438520 et 38580438955). La campagne physique du démarrage/PMM est documentée séparément dans [P1-PHYSICAL-VALIDATION.md](P1-PHYSICAL-VALIDATION.md) ; ses résultats sont explicitement attribués au compte rendu de l'utilisateur.
 
 ### Méthode de statut, score d'implémentation et maturité de validation
 
@@ -206,43 +206,45 @@ Dépendances structurantes : **VMM/MMU → espaces d'adressage → processus/sys
 
 **Critère de sortie :** build reproductible et tests de démarrage verts sur le HEAD courant, sans déclarer les essais QEMU comme une validation de tout matériel physique.
 
-### P1 — Fiabilité du chargeur et de la mémoire — 90 %
+### P1 — Fiabilité du chargeur et de la mémoire — 100 %
 
-**État : IMPLÉMENTATION AUTOMATISÉE AVANCÉE, VALIDATION MATÉRIELLE OUVERTE — 90 %.** La campagne physique vaut 10 points : elle n'est pas un détail résiduel. Le dernier commit de code noyau/workflow examiné est `e18b1901e262f21838ab0484459d207ccf004442`. Les trois workflows de référence ont réussi sur le HEAD documentaire `8b5ff8dbcc91cded600c03a98157bba428b86d6f` : [CI principale](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995664), [boot UEFI local](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995825) et [BootInfo négatif](https://github.com/Likounsee/ArchiaOS/actions/runs/38379995687). Le package USB a réussi sur `dfd67f2937b95afc8c8d798c0b77483c2f7a43f9`, pas sur le HEAD documentaire testé ci-dessus.
+**État : IMPLÉMENTATION ET VALIDATION AUTOMATISÉE TERMINÉES — 100 %.** La campagne physique du chemin UEFI/BootInfo/PMM est documentée à partir des observations de l'utilisateur (5/5 démarrages à froid, 5/5 redémarrages à chaud, barre blanche finale et retour au système habituel). La provenance du paquet physique testé est le commit `cb5c676a9adbd0a9cf0e7a4ef69224b4a8729ecc`. Cette preuve matérielle porte sur le démarrage, BootInfo, PMM et l'atteinte du marqueur framebuffer ; elle ne prétend pas valider sur matériel chaque ajout VMM ultérieur.
 
-**Objectif :** sécuriser le transfert UEFI → noyau et la gestion de la mémoire physique.
+Le code actuel de la branche `ArchiaOS` est `29644ef8bd95faf8f9b992cdc254523dcf44002b`. Les trois workflows sur ce SHA ont réussi : [CI principale](https://github.com/Likounsee/ArchiaOS/actions/runs/38580438801), [démarrage UEFI local](https://github.com/Likounsee/ArchiaOS/actions/runs/38580438520) et [BootInfo négatif](https://github.com/Likounsee/ArchiaOS/actions/runs/38580438955). La CI principale inclut un boot de production QEMU à 5 Gio qui exige la réussite du mapping et de l'accès mémoire au-dessus de 4 Gio, ainsi que les auto-tests du VMM, du tas noyau et des espaces d'adressage.
+
+**Objectif :** sécuriser le transfert UEFI → noyau et les fondations mémoire physiques/virtuelles utilisées par la suite.
 
 **Calcul P1 (poids = 100 ; score = somme(poids × score du livrable) / 100)**
 
 | Livrable pondéré | Poids | Score | Preuve / limite |
 |---|---:|---:|---|
-| Validation ELF64, segments, alignements, débordements et refus RWX | 20 | 100 | Tests ELF et démarrages négatifs OVMF documentés. |
-| Mapping high-half, NXE/CR0.WP et permissions ELF | 20 | 100 | Chemin x86-64 automatisé et tests des permissions effectives. |
-| BootInfo versionné, carte mémoire finale et ExitBootServices avec retry | 20 | 100 | CI et boot UEFI local sur HEAD antérieur ; BootInfo négatif vert. |
-| Audit des plages firmware consommées, ACPI/DT, framebuffer et réservations | 15 | 100 | Tests de bornes/chevauchements et audit des objets consommés. |
-| PMM, types UEFI allocatables et erreurs allocation/libération | 15 | 100 | Auto-tests et tests hôte/démarrage cités ; fenêtre actuelle limitée à 4 Gio. |
-| Campagne physique : froid, transfert BootInfo/PMM, framebuffer, redémarrage/retour firmware | 10 | 0 | Pas de journal matériel vérifiable disponible. |
-| **Total** | **100** | **90 %** | **90 points acquis / 100.** |
+| Validation ELF64, segments, alignements, débordements et refus RWX | 20 | 100 | Audits et tests de chargement, dont scénarios négatifs UEFI. |
+| Mapping high-half, NXE/CR0.WP et permissions ELF | 20 | 100 | Boot de production et contrôles de permissions dans la CI courante. |
+| BootInfo versionné, carte mémoire finale et ExitBootServices avec retry | 20 | 100 | Boot UEFI et workflow BootInfo négatif réussis sur le SHA courant. |
+| Audit des plages firmware consommées, ACPI/DT, framebuffer et réservations | 15 | 100 | Contrôles de bornes, chevauchements, types UEFI et réservations. |
+| PMM 512 Gio, VMM/NX/W^X, accès au-dessus de 4 Gio, tas et racines d'adressage bootstrap | 15 | 100 | Auto-tests de démarrage de production sur QEMU 5 Gio ; l'usage SMP reste explicitement hors périmètre. |
+| Campagne physique du démarrage, BootInfo/PMM et framebuffer | 10 | 100 | 5/5 démarrages à froid et 5/5 redémarrages à chaud rapportés ; marqueur blanc final et retour firmware/système habituel confirmés. Le résultat physique reste un compte rendu utilisateur, pas une observation directe de l'assistant. |
+| **Total** | **100** | **100 %** | **Tous les livrables de cette phase sont clôturés ; les limites multi-CPU et ring 3 sont suivies en P2/P3.** |
 
-**Implémenté et testé automatiquement**
-- [x] Valider ELF64, en-têtes/program headers, tailles, alignements, débordements, recouvrements, entrée exécutable ; refuser RWX.
-- [x] Construire les mappings high-half x86-64 et appliquer NXE/CR0.WP dans le chemin testé.
-- [x] Transmettre BootInfo versionné, carte mémoire finale, framebuffer validé et réessayer `ExitBootServices` avec une clé fraîche.
-- [x] Contrôler la classification UEFI des buffers, segments ELF, image chargeur, tables de pages et plages critiques ; exclure du PMM les types autres que Conventional Memory.
-- [x] Tester les cas limites PMM : trous, types mixtes, plages non alignées/vides, débordements, réservations, double libération, frames non gérées et épuisement simulé.
-- [x] Valider les objets firmware réellement déréférencés après `ExitBootServices`, y compris les tables ACPI consommées, pointeurs FADT DSDT/FACS et table de configuration UEFI.
-- [x] CI principale, démarrage UEFI local et BootInfo négatif verts sur le HEAD documentaire précédent : [CI](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609054), [UEFI local](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609108), [BootInfo négatif](https://github.com/Likounsee/ArchiaOS/actions/runs/38378609145).
+**Implémenté et validé**
+- [x] Valider ELF64, en-têtes/program headers, tailles, alignements, débordements, recouvrements et entrée exécutable ; refuser RWX.
+- [x] Construire les mappings high-half x86-64, activer NXE/CR0.WP et appliquer les permissions de segments.
+- [x] Transmettre BootInfo versionné, carte mémoire finale et framebuffer validé ; réessayer `ExitBootServices` avec une clé fraîche.
+- [x] Exclure du PMM les types UEFI réservés, la mémoire basse, le framebuffer et le stockage des bitmaps ; vérifier les invariants et les erreurs de libération.
+- [x] Suivre jusqu'à 512 Gio et tester explicitement l'allocation et l'accès virtuel à de la RAM au-dessus de 4 Gio sur le boot QEMU 5 Gio.
+- [x] Ajouter le VMM noyau à la demande, les mappings NX/W^X, le retrait et l'invalidation TLB locale ; tester collisions, accès et récupération des tables.
+- [x] Ajouter le tas noyau page-backed et ses tests d'alignement, extension, fusion, libération et réutilisation.
+- [x] Ajouter les racines d'adressage bootstrap, mappings utilisateur isolés, bascule CR3 et nettoyage ; l'exécution ring 3/les syscalls ne font pas partie de P1.
+- [x] CI principale, boot UEFI local et BootInfo négatif verts sur le SHA courant : [CI](https://github.com/Likounsee/ArchiaOS/actions/runs/38580438801), [UEFI local](https://github.com/Likounsee/ArchiaOS/actions/runs/38580438520), [BootInfo négatif](https://github.com/Likounsee/ArchiaOS/actions/runs/38580438955).
+- [x] Campagne physique du chemin de démarrage/PMM documentée dans [P1-PHYSICAL-VALIDATION.md](P1-PHYSICAL-VALIDATION.md), avec provenance du paquet et résultats rapportés.
 
-**À faire — seul livrable pondéré restant**
-- [ ] Préparer une clé à partir d'un artefact USB dont le SHA et le commit source sont consignés.
-- [ ] Effectuer plusieurs démarrages à froid, en notant firmware/PC, périphérique de démarrage, résultat, éventuel blocage et sortie série.
-- [ ] Confirmer sur matériel que BootInfo est cohérent, que le PMM s'initialise sans blocage et que les réservations n'endommagent pas le framebuffer.
-- [ ] Vérifier l'affichage framebuffer, puis redémarrer et confirmer le retour firmware.
-- [ ] Conserver les journaux et résultats comme preuve attachée au commit testé.
+**Limites transmises aux phases suivantes**
+- Les tables de pages et le PMM ne sont pas synchronisés pour SMP ; pas de shootdown TLB inter-CPU.
+- Le tas noyau est limité au démarrage mono-CPU et ne doit pas être utilisé depuis des IRQ.
+- Les racines d'adressage sont un socle pour P3, pas encore un chargeur ELF utilisateur ni une transition ring 3.
+- La validation physique rapportée concerne le paquet USB identifié dans la campagne ; les nouvelles voies VMM/adressage sont couvertes par QEMU/CI et n'ont pas été revendiquées comme testées séparément sur matériel.
 
-**Pourquoi P1 n'est pas à 100 % :** aucune preuve matérielle reproductible n'a été fournie pour cette campagne. Le premier démarrage physique signalé justifie le jalon P0, mais ne prouve pas les redémarrages à froid répétés ni le retour firmware demandés par P1.
-
-**Critère de sortie :** 100 % uniquement quand les cinq livrables automatisés restent verts sur le code candidat et que la campagne physique complète est documentée. Les références historiques (par exemple `3d3dae0`, `2c3058e`, `1ab767a`, `c864ae2`, `abe8d7f`, `359c8b8`, `e57125e`, `a8654bf`, `b22d509`, `5526ae4`, `d218075`, `2f360f7`, `00bcb8c`) identifient des jalons de changements, pas des preuves à elles seules du HEAD actuel.
+**Critère de sortie :** atteint pour le périmètre P1 défini ci-dessus. Les interruptions/SMP relèvent de P2 ; ring 3, syscalls et cycle de vie des processus relèvent de P3.
 
 
 ### P2 — Exceptions, ordonnanceur et synchronisation — 21 %
