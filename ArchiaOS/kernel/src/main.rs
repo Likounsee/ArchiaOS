@@ -257,6 +257,65 @@ unsafe fn port_in(port: u16) -> u8 {
     unsafe { asm!("in al, dx", in("dx") port, out("al") value, options(nomem, nostack, preserves_flags)) };
     value
 }
+
+/// Persistent storage for the bootstrap CPU's local APIC. The dispatcher keeps
+/// a pointer to this object for the kernel lifetime; it must never be moved.
+static mut LOCAL_APIC_STORAGE: core::mem::MaybeUninit<apic::LocalApic> =
+    core::mem::MaybeUninit::uninit();
+
+/// Enable xAPIC mode and install its EOI dispatcher without enabling any device
+/// routes. All external sources and the local timer remain masked at this stage.
+unsafe fn initialize_local_apic() -> Result<(), &'static str> {
+    // CPUID.1:EDX[9] advertises the architectural local APIC.
+    if unsafe { core::arch::x86_64::__cpuid(1) }.edx & (1 << 9) == 0 {
+        return Err("CPU does not advertise the local APIC");
+    }
+
+    const IA32_APIC_BASE: u32 = apic::IA32_APIC_BASE_MSR;
+    let low: u32;
+    let high: u32;
+    unsafe {
+        asm!("rdmsr", in("ecx") IA32_APIC_BASE, out("eax") low, out("edx") high,
+             options(nomem, nostack, preserves_flags));
+    }
+    let mut base_msr = (u64::from(high) << 32) | u64::from(low);
+    if base_msr & apic::APIC_X2_MODE_ENABLE != 0 {
+        return Err("firmware enabled x2APIC; xAPIC MMIO mode is not selected");
+    }
+    if base_msr & apic::APIC_BASE_ENABLE == 0 {
+        base_msr |= apic::APIC_BASE_ENABLE;
+        unsafe {
+            asm!("wrmsr", in("ecx") IA32_APIC_BASE,
+                 in("eax") base_msr as u32, in("edx") (base_msr >> 32) as u32,
+                 options(nomem, nostack, preserves_flags));
+        }
+    }
+
+    let physical_base = base_msr & apic::APIC_BASE_ADDRESS_MASK;
+    if physical_base == 0 || physical_base & 0xfff != 0 {
+        return Err("IA32_APIC_BASE contains an invalid physical address");
+    }
+    // SAFETY: the architectural APIC-base MSR supplies the device address;
+    // VMM installs a dedicated uncached mapping, not a RAM allocation alias.
+    let mapped = unsafe { vmm::map_mmio_page(physical_base) }
+        .map_err(|_| "could not map local APIC MMIO page")?;
+    // SAFETY: the new mapping is page-aligned, persistent and uncached.
+    let local_apic = unsafe { apic::LocalApic::from_mapped_base(mapped.cast::<u32>()) }
+        .map_err(|_| "local APIC rejected its MMIO mapping")?;
+
+    // Publish stable storage before enabling the APIC's spurious-vector gate.
+    let storage = core::ptr::addr_of_mut!(LOCAL_APIC_STORAGE);
+    unsafe { (*storage).write(local_apic); }
+    let apic_ref = unsafe { (*storage).assume_init_ref() };
+    unsafe { interrupts::install_local_apic_dispatcher(apic_ref) }
+        .map_err(|_| "local APIC dispatcher was already installed")?;
+
+    // Vector 0x40 is reserved for the masked timer; no IOAPIC route is unmasked.
+    unsafe { apic_ref.initialize_masked(apic::APIC_SPURIOUS_VECTOR, 0x40, 16) }
+        .map_err(|_| "local APIC masked initialization failed")?;
+    Ok(())
+}
+
 fn halt_forever() -> ! {
     loop { unsafe { asm!("cli; hlt", options(nomem, nostack)) }; }
 }
@@ -484,6 +543,17 @@ pub extern "C" fn rust_kernel_main(
         halt_forever();
     }
     let _ = writeln!(serial, "ArchiaOS: VMM mapping self-test passed");
+
+    // Initialize the bootstrap CPU's xAPIC only after the page-table allocator
+    // is operational. No IOAPIC routes or timer interrupts are enabled yet.
+    match unsafe { initialize_local_apic() } {
+        Ok(()) => {
+            let _ = writeln!(serial, "ArchiaOS: local xAPIC initialized; dispatcher published; sources remain masked");
+        }
+        Err(reason) => {
+            let _ = writeln!(serial, "ArchiaOS: local xAPIC initialization skipped: {}", reason);
+        }
+    }
 
     if let Err(error) = heap::initialize(&mut serial) {
         paint_status_line(info, 3, FB_FAIL);
