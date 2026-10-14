@@ -4,7 +4,7 @@
 
 Le noyau reçoit le contrat versionné `ARCHIABI BootInfo` du chargeur UEFI ArchiaOS. Il valide l'en-tête avant d'utiliser ses champs, puis parse la carte mémoire UEFI en respectant la taille et le pas des descripteurs. Les plages sont contrôlées contre les débordements et les entrées incohérentes ; une carte vide ou trop grande est rejetée.
 
-Seules les plages `EfiConventionalMemory` deviennent candidates à l'allocation. Les autres types UEFI (chargeur, runtime, ACPI, MMIO et autres réservations) restent indisponibles. Les pages sous 1 Mio sont réservées. Les plages sont bornées à la fenêtre physique gérée par le PMM, actuellement `[0, 4 Gio)`.
+Seules les plages `EfiConventionalMemory` deviennent candidates à l'allocation. Les autres types UEFI (chargeur, runtime, ACPI, MMIO et autres réservations) restent indisponibles. Les pages sous 1 Mio sont réservées. Les plages sont bornées à la fenêtre physique gérée par le PMM, actuellement `[0, 64 Gio)`. Cette limite est une capacité de suivi du PMM, pas une garantie que tous les processeurs prennent en charge toute cette plage.
 
 ## Allocateur physique expérimental
 
