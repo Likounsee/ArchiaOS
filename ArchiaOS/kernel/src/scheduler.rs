@@ -587,6 +587,9 @@ pub fn runtime_self_test() -> Result<(), SchedulerError> {
             || !(&*contexts.add(first.0)).is_initialized()
             || !(&*contexts.add(second.0)).is_initialized()
             || !(&*contexts.add(third.0)).is_initialized()
+            || !(&*stacks.add(first.0)).guards_intact()
+            || !(&*stacks.add(second.0)).guards_intact()
+            || !(&*stacks.add(third.0)).guards_intact()
             || !(&*core::ptr::addr_of!(RUNTIME_BOOT_CONTEXT)).is_initialized()
             || (&*scheduler).check_invariants().is_err()
         {
@@ -628,6 +631,7 @@ pub fn runtime_idle_wakeup_self_test() -> Result<(), SchedulerError> {
 
         let stage = core::ptr::read_volatile(core::ptr::addr_of!(RUNTIME_STAGES).cast::<usize>());
         if stage != 1
+            || !(&*stacks.add(task.0)).guards_intact()
             || (&*scheduler).current().is_some()
             || (&*scheduler).state(task)? != TaskState::Blocked
             || (&mut *scheduler).dispatch_or_idle()?
@@ -648,6 +652,7 @@ pub fn runtime_idle_wakeup_self_test() -> Result<(), SchedulerError> {
         );
 
         if core::ptr::read_volatile(core::ptr::addr_of!(RUNTIME_STAGES).cast::<usize>()) != 2
+            || !(&*stacks.add(task.0)).guards_intact()
             || (&*scheduler).state(task)? != TaskState::Exited
             || (&*scheduler).current().is_some()
             || (&mut *scheduler).dispatch_or_idle()?
