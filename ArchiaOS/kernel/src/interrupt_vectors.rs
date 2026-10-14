@@ -39,6 +39,12 @@ pub const fn masks_after_masking_irq(
         return None;
     }
 
+    // IRQ2 is the only path to the slave PIC. Refuse to mask it while
+    // any slave line remains unmasked, otherwise IRQ8..=IRQ15 become unreachable.
+    if irq == 2 && slave_mask != 0xff {
+        return None;
+    }
+
     if irq < 8 {
         Some((master_mask | (1u8 << irq), slave_mask))
     } else {
@@ -99,6 +105,16 @@ mod tests {
     #[test]
     fn masking_last_enabled_slave_irq_masks_cascade() {
         assert_eq!(masks_after_masking_irq(0b0000_0000, 0b0111_1111, 15), Some((0b0000_0100, 0b1111_1111)));
+    }
+
+    #[test]
+    fn refuses_to_mask_cascade_while_slave_irqs_are_enabled() {
+        assert_eq!(masks_after_masking_irq(0, 0b1111_1110, 2), None);
+    }
+
+    #[test]
+    fn allows_masking_cascade_when_slave_pic_is_fully_masked() {
+        assert_eq!(masks_after_masking_irq(0, 0xff, 2), Some((0b0000_0100, 0xff)));
     }
 
     #[test]
