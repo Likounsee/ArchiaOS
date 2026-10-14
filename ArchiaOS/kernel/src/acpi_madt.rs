@@ -215,8 +215,18 @@ pub fn validate_xapic_topology(info: &MadtInfo) -> Result<(), MadtError> {
     if info.enabled_processor_count() == 0 {
         return Err(MadtError::NoEnabledProcessor);
     }
+    // Counts describe dense prefixes produced by parse_madt. Reject holes
+    // rather than letting hardware initialization silently skip firmware records.
+    if info.processors[..info.processor_count].iter().any(Option::is_none)
+        || info.io_apics[..info.io_apic_count].iter().any(Option::is_none)
+        || info.overrides[..info.override_count].iter().any(Option::is_none)
+    {
+        return Err(MadtError::InvalidTopologyCounts);
+    }
     for i in 0..info.processor_count {
-        let Some(cpu) = info.processors[i] else { continue };
+        let Some(cpu) = info.processors[i] else {
+            return Err(MadtError::InvalidTopologyCounts);
+        };
         if !(cpu.enabled || cpu.online_capable) { continue; }
         for other in 0..i {
             if let Some(previous) = info.processors[other] {
@@ -227,7 +237,9 @@ pub fn validate_xapic_topology(info: &MadtInfo) -> Result<(), MadtError> {
         }
     }
     for i in 0..info.io_apic_count {
-        let Some(io) = info.io_apics[i] else { continue };
+        let Some(io) = info.io_apics[i] else {
+            return Err(MadtError::InvalidTopologyCounts);
+        };
         if io.physical_address == 0 || io.physical_address & 0xfff != 0 {
             return Err(MadtError::InvalidIoApicAddress);
         }
@@ -238,7 +250,9 @@ pub fn validate_xapic_topology(info: &MadtInfo) -> Result<(), MadtError> {
         }
     }
     for i in 0..info.override_count {
-        let Some(route) = info.overrides[i] else { continue };
+        let Some(route) = info.overrides[i] else {
+            return Err(MadtError::InvalidTopologyCounts);
+        };
         for other in 0..i {
             if let Some(previous) = info.overrides[other] {
                 if previous.bus == route.bus && previous.source_irq == route.source_irq {
