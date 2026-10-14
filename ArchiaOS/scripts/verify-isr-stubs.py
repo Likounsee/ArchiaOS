@@ -175,7 +175,7 @@ def main() -> None:
     }
     for struct_name, expected_fields in expected_layouts.items():
         struct_match = re.search(
-            rf'#\[repr\(C, packed\)\]\s*struct {struct_name} \{{(?P<body>.*?)\n\}}',
+            rf'#\[repr\(C, packed\)\]\s*(?:#\[[^\]]+\]\s*)*struct {struct_name} \{{(?P<body>.*?)\n\}}',
             source,
             re.DOTALL,
         )
