@@ -8,7 +8,7 @@ Seules les plages `EfiConventionalMemory` deviennent candidates à l'allocation.
 
 ## Allocateur physique expérimental
 
-L'allocateur bitmap gère des frames de 4 Kio sous 4 Gio. Un bitmap marque les frames gérées et un second les frames libres. Une frame n'est allouable que si elle est à la fois gérée et libre ; cela empêche de libérer une adresse arbitraire, une frame réservée, une adresse non alignée ou une frame déjà libérée.
+L'allocateur bitmap gère des frames de 4 Kio sous 64 Gio. Un bitmap marque les frames gérées et un second les frames libres. Une frame n'est allouable que si elle est à la fois gérée et libre ; cela empêche de libérer une adresse arbitraire, une frame réservée, une adresse non alignée ou une frame déjà libérée.
 
 Les plages sont appliquées par mots bitmap plutôt qu'en parcourant chaque page individuellement. Le calcul préliminaire vérifie les descripteurs avant de réinitialiser l'état global ; l'allocateur n'est marqué initialisé qu'après le remplissage et la vérification des invariants. Les pages couvrant le framebuffer sont réservées avec arrondi vers l'extérieur, même si le firmware les classait incorrectement comme mémoire conventionnelle.
 
@@ -18,4 +18,4 @@ Le workflow de démarrage local doit aussi exiger le marqueur série `ArchiaOS: 
 
 ## Limites importantes
 
-Le PMM est limité à 4 Gio, s'initialise une seule fois et n'est pas synchronisé pour SMP. Le nombre d'octets de mémoire conventionnelle indiqué dans les statistiques est le total géré après exclusion des pages basses et du framebuffer, et non la totalité de la RAM installée. Il n'existe pas encore de tas général ni de gestionnaire complet de mémoire virtuelle. La stabilité des réservations et du démarrage doit encore être confirmée par une campagne matérielle répétable.
+Le PMM est limité à une fenêtre de suivi de 64 Gio, s'initialise une seule fois et n'est pas synchronisé pour SMP. Le nombre d'octets de mémoire conventionnelle indiqué dans les statistiques est le total géré après exclusion des pages basses et du framebuffer, et non la totalité de la RAM installée. Il n'existe pas encore de tas général ni de gestionnaire complet de mémoire virtuelle. La stabilité des réservations et du démarrage doit encore être confirmée par une campagne matérielle répétable.
