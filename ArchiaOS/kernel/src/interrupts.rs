@@ -11,6 +11,24 @@ const EXCEPTION_COUNT: usize = 32;
 const IDT_ENTRY_COUNT: usize = 256;
 const INTERRUPT_GATE: u8 = 0x8e;
 
+/// Legacy dual-8259 PIC vector range after remapping.
+pub const LEGACY_PIC_VECTOR_BASE: u8 = 0x20;
+pub const LEGACY_PIC_IRQ_COUNT: u8 = 16;
+
+/// Convert a remapped legacy PIC vector into its IRQ line.
+///
+/// Vectors outside 0x20..=0x2f are not legacy PIC IRQs. This helper is
+/// deliberately pure so dispatch code can classify a vector without touching
+/// PIC hardware or accidentally acknowledging an unrelated interrupt.
+pub const fn legacy_pic_irq_for_vector(vector: u8) -> Option<u8> {
+    let irq = vector.wrapping_sub(LEGACY_PIC_VECTOR_BASE);
+    if irq < LEGACY_PIC_IRQ_COUNT {
+        Some(irq)
+    } else {
+        None
+    }
+}
+
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
 struct IdtEntry {
