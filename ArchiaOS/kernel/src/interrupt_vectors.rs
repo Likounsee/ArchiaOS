@@ -279,4 +279,31 @@ mod tests {
         assert_eq!(masks_after_masking_irq(0, 0, 16), None);
     }
 
+    #[test]
+    fn masking_preserves_pic_cascade_invariant_for_all_consistent_masks() {
+        for master_mask in 0u8..=u8::MAX {
+            for slave_mask in 0u8..=u8::MAX {
+                if !pic_masks_are_consistent(master_mask, slave_mask) {
+                    continue;
+                }
+
+                for irq in 0..LEGACY_PIC_IRQ_COUNT {
+                    let (next_master, next_slave) =
+                        masks_after_masking_irq(master_mask, slave_mask, irq)
+                            .expect("valid IRQ must yield masks");
+                    assert!(
+                        pic_masks_are_consistent(next_master, next_slave),
+                        "inconsistent result: master={master_mask:#04x}, slave={slave_mask:#04x}, irq={irq}"
+                    );
+                    if irq < 8 {
+                        assert_ne!(next_master & (1u8 << irq), 0);
+                        assert_eq!(next_slave, slave_mask);
+                    } else {
+                        assert_ne!(next_slave & (1u8 << (irq - 8)), 0);
+                    }
+                }
+            }
+        }
+    }
+
 }
