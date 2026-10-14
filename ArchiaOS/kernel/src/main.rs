@@ -800,6 +800,11 @@ pub extern "C" fn rust_kernel_main(
         Some(madt_base) => match unsafe { initialize_local_apic(madt_base) } {
         Ok(()) => {
             let _ = writeln!(serial, "ArchiaOS: local xAPIC initialized; dispatcher published; sources remain masked");
+            if !interrupts::apic_dispatch_self_test() {
+                let _ = writeln!(serial, "ArchiaOS: APIC returning dispatch self-test FAILED");
+                halt_forever();
+            }
+            let _ = writeln!(serial, "ArchiaOS: APIC registered-handler, EOI and IRETQ dispatch self-test passed");
         }
         Err(reason) => {
             let _ = writeln!(serial, "ArchiaOS: local xAPIC initialization skipped: {}", reason);
