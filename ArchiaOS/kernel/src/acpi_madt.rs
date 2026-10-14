@@ -21,6 +21,12 @@ pub enum MadtError {
     TooManyIoApics,
     TooManyOverrides,
     InvalidOverride,
+    InvalidLocalApicAddress,
+    InvalidIoApicAddress,
+    DuplicateApicId,
+    DuplicateIoApicId,
+    DuplicateInterruptOverride,
+    NoEnabledProcessor,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -100,6 +106,51 @@ fn u64_at(bytes: &[u8], offset: usize) -> Option<u64> {
         *bytes.get(offset + 4)?, *bytes.get(offset + 5)?,
         *bytes.get(offset + 6)?, *bytes.get(offset + 7)?,
     ]))
+}
+
+/// Validate topology invariants required before enabling xAPIC routing.
+/// This is intentionally pure: passing validation does not imply MMIO is mapped
+/// or that the processor supports xAPIC mode.
+pub fn validate_xapic_topology(info: &MadtInfo) -> Result<(), MadtError> {
+    if info.local_apic_address == 0 || info.local_apic_address & 0xfff != 0 {
+        return Err(MadtError::InvalidLocalApicAddress);
+    }
+    if info.enabled_processor_count() == 0 {
+        return Err(MadtError::NoEnabledProcessor);
+    }
+    for i in 0..info.processor_count {
+        let Some(cpu) = info.processors[i] else { continue };
+        if !(cpu.enabled || cpu.online_capable) { continue; }
+        for other in 0..i {
+            if let Some(previous) = info.processors[other] {
+                if (previous.enabled || previous.online_capable) && previous.apic_id == cpu.apic_id {
+                    return Err(MadtError::DuplicateApicId);
+                }
+            }
+        }
+    }
+    for i in 0..info.io_apic_count {
+        let Some(io) = info.io_apics[i] else { continue };
+        if io.physical_address == 0 || io.physical_address & 0xfff != 0 {
+            return Err(MadtError::InvalidIoApicAddress);
+        }
+        for other in 0..i {
+            if let Some(previous) = info.io_apics[other] {
+                if previous.id == io.id { return Err(MadtError::DuplicateIoApicId); }
+            }
+        }
+    }
+    for i in 0..info.override_count {
+        let Some(route) = info.overrides[i] else { continue };
+        for other in 0..i {
+            if let Some(previous) = info.overrides[other] {
+                if previous.bus == route.bus && previous.source_irq == route.source_irq {
+                    return Err(MadtError::DuplicateInterruptOverride);
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Parse a complete ACPI MADT (including its 36-byte SDT header).
@@ -253,6 +304,28 @@ mod tests {
     fn rejects_reserved_interrupt_override_flags() {
         let entries = [2, 10, 0, 0, 0, 0, 0, 0, 0x02, 0];
         assert_eq!(parse_madt(&base(0, &entries)), Err(MadtError::InvalidOverride));
+    }
+
+    #[test]
+    fn validates_topology_before_hardware_initialization() {
+        let valid = base(0, &[
+            0, 8, 0, 2, 1, 0, 0, 0,
+            1, 12, 3, 0, 0, 0xc0, 0xfe, 0, 0, 0, 0, 0,
+        ]);
+        let parsed = parse_madt(&valid).unwrap();
+        assert_eq!(validate_xapic_topology(&parsed), Ok(()));
+
+        let duplicate_cpu = parse_madt(&base(0, &[
+            0, 8, 0, 2, 1, 0, 0, 0,
+            0, 8, 1, 2, 1, 0, 0, 0,
+        ])).unwrap();
+        assert_eq!(validate_xapic_topology(&duplicate_cpu), Err(MadtError::DuplicateApicId));
+
+        let invalid_io = parse_madt(&base(0, &[
+            0, 8, 0, 2, 1, 0, 0, 0,
+            1, 12, 3, 0, 0x01, 0, 0, 0, 0, 0, 0, 0,
+        ])).unwrap();
+        assert_eq!(validate_xapic_topology(&invalid_io), Err(MadtError::InvalidIoApicAddress));
     }
 
     #[test]
