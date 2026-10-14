@@ -44,6 +44,19 @@ pub const fn classify_interrupt_vector(vector: u8) -> InterruptVectorClass {
     }
 }
 
+/// Decode the 64-bit vector value read from a normalized interrupt frame.
+/// Keep the range check in the same width as the frame slot before converting
+/// to a host pointer-sized index.
+pub const fn pic_irq_for_frame_vector(vector: u64) -> Option<usize> {
+    let base = LEGACY_PIC_VECTOR_BASE as u64;
+    let count = LEGACY_PIC_IRQ_COUNT as u64;
+    if vector < base || vector >= base + count {
+        None
+    } else {
+        Some((vector - base) as usize)
+    }
+}
+
 /// Convert a remapped PIC vector (0x20..=0x2f) into an IRQ line (0..=15).
 pub const fn legacy_pic_irq_for_vector(vector: u8) -> Option<u8> {
     match vector.checked_sub(LEGACY_PIC_VECTOR_BASE) {
@@ -209,6 +222,16 @@ mod tests {
         assert_eq!(classify_interrupt_vector(0x2f), InterruptVectorClass::LegacyPicIrq(15));
         assert_eq!(classify_interrupt_vector(0x30), InterruptVectorClass::Other);
         assert_eq!(classify_interrupt_vector(0xff), InterruptVectorClass::Other);
+    }
+
+    #[test]
+    fn frame_vector_decoder_checks_full_u64_range() {
+        for irq in 0u64..16 {
+            assert_eq!(pic_irq_for_frame_vector(0x20 + irq), Some(irq as usize));
+        }
+        for vector in [0, 31, 48, 255, u32::MAX as u64, u64::MAX] {
+            assert_eq!(pic_irq_for_frame_vector(vector), None, "vector {vector:#x}");
+        }
     }
 
     #[test]
