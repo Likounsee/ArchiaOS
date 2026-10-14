@@ -461,7 +461,11 @@ unsafe fn initialize_ioapics_masked(
     acpi_madt::validate_isa_gsi_uniqueness(topology)
         .map_err(|_| "multiple ISA IRQs resolve to the same GSI")?;
 
-    let mut configured = 0usize;
+    // Resolve and validate every ISA route before writing any route entry.
+    // If the firmware describes an uncovered GSI, fail before the first route
+    // is configured; this avoids leaving a partially staged routing table.
+    let mut route_plan = [(0u32, 0u8, 0u16, 0u16); 16];
+    let mut planned = 0usize;
     for irq in 0u8..16 {
         // ISA IRQ2 is the legacy 8259 master-to-slave cascade, not an
         // independent device input. On common MADTs IRQ0 is overridden to GSI2;
@@ -484,26 +488,51 @@ unsafe fn initialize_ioapics_masked(
             }
         }
 
+        let mut covered = false;
+        for record in topology.io_apics.iter()
+            .take(topology.io_apic_count).flatten()
+        {
+            let index = topology.io_apics.iter()
+                .take(topology.io_apic_count).position(|candidate| {
+                    candidate.map(|candidate| candidate.id) == Some(record.id)
+                }).ok_or("validated IOAPIC record lost its index")?;
+            let end = record.global_irq_base.checked_add(redirection_counts[index])
+                .ok_or("IOAPIC GSI range overflows while preflighting ISA IRQ")?;
+            if gsi >= record.global_irq_base && gsi < end {
+                covered = true;
+                break;
+            }
+        }
+        if !covered {
+            return Err("no IOAPIC covers an ISA IRQ's resolved GSI");
+        }
+        let vector = 0x50u8.checked_add(irq)
+            .ok_or("ISA IRQ vector calculation overflowed")?;
+        route_plan[planned] = (gsi, vector, polarity, trigger);
+        planned += 1;
+    }
+
+    // All routes are now known to be unique and covered. Program them only
+    // after preflight succeeds; configure_masked keeps delivery disabled.
+    let mut configured = 0usize;
+    for (gsi, vector, polarity, trigger) in route_plan.iter().take(planned).copied() {
         let mut routed = false;
         for (index, record) in topology.io_apics.iter()
             .take(topology.io_apic_count).flatten().enumerate()
         {
-            let ioapic = unsafe { (*storage)[index].assume_init_ref() };
             let count = redirection_counts[index];
             let end = record.global_irq_base.checked_add(count)
-                .ok_or("IOAPIC GSI range overflows while resolving ISA IRQ")?;
+                .ok_or("IOAPIC GSI range overflows while applying ISA route plan")?;
             if gsi < record.global_irq_base || gsi >= end { continue; }
-            let vector = 0x50u8.checked_add(irq)
-                .ok_or("ISA IRQ vector calculation overflowed")?;
-            unsafe {
-                ioapic.configure_masked(gsi, vector, polarity, trigger, bsp_apic_id)
-            }.map_err(|_| "failed to configure a masked ISA IRQ route")?;
+            let ioapic = unsafe { (*storage)[index].assume_init_ref() };
+            unsafe { ioapic.configure_masked(gsi, vector, polarity, trigger, bsp_apic_id) }
+                .map_err(|_| "failed to configure a masked ISA IRQ route")?;
             routed = true;
             configured += 1;
             break;
         }
         if !routed {
-            return Err("no IOAPIC covers an ISA IRQ's resolved GSI");
+            return Err("preflighted ISA GSI unexpectedly lost its IOAPIC");
         }
     }
     // Routes use vectors 0x50..=0x5f and are still masked; handlers and a
