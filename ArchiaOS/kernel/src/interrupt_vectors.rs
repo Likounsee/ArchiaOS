@@ -180,8 +180,12 @@ mod tests {
 
     #[test]
     fn identifies_cpu_pushed_error_code_vectors() {
+        // Keep this as an explicit architectural expectation rather than
+        // repeating the implementation's match expression in the test.
+        const ERROR_CODE_VECTORS: [u8; 10] = [8, 10, 11, 12, 13, 14, 17, 21, 29, 30];
+
         for vector in 0u8..32 {
-            let expected = matches!(vector, 8 | 10..=14 | 17 | 21 | 29 | 30);
+            let expected = ERROR_CODE_VECTORS.contains(&vector);
             assert_eq!(
                 cpu_exception_has_error_code(vector),
                 expected,
@@ -190,8 +194,11 @@ mod tests {
         }
 
         // PIC and software/other vectors do not receive a CPU error-code word.
-        for vector in [32, 33, 48, 128, 255] {
-            assert!(!cpu_exception_has_error_code(vector), "vector {vector}");
+        for vector in 32u8..=u8::MAX {
+            assert!(
+                !cpu_exception_has_error_code(vector),
+                "vector {vector}"
+            );
         }
     }
 
