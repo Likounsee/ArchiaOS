@@ -7,7 +7,6 @@
 
 use core::arch::{asm, global_asm};
 
-const EXCEPTION_COUNT: usize = 32;
 const IDT_ENTRY_COUNT: usize = 256;
 const INTERRUPT_GATE: u8 = 0x8e;
 
