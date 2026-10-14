@@ -60,7 +60,12 @@ pub enum IpiKind {
 pub fn ipi_command(kind: IpiKind, vector: u8) -> Result<u32, ApicError> {
     match kind {
         IpiKind::Fixed => {
-            if vector < 32 { return Err(ApicError::InvalidIpiVector); }
+            // Fixed IPIs enter the same IDT as hardware IRQs. Do not let an
+            // IPI overwrite the legacy PIC range or either dedicated test /
+            // spurious gate, even though those vectors are numerically >= 32.
+            if validate_hardware_irq_vector(vector).is_err() {
+                return Err(ApicError::InvalidIpiVector);
+            }
             Ok(u32::from(vector))
         }
         IpiKind::InitAssert => Ok((0b101 << 8) | (1 << 14) | (1 << 15)),
@@ -491,7 +496,13 @@ mod tests {
     #[test]
     fn ipi_commands_validate_vectors_and_encode_delivery_modes() {
         assert_eq!(ipi_command(IpiKind::Fixed, 0x40), Ok(0x40));
-        assert_eq!(ipi_command(IpiKind::Fixed, 31), Err(ApicError::InvalidIpiVector));
+        for vector in [0, 31, 0x20, 0x2f, APIC_TEST_RETURN_VECTOR, APIC_SPURIOUS_VECTOR] {
+            assert_eq!(
+                ipi_command(IpiKind::Fixed, vector),
+                Err(ApicError::InvalidIpiVector),
+                "fixed IPI vector {vector:#04x} must not collide with a reserved gate"
+            );
+        }
         assert_eq!(ipi_command(IpiKind::InitAssert, 0), Ok((5 << 8) | (1 << 14) | (1 << 15)));
         assert_eq!(ipi_command(IpiKind::InitDeassert, 0), Ok((5 << 8) | (1 << 15)));
         assert_eq!(ipi_command(IpiKind::Startup, 8), Ok((6 << 8) | 8));
