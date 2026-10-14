@@ -58,6 +58,20 @@ PRIORITÉ 2 — INTERRUPTIONS, ORDONNANCEMENT ET SMP
    interruptions masquables/non masquables, les erreurs CPU et les chemins de
    retour. Documenter clairement ce qui est déjà implémenté et testé.
 
+   État partiel vérifié dans le code (octobre 2026) :
+   - une IDT de 256 entrées est construite et chargée ; les stubs ISR et leur
+     table sont générés pour les 256 vecteurs ;
+   - le chemin d'exception est fatal et non retournant ; ce n'est pas encore un
+     chemin complet de sauvegarde/restauration de contexte avec retour iretq ;
+   - le PIC legacy reste masqué : ne pas présenter les IRQ matérielles comme
+     opérationnelles simplement parce que leurs vecteurs ont une entrée IDT ;
+   - le script scripts/verify-isr-stubs.py contrôle statiquement les stubs,
+     leur table, les vecteurs avec code d'erreur, l'ABI d'entrée, les champs et
+     tailles IDT/IDTR et l'ordre d'installation ;
+   - l'audit statique ne remplace ni son exécution effective, ni les tests QEMU,
+     ni une validation sur matériel. Ces validations restent à effectuer.
+
+
 7. Faire évoluer l'ordonnanceur coopératif actuel vers un ordonnanceur préemptif
    si cela reste l'objectif du système.
    Il faudra notamment définir les priorités, les états des tâches, les réveils,
