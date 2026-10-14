@@ -316,6 +316,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn mapped_controller_constructors_reject_null_and_unaligned_addresses() {
+        assert!(matches!(
+            unsafe { LocalApic::from_mapped_base(core::ptr::null_mut()) },
+            Err(ApicError::InvalidMappedPointer)
+        ));
+        assert!(matches!(
+            unsafe { LocalApic::from_mapped_base(0xfee0_0001usize as *mut u32) },
+            Err(ApicError::InvalidMappedPointer)
+        ));
+        assert!(matches!(
+            unsafe { IoApic::from_mapped_base(core::ptr::null_mut(), 0) },
+            Err(ApicError::InvalidMappedPointer)
+        ));
+        assert!(matches!(
+            unsafe { IoApic::from_mapped_base(0xfec0_0001usize as *mut u32, 0) },
+            Err(ApicError::InvalidMappedPointer)
+        ));
+    }
+
+    #[test]
     fn validates_apic_msr_without_touching_hardware() {
         let base = 0xfee0_0000;
         assert_eq!(validate_apic_base(base | APIC_BASE_ENABLE, base), Ok(base));
