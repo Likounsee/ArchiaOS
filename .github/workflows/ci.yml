@@ -456,6 +456,7 @@ jobs:
           grep -Fq "ArchiaOS: CPU family " "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "ArchiaOS: CPU features " "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "ArchiaOS: x87/SSE context state initialized (FXSAVE64/FXRSTOR64)" "$RUNNER_TEMP/archiaos-production-uefi.log"
+          grep -Fq "ArchiaOS: ring-0 software interrupt save/IRETQ self-test passed" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "ArchiaOS: SSE4.1 optimized integer self-test passed" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "ArchiaOS: three-task block/wake/yield/exit context-switch self-test passed" "$RUNNER_TEMP/archiaos-production-uefi.log"
           grep -Fq "ArchiaOS: block-to-idle, wakeup and task-resume self-test passed" "$RUNNER_TEMP/archiaos-production-uefi.log"
