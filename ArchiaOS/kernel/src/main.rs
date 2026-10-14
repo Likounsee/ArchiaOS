@@ -313,7 +313,7 @@ pub extern "C" fn rust_kernel_main(
     // Install fatal exception diagnostics before touching firmware-provided data.
     // SAFETY: early boot is single-threaded and maskable interrupts remain disabled.
     unsafe { interrupts::install() };
-    let _ = writeln!(serial, "ArchiaOS: x86-64 exception IDT installed (vectors 0-31)");
+    let _ = writeln!(serial, "ArchiaOS: x86-64 IDT installed (256 vectors; legacy PIC IRQs remain masked)");
     // Remap the legacy PIC away from CPU exception vectors, but keep every
     // hardware IRQ masked until dedicated IRQ gates and dispatch are ready.
     unsafe { pic::initialize_masked() };
