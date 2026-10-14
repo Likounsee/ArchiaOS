@@ -780,6 +780,27 @@ mod tests {
     }
 
     #[test]
+    fn exited_slots_are_not_reused_implicitly() {
+        let mut scheduler = Scheduler::new();
+        let mut ids = [TaskId(0); MAX_TASKS];
+
+        for slot in 0..MAX_TASKS {
+            ids[slot] = scheduler.create_task().unwrap();
+        }
+        assert_eq!(scheduler.create_task(), Err(SchedulerError::NoTaskSlot));
+
+        // Exiting a task frees execution, not its identity/slot. Reuse must be
+        // an explicit future lifecycle policy rather than an accidental alias.
+        assert_eq!(scheduler.schedule(), Ok(ids[0]));
+        assert_eq!(scheduler.exit_current(), Ok(ids[1]));
+        assert_eq!(scheduler.state(ids[0]), Ok(TaskState::Exited));
+        assert_eq!(scheduler.create_task(), Err(SchedulerError::NoTaskSlot));
+        assert_eq!(scheduler.state(ids[0]), Ok(TaskState::Exited));
+        assert_eq!(scheduler.state(ids[MAX_TASKS - 1]), Ok(TaskState::Runnable));
+        assert_eq!(scheduler.check_invariants(), Ok(()));
+    }
+
+    #[test]
     fn no_runnable_task_errors_leave_blocked_or_exited_state_consistent() {
         let mut blocked = Scheduler::new();
         let blocked_task = blocked.create_task().unwrap();
