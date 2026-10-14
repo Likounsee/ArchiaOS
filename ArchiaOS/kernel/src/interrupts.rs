@@ -6,7 +6,7 @@
 //! per-task exception delivery are designed.
 
 use core::arch::{asm, global_asm};
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 const IDT_ENTRY_COUNT: usize = 256;
 const INTERRUPT_GATE: u8 = 0x8e;
@@ -77,6 +77,70 @@ extern "C" {
     static isr_stub_table: [u64; IDT_ENTRY_COUNT];
     fn isr_test_return_stub();
     fn isr_spurious_return_stub();
+    static isr_pic_stub_table: [u64; 16];
+}
+
+
+/// Interrupt-safe legacy PIC handler. Return true only when the IRQ was
+/// serviced; false enters the fatal unhandled-IRQ path without sending EOI.
+pub type PicIrqHandler = extern "C" fn(irq: u8) -> bool;
+
+static PIC_IRQ_HANDLERS: [AtomicUsize; 16] =
+    [const { AtomicUsize::new(0) }; 16];
+
+/// Register a legacy PIC handler. Register handlers before enabling CPU
+/// interrupts. Handlers run in hard-interrupt context: they must not block,
+/// allocate, unwind, or take locks that can be held by interrupted code.
+pub fn register_pic_irq_handler(irq: u8, handler: PicIrqHandler) -> Result<(), ()> {
+    let slot = PIC_IRQ_HANDLERS.get(usize::from(irq)).ok_or(())?;
+    slot.compare_exchange(0, handler as usize, Ordering::AcqRel, Ordering::Acquire)
+        .map(|_| ())
+        .map_err(|_| ())
+}
+
+fn pic_eoi(irq: u8) {
+    // SAFETY: the PIC has been remapped to 0x20..=0x2f and the caller has
+    // confirmed that a registered handler explicitly claimed this IRQ.
+    unsafe {
+        if irq >= 8 {
+            asm!("out dx, al", in("dx") 0xa0u16, in("al") 0x20u8, options(nomem, nostack, preserves_flags));
+        }
+        asm!("out dx, al", in("dx") 0x20u16, in("al") 0x20u8, options(nomem, nostack, preserves_flags));
+    }
+}
+
+#[no_mangle]
+extern "C" fn archiaos_pic_interrupt_dispatch(frame: *mut u64) -> *mut u64 {
+    if frame.is_null() {
+        fatal_unhandled_pic_irq();
+    }
+    // Stack layout from isr_pic_common: 15 saved GPRs, vector, synthetic error.
+    // SAFETY: assembly supplies a pointer to the complete normalized interrupt frame.
+    let vector = unsafe { *frame.add(15) };
+    let Some(irq) = vector.checked_sub(usize::from(LEGACY_PIC_VECTOR_BASE))
+        .filter(|irq| *irq < usize::from(LEGACY_PIC_IRQ_COUNT))
+    else {
+        fatal_unhandled_pic_irq();
+    };
+    let raw = PIC_IRQ_HANDLERS[irq].load(Ordering::Acquire);
+    if raw == 0 {
+        fatal_unhandled_pic_irq();
+    }
+    // SAFETY: only register_pic_irq_handler stores values with PicIrqHandler's ABI.
+    let handler: PicIrqHandler = unsafe { core::mem::transmute(raw) };
+    if !handler(irq as u8) {
+        fatal_unhandled_pic_irq();
+    }
+    pic_eoi(irq as u8);
+    frame
+}
+
+#[cold]
+fn fatal_unhandled_pic_irq() -> ! {
+    // Do not EOI an IRQ that was not claimed: preserve evidence of the fault
+    // and avoid falsely reporting successful service to the interrupt controller.
+    unsafe { asm!("cli", options(nomem, nostack, preserves_flags)); }
+    loop { unsafe { asm!("hlt", options(nomem, nostack)); } }
 }
 
 const TEST_RETURN_VECTOR: usize = 0xF1;
@@ -215,6 +279,17 @@ pub unsafe fn install() {
     let test_gate = IdtEntry::interrupt_gate(isr_test_return_stub as usize as u64, selector);
     unsafe { core::ptr::addr_of_mut!(IDT).cast::<IdtEntry>().add(TEST_RETURN_VECTOR).write(test_gate) };
 
+    // Legacy PIC IRQs have a dedicated returning path. Other hardware vectors
+    // stay on the fatal default until a controller-specific dispatcher exists.
+    for irq in 0..16 {
+        let stub = unsafe { core::ptr::addr_of!(isr_pic_stub_table).cast::<u64>().add(irq).read() };
+        let entry = IdtEntry::interrupt_gate(stub, selector);
+        unsafe {
+            core::ptr::addr_of_mut!(IDT).cast::<IdtEntry>()
+                .add(usize::from(LEGACY_PIC_VECTOR_BASE) + irq).write(entry);
+        }
+    }
+
     // The APIC spurious vector is special: return directly and do not send EOI.
     let spurious_gate = IdtEntry::interrupt_gate(isr_spurious_return_stub as usize as u64, selector);
     unsafe { core::ptr::addr_of_mut!(IDT).cast::<IdtEntry>().add(SPURIOUS_VECTOR).write(spurious_gate) };
@@ -227,6 +302,46 @@ pub unsafe fn install() {
     // covers all 256 initialized gates (exceptions plus fatal defaults).
     unsafe { asm!("lidt [{0}]", in(reg) &descriptor, options(readonly, nostack, preserves_flags)) };
 }
+
+global_asm!(
+    ".section .text",
+    ".global isr_pic_stub_0", "isr_pic_stub_0:", "pushq $0", "pushq $32", "jmp isr_pic_common",
+    ".global isr_pic_stub_1", "isr_pic_stub_1:", "pushq $0", "pushq $33", "jmp isr_pic_common",
+    ".global isr_pic_stub_2", "isr_pic_stub_2:", "pushq $0", "pushq $34", "jmp isr_pic_common",
+    ".global isr_pic_stub_3", "isr_pic_stub_3:", "pushq $0", "pushq $35", "jmp isr_pic_common",
+    ".global isr_pic_stub_4", "isr_pic_stub_4:", "pushq $0", "pushq $36", "jmp isr_pic_common",
+    ".global isr_pic_stub_5", "isr_pic_stub_5:", "pushq $0", "pushq $37", "jmp isr_pic_common",
+    ".global isr_pic_stub_6", "isr_pic_stub_6:", "pushq $0", "pushq $38", "jmp isr_pic_common",
+    ".global isr_pic_stub_7", "isr_pic_stub_7:", "pushq $0", "pushq $39", "jmp isr_pic_common",
+    ".global isr_pic_stub_8", "isr_pic_stub_8:", "pushq $0", "pushq $40", "jmp isr_pic_common",
+    ".global isr_pic_stub_9", "isr_pic_stub_9:", "pushq $0", "pushq $41", "jmp isr_pic_common",
+    ".global isr_pic_stub_10", "isr_pic_stub_10:", "pushq $0", "pushq $42", "jmp isr_pic_common",
+    ".global isr_pic_stub_11", "isr_pic_stub_11:", "pushq $0", "pushq $43", "jmp isr_pic_common",
+    ".global isr_pic_stub_12", "isr_pic_stub_12:", "pushq $0", "pushq $44", "jmp isr_pic_common",
+    ".global isr_pic_stub_13", "isr_pic_stub_13:", "pushq $0", "pushq $45", "jmp isr_pic_common",
+    ".global isr_pic_stub_14", "isr_pic_stub_14:", "pushq $0", "pushq $46", "jmp isr_pic_common",
+    ".global isr_pic_stub_15", "isr_pic_stub_15:", "pushq $0", "pushq $47", "jmp isr_pic_common",
+    ".global isr_pic_common",
+    "isr_pic_common:",
+    "pushq %rax", "pushq %rcx", "pushq %rdx", "pushq %rbx", "pushq %rbp",
+    "pushq %rsi", "pushq %rdi", "pushq %r8", "pushq %r9", "pushq %r10",
+    "pushq %r11", "pushq %r12", "pushq %r13", "pushq %r14", "pushq %r15",
+    "movq %rsp, %rdi",
+    "andq $-16, %rsp",
+    "call archiaos_pic_interrupt_dispatch",
+    "movq %rax, %rsp",
+    "popq %r15", "popq %r14", "popq %r13", "popq %r12", "popq %r11",
+    "popq %r10", "popq %r9", "popq %r8", "popq %rdi", "popq %rsi",
+    "popq %rbp", "popq %rbx", "popq %rdx", "popq %rcx", "popq %rax",
+    "addq $16, %rsp",
+    "iretq",
+    ".section .rodata", ".balign 8", ".global isr_pic_stub_table", "isr_pic_stub_table:",
+    ".quad isr_pic_stub_0, isr_pic_stub_1, isr_pic_stub_2, isr_pic_stub_3",
+    ".quad isr_pic_stub_4, isr_pic_stub_5, isr_pic_stub_6, isr_pic_stub_7",
+    ".quad isr_pic_stub_8, isr_pic_stub_9, isr_pic_stub_10, isr_pic_stub_11",
+    ".quad isr_pic_stub_12, isr_pic_stub_13, isr_pic_stub_14, isr_pic_stub_15",
+    options(att_syntax)
+);
 
 global_asm!(
     ".section .text",
