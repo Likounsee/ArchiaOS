@@ -480,7 +480,24 @@ fn runtime_validate_boundary() -> Result<(), SchedulerError> {
     if !runtime_stack_guards_intact() {
         return Err(SchedulerError::StackCorrupted);
     }
-    unsafe { (&*core::ptr::addr_of!(RUNTIME_SCHEDULER)).check_invariants() }
+
+    unsafe {
+        let scheduler = &*core::ptr::addr_of!(RUNTIME_SCHEDULER);
+        scheduler.check_invariants()?;
+
+        // Every allocated runtime task must have a valid saved context before
+        // it can be blocked, woken, or dispatched. Catch lifecycle/context
+        // mismatches here rather than letting assembly restore an empty RSP.
+        let contexts = core::ptr::addr_of!(RUNTIME_CONTEXTS).cast::<crate::context::CpuContext>();
+        for index in 0..RUNTIME_TASKS {
+            if scheduler.state(TaskId(index))? != TaskState::Empty
+                && !(&*contexts.add(index)).is_initialized()
+            {
+                return Err(SchedulerError::InvariantViolation);
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Yield from the currently running runtime task and resume when it is selected
