@@ -276,6 +276,51 @@ impl LocalApic {
         Ok(())
     }
 
+    /// Arm a one-shot local APIC timer for a bounded interrupt-path self-test.
+    ///
+    /// The caller must have registered a returning handler for `vector` and
+    /// must keep the test bounded, then call `mask_timer` on every exit path.
+    /// This is deliberately separate from normal timer setup: it does not
+    /// calibrate a scheduler tick or configure periodic operation.
+    ///
+    /// # Safety
+    /// The mapping must be valid and xAPIC mode active. The IDT gate and handler
+    /// must already be installed; the caller must safely manage the CPU IF flag.
+    pub unsafe fn start_timer_one_shot(
+        &self,
+        vector: u8,
+        divisor: u16,
+        initial_count: u32,
+    ) -> Result<(), ApicError> {
+        if initial_count == 0 {
+            return Err(ApicError::InvalidDivide);
+        }
+        // Validate before touching registers, and keep the timer masked while
+        // programming the divisor and initial count. Unmask only as final write.
+        let lvt = masked_timer_lvt(vector)?;
+        let divide = timer_divide_encoding(divisor)?;
+        unsafe {
+            self.write_register(APIC_LVT_TIMER_REGISTER, lvt);
+            self.write_register(APIC_DIVIDE_CONFIGURATION_REGISTER, divide);
+            self.write_register(APIC_INITIAL_COUNT_REGISTER, initial_count);
+            self.write_register(APIC_LVT_TIMER_REGISTER, u32::from(vector));
+        }
+        Ok(())
+    }
+
+    /// Stop the local APIC timer and clear its pending countdown.
+    ///
+    /// # Safety
+    /// The mapping must be valid and xAPIC mode active.
+    pub unsafe fn mask_timer(&self, vector: u8) -> Result<(), ApicError> {
+        let lvt = masked_timer_lvt(vector)?;
+        unsafe {
+            self.write_register(APIC_LVT_TIMER_REGISTER, lvt);
+            self.write_register(APIC_INITIAL_COUNT_REGISTER, 0);
+        }
+        Ok(())
+    }
+
     /// Read the current timer count for diagnostics/calibration.
     ///
     /// # Safety
