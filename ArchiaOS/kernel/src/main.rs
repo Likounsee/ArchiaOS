@@ -326,6 +326,11 @@ pub extern "C" fn rust_kernel_main(
         halt_forever();
     }
     let _ = writeln!(serial, "ArchiaOS: ring-0 software interrupt save/IRETQ self-test passed");
+    if !interrupts::spurious_return_path_self_test() {
+        let _ = writeln!(serial, "ArchiaOS: APIC spurious-vector return-path self-test FAILED");
+        halt_forever();
+    }
+    let _ = writeln!(serial, "ArchiaOS: APIC spurious-vector return path passed (no EOI)");
     // Remap the legacy PIC away from CPU exception vectors, but keep every
     // hardware IRQ masked until dedicated IRQ gates and dispatch are ready.
     unsafe { pic::initialize_masked() };
