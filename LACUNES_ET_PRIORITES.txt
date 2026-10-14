@@ -53,8 +53,11 @@ PRIORITÉ 1 — MÉMOIRE VIRTUELLE ET ALLOCATION
    et du noyau.
 
 4. Définir une stratégie d'allocation mémoire complète.
-   Cela inclut notamment le tas du noyau, les allocations/libérations, les
-   erreurs d'allocation et les règles de sécurité en contexte noyau.
+   Avancée : kernel/src/heap.rs fournit un allocateur global à liste libre,
+   étend le tas en mappant des frames PMM à la demande, fusionne les blocs libérés
+   et teste l'alignement, l'accès, la croissance et la réutilisation. Limite
+   explicitement connue : verrou mono-CPU non sûr en contexte IRQ/SMP ; le tas
+   ne doit pas être utilisé concurremment avant la synchronisation du noyau.
 
 5. Tester les cas limites : mémoire indisponible, régions réservées, limites
    d'adresses, alignement, libérations invalides et fragmentation.

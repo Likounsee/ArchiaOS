@@ -4,6 +4,7 @@
 mod memory_ranges;
 mod memory;
 mod vmm;
+mod heap;
 mod cpu;
 mod cpu_features;
 mod simd;
@@ -464,6 +465,18 @@ pub extern "C" fn rust_kernel_main(
         halt_forever();
     }
     let _ = writeln!(serial, "ArchiaOS: VMM mapping self-test passed");
+
+    if let Err(error) = heap::initialize(&mut serial) {
+        paint_status_line(info, 3, FB_FAIL);
+        let _ = writeln!(serial, "ArchiaOS: kernel heap initialization failed: {:?}", error);
+        halt_forever();
+    }
+    if let Err(error) = heap::self_test(&mut serial) {
+        paint_status_line(info, 3, FB_FAIL);
+        let _ = writeln!(serial, "ArchiaOS: kernel heap self-test failed: {:?}", error);
+        halt_forever();
+    }
+    let _ = writeln!(serial, "ArchiaOS: kernel heap self-test passed");
 
     match context::self_test() {
         Ok(()) => {

@@ -20,6 +20,10 @@ Le workflow de démarrage local doit aussi exiger le marqueur série `ArchiaOS: 
 
 `kernel/src/vmm.rs` ajoute `map_physical_page` et `unmap_physical_page`. Le mapping noyau à la demande utilise la base virtuelle canonique `0xffff900000000000`, crée les tables intermédiaires manquantes à partir de frames allouées sous 4 Gio et installe une feuille inscriptible/NX. Le retrait vérifie que la feuille pointe toujours vers la frame attendue et invalide le TLB local. Le test d'intégration au démarrage écrit et relit un motif via l'alias, le retire puis libère la frame ; il teste aussi une frame au-dessus de 4 Gio si la carte UEFI en fournit.
 
+## Tas noyau initial
+
+`kernel/src/heap.rs` fournit un allocateur noyau à liste libre, avec extension page par page dans la région virtuelle `0xffffa00000000000` et fusion des blocs adjacents à la libération. Il est enregistré comme allocateur global mais doit être initialisé après le PMM/VMM. L'autotest vérifie les alignements, l'extension sur plusieurs pages, l'accès mémoire, la libération et la réutilisation. Le verrou est volontairement limité au démarrage mono-CPU : cet allocateur ne doit pas être utilisé depuis une IRQ ni concurremment depuis plusieurs processeurs tant que la synchronisation du noyau n'est pas implémentée.
+
 ## Limites importantes
 
 Le PMM suit et alloue des frames jusqu'à 512 Gio ; les bitmaps et tables de pages restent accessibles sous 4 Gio. Le VMM est encore un mécanisme de bootstrap : pas d'espaces d'adressage par processus, pas de récupération des tables intermédiaires, pas de shootdown TLB SMP, et le PMM/VMM ne sont pas synchronisés pour SMP. Le nombre d'octets de mémoire conventionnelle indiqué dans les statistiques est le total géré après exclusion des pages basses et du framebuffer, et non la totalité de la RAM installée. Il n'existe pas encore de tas général ni de gestionnaire complet de mémoire virtuelle. La stabilité des réservations et du démarrage doit encore être confirmée par une campagne matérielle répétable.
