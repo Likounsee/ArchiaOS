@@ -21,6 +21,11 @@ fn three_runtime_tasks_block_wake_yield_and_exit_on_distinct_stacks() {
 }
 
 #[test]
+fn runtime_blocks_to_idle_then_resumes_after_wakeup() {
+    assert_eq!(scheduler::runtime_idle_wakeup_self_test(), Ok(()));
+}
+
+#[test]
 fn public_dispatch_starts_and_refuses_to_replace_running_task() {
     let mut scheduler = Scheduler::new();
     let first = scheduler.create_task().expect("first task slot");
