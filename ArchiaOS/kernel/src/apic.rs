@@ -744,4 +744,63 @@ mod tests {
         assert_eq!(page.0[(APIC_INITIAL_COUNT_REGISTER / 4) as usize], 0);
         assert_eq!(page.0[(APIC_SPURIOUS_VECTOR_REGISTER / 4) as usize], 0x1ff);
     }
+
+    #[test]
+    fn local_apic_dispatch_calls_handler_then_eois_exactly_once() {
+        let mut page = MockApicPage([0; 1024]);
+        let eoi = (APIC_EOI_REGISTER / 4) as usize;
+        page.0[eoi] = 0xfeed_beef;
+        let apic = unsafe {
+            LocalApic::from_mapped_base(page.0.as_mut_ptr()).expect("aligned mock page")
+        };
+        let mut called = false;
+        let handled = unsafe {
+            apic.dispatch_vector(0x40, |vector| {
+                assert_eq!(vector, 0x40);
+                assert_eq!(page.0[eoi], 0xfeed_beef, "handler runs before EOI");
+                called = true;
+                true
+            })
+        }.expect("valid hardware vector");
+        assert!(called);
+        assert!(handled);
+        assert_eq!(page.0[eoi], 0, "exactly one EOI write is performed");
+    }
+
+    #[test]
+    fn local_apic_dispatch_never_eois_spurious_or_invalid_vectors() {
+        let mut page = MockApicPage([0; 1024]);
+        let eoi = (APIC_EOI_REGISTER / 4) as usize;
+        page.0[eoi] = 0xfeed_beef;
+        let apic = unsafe {
+            LocalApic::from_mapped_base(page.0.as_mut_ptr()).expect("aligned mock page")
+        };
+        let mut called = false;
+        assert_eq!(
+            unsafe { apic.dispatch_vector(APIC_SPURIOUS_VECTOR, |_| { called = true; true }) },
+            Ok(false)
+        );
+        assert!(!called);
+        assert_eq!(page.0[eoi], 0xfeed_beef);
+
+        assert_eq!(
+            unsafe { apic.dispatch_vector(0x20, |_| { called = true; true }) },
+            Err(ApicError::InvalidVector)
+        );
+        assert!(!called);
+        assert_eq!(page.0[eoi], 0xfeed_beef);
+    }
+
+    #[test]
+    fn local_apic_dispatch_acknowledges_unclaimed_real_vectors() {
+        let mut page = MockApicPage([0; 1024]);
+        let eoi = (APIC_EOI_REGISTER / 4) as usize;
+        page.0[eoi] = 0xfeed_beef;
+        let apic = unsafe {
+            LocalApic::from_mapped_base(page.0.as_mut_ptr()).expect("aligned mock page")
+        };
+        assert_eq!(unsafe { apic.dispatch_vector(0x40, |_| false) }, Ok(false));
+        assert_eq!(page.0[eoi], 0, "unclaimed real IRQ must not remain in service");
+    }
+
 }
