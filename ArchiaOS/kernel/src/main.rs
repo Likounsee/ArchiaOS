@@ -427,6 +427,51 @@ unsafe fn initialize_ioapics_masked(
         }
         initialized += 1;
     }
+    // Prepare all legacy ISA IRQ routes using MADT overrides, but keep each
+    // redirection masked. This makes polarity/trigger and GSI selection explicit
+    // before any device handler is allowed to receive an interrupt.
+    let bsp_apic_id = (unsafe { core::arch::x86_64::__cpuid(1) }.ebx >> 24) & 0xff;
+    let mut configured = 0usize;
+    for irq in 0u8..16 {
+        let mut gsi = u32::from(irq);
+        let mut polarity = 0u16; // ISA default: active-high.
+        let mut trigger = 0u16;  // ISA default: edge-triggered.
+        for override_record in topology.overrides.iter()
+            .take(topology.override_count).flatten()
+        {
+            if override_record.bus == 0 && override_record.source_irq == irq {
+                gsi = override_record.global_irq;
+                polarity = override_record.polarity_flags;
+                trigger = override_record.trigger_flags;
+                break;
+            }
+        }
+
+        let mut routed = false;
+        for (index, record) in topology.io_apics.iter()
+            .take(topology.io_apic_count).flatten().enumerate()
+        {
+            let ioapic = unsafe { (*storage)[index].assume_init_ref() };
+            let count = unsafe { ioapic.redirection_count() };
+            let end = record.global_irq_base.checked_add(count)
+                .ok_or("IOAPIC GSI range overflows while resolving ISA IRQ")?;
+            if gsi < record.global_irq_base || gsi >= end { continue; }
+            let vector = 0x50u8.checked_add(irq)
+                .ok_or("ISA IRQ vector calculation overflowed")?;
+            unsafe {
+                ioapic.configure_masked(gsi, vector, polarity, trigger, bsp_apic_id)
+            }.map_err(|_| "failed to configure a masked ISA IRQ route")?;
+            routed = true;
+            configured += 1;
+            break;
+        }
+        if !routed {
+            return Err("no IOAPIC covers an ISA IRQ's resolved GSI");
+        }
+    }
+    // Routes use vectors 0x50..=0x5f and are still masked; handlers and a
+    // deliberate unmask policy are required before these can be delivered.
+    let _ = configured;
     Ok(initialized)
 }
 
@@ -671,7 +716,7 @@ pub extern "C" fn rust_kernel_main(
                         topology.io_apic_count, topology.override_count, topology.has_legacy_pic);
                     match unsafe { initialize_ioapics_masked(&topology) } {
                         Ok(count) => {
-                            let _ = writeln!(serial, "ArchiaOS: {} IOAPIC controller(s) mapped; all redirection entries forced masked", count);
+                            let _ = writeln!(serial, "ArchiaOS: {} IOAPIC controller(s) mapped; all redirection entries masked and ISA routes staged", count);
                         }
                         Err(reason) => {
                             let _ = writeln!(serial, "ArchiaOS: IOAPIC initialization deferred: {}", reason);
