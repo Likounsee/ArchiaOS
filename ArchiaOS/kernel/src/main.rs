@@ -137,6 +137,7 @@ use core::arch::{asm, global_asm};
 use core::fmt::{self, Write};
 use core::panic::PanicInfo;
 use core::ptr;
+use core::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
 
 // Keep the first load segment non-empty with an ArchiaOS-owned marker.
 #[used]
@@ -392,6 +393,68 @@ unsafe fn discover_madt(rsdp_physical: u64) -> Result<acpi_madt::MadtInfo, &'sta
 static mut IOAPIC_STORAGE: [core::mem::MaybeUninit<apic::IoApic>; acpi_madt::MAX_MADT_IOAPICS] =
     [const { core::mem::MaybeUninit::uninit() }; acpi_madt::MAX_MADT_IOAPICS];
 
+/// Published only after IRQ0's IOAPIC entry has been configured and left masked.
+static IOAPIC_IRQ0_CONTROLLER: AtomicUsize = AtomicUsize::new(0);
+static IOAPIC_IRQ0_GSI: AtomicU32 = AtomicU32::new(u32::MAX);
+static PIT_IRQ0_COUNT: AtomicU64 = AtomicU64::new(0);
+
+extern "C" fn pit_irq0_test_handler(vector: u8) -> bool {
+    if vector != 0x50 {
+        return false;
+    }
+    PIT_IRQ0_COUNT.fetch_add(1, Ordering::Release);
+    true
+}
+
+/// Exercise a real external interrupt through PIT -> IOAPIC -> IDT -> EOI.
+/// Returns None if firmware did not provide a usable IOAPIC IRQ0 route.
+unsafe fn ioapic_irq0_interrupt_self_test() -> Option<bool> {
+    let raw = IOAPIC_IRQ0_CONTROLLER.load(Ordering::Acquire);
+    let gsi = IOAPIC_IRQ0_GSI.load(Ordering::Acquire);
+    if raw == 0 || gsi == u32::MAX {
+        return None;
+    }
+    if interrupts::register_apic_vector_handler(0x50, pit_irq0_test_handler).is_err() {
+        return Some(false);
+    }
+    // SAFETY: the pointer is published from static IOAPIC_STORAGE and stays live
+    // for the kernel lifetime; the route was staged masked before publication.
+    let ioapic = unsafe { &*(raw as *const apic::IoApic) };
+    PIT_IRQ0_COUNT.store(0, Ordering::Release);
+
+    // Program PIT channel 0 to mode 2 at approximately 100 Hz.
+    // The route is still masked while the source is programmed.
+    unsafe {
+        port_out(0x43, 0x34);
+        port_out(0x40, 11932u16 as u8);
+        port_out(0x40, (11932u16 >> 8) as u8);
+    }
+    if unsafe { ioapic.unmask(gsi) }.is_err() {
+        return Some(false);
+    }
+
+    // Preserve IF exactly: early boot normally has interrupts disabled, but this
+    // helper remains correct if called later with IF already set.
+    let flags: u64;
+    unsafe { asm!("pushfq", "pop {}", "cli", out(reg) flags, options(nomem)); }
+    unsafe { asm!("sti", options(nomem, nostack)); }
+    for _ in 0..10_000_000 {
+        if PIT_IRQ0_COUNT.load(Ordering::Acquire) != 0 {
+            break;
+        }
+        core::hint::spin_loop();
+    }
+    unsafe { asm!("cli", options(nomem, nostack)); }
+    let delivered = PIT_IRQ0_COUNT.load(Ordering::Acquire) != 0;
+
+    // Always re-mask the external source before returning, even on timeout.
+    let masked = unsafe { ioapic.mask(gsi) }.is_ok();
+    if flags & (1 << 9) != 0 {
+        unsafe { asm!("sti", options(nomem, nostack)); }
+    }
+    Some(delivered && masked)
+}
+
 /// Map each MADT-declared IOAPIC and mask every hardware input before any route
 /// can be enabled. The bootloader already audited the MADT's physical metadata.
 unsafe fn initialize_ioapics_masked(
@@ -523,6 +586,10 @@ unsafe fn initialize_ioapics_masked(
             let ioapic = unsafe { (*storage)[index].assume_init_ref() };
             unsafe { ioapic.configure_masked(gsi, vector, polarity, trigger, bsp_apic_id) }
                 .map_err(|_| "failed to configure a masked ISA IRQ route")?;
+            if vector == 0x50 {
+                IOAPIC_IRQ0_GSI.store(gsi, Ordering::Release);
+                IOAPIC_IRQ0_CONTROLLER.store(ioapic as *const apic::IoApic as usize, Ordering::Release);
+            }
             routed = true;
             configured += 1;
             break;
@@ -810,6 +877,18 @@ pub extern "C" fn rust_kernel_main(
                 halt_forever();
             }
             let _ = writeln!(serial, "ArchiaOS: APIC one-shot timer IRQ, handler, EOI and IRETQ self-test passed; timer re-masked");
+            match unsafe { ioapic_irq0_interrupt_self_test() } {
+                Some(true) => {
+                    let _ = writeln!(serial, "ArchiaOS: external PIT IRQ0 traversed IOAPIC, IDT, handler and EOI; route re-masked");
+                }
+                Some(false) => {
+                    let _ = writeln!(serial, "ArchiaOS: external PIT IRQ0 IOAPIC self-test FAILED");
+                    halt_forever();
+                }
+                None => {
+                    let _ = writeln!(serial, "ArchiaOS: external PIT IRQ0 self-test skipped; no validated IOAPIC route");
+                }
+            }
         }
         Err(reason) => {
             let _ = writeln!(serial, "ArchiaOS: local xAPIC initialization skipped: {}", reason);
