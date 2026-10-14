@@ -6,6 +6,7 @@
 //! per-task exception delivery are designed.
 
 use core::arch::{asm, global_asm};
+use core::sync::atomic::{AtomicU64, Ordering};
 
 const IDT_ENTRY_COUNT: usize = 256;
 const INTERRUPT_GATE: u8 = 0x8e;
@@ -74,6 +75,34 @@ static mut IDT: [IdtEntry; IDT_ENTRY_COUNT] = [IdtEntry::MISSING; IDT_ENTRY_COUN
 
 extern "C" {
     static isr_stub_table: [u64; IDT_ENTRY_COUNT];
+    fn isr_test_return_stub();
+}
+
+const TEST_RETURN_VECTOR: usize = 0xF1;
+static TEST_INTERRUPT_COUNT: AtomicU64 = AtomicU64::new(0);
+
+#[repr(C)]
+struct TestInterruptFrame {
+    r15: u64, r14: u64, r13: u64, r12: u64, r11: u64, r10: u64, r9: u64, r8: u64,
+    rdi: u64, rsi: u64, rbp: u64, rbx: u64, rdx: u64, rcx: u64, rax: u64,
+    vector: u64, error_code: u64, rip: u64, cs: u64, rflags: u64,
+}
+
+#[no_mangle]
+extern "C" fn archiaos_test_interrupt_dispatch(frame: *mut TestInterruptFrame) -> *mut TestInterruptFrame {
+    TEST_INTERRUPT_COUNT.fetch_add(1, Ordering::SeqCst);
+    frame
+}
+
+/// Exercise a real ring-0 software interrupt and its IRETQ return path.
+/// This does not enable maskable interrupts or unmask any hardware IRQ.
+pub fn return_path_self_test() -> bool {
+    let before = TEST_INTERRUPT_COUNT.load(Ordering::SeqCst);
+    // SAFETY: vector 0xF1 is installed as a DPL-0 returning software interrupt
+    // gate; its dispatcher only increments an atomic counter and returns the
+    // exact saved frame pointer. IF remains disabled throughout this test.
+    unsafe { asm!("int 0xF1", options(nostack)) };
+    TEST_INTERRUPT_COUNT.load(Ordering::SeqCst) == before.wrapping_add(1)
 }
 
 /// Install all 256 IDT entries with vector-specific stubs.
@@ -92,6 +121,11 @@ pub unsafe fn install() {
         // SAFETY: bounded index; IDT is initialized before it is loaded.
         unsafe { core::ptr::addr_of_mut!(IDT).cast::<IdtEntry>().add(vector).write(entry) };
     }
+
+    // Override one otherwise-fatal vector with a dedicated, fully saved
+    // software-interrupt return stub. Hardware IRQ vectors remain fatal/masked.
+    let test_gate = IdtEntry::interrupt_gate(isr_test_return_stub as usize as u64, selector);
+    unsafe { core::ptr::addr_of_mut!(IDT).cast::<IdtEntry>().add(TEST_RETURN_VECTOR).write(test_gate) };
 
     let descriptor = Idtr {
         limit: (core::mem::size_of::<IdtEntry>() * IDT_ENTRY_COUNT - 1) as u16,
@@ -1375,6 +1409,46 @@ global_asm!(
     "pushq $255",
     "jmp isr_common",
     ".global isr_common",
+    ".global isr_test_return_stub",
+    "isr_test_return_stub:",
+    "pushq $0",
+    "pushq $241",
+    "pushq %rax",
+    "pushq %rcx",
+    "pushq %rdx",
+    "pushq %rbx",
+    "pushq %rbp",
+    "pushq %rsi",
+    "pushq %rdi",
+    "pushq %r8",
+    "pushq %r9",
+    "pushq %r10",
+    "pushq %r11",
+    "pushq %r12",
+    "pushq %r13",
+    "pushq %r14",
+    "pushq %r15",
+    "movq %rsp, %rdi",
+    "andq $-16, %rsp",
+    "call archiaos_test_interrupt_dispatch",
+    "movq %rax, %rsp",
+    "popq %r15",
+    "popq %r14",
+    "popq %r13",
+    "popq %r12",
+    "popq %r11",
+    "popq %r10",
+    "popq %r9",
+    "popq %r8",
+    "popq %rdi",
+    "popq %rsi",
+    "popq %rbp",
+    "popq %rbx",
+    "popq %rdx",
+    "popq %rcx",
+    "popq %rax",
+    "addq $16, %rsp",
+    "iretq",
     "isr_common:",
     "movq (%rsp), %rdi",
     "movq 8(%rsp), %rsi",
