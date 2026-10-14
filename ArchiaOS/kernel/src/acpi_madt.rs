@@ -453,9 +453,10 @@ mod tests {
 
     #[test]
     fn parses_lapic_address_override_and_legacy_pic_flag() {
-        let entries = [5, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        // A type-5 override must carry a real, page-aligned physical address.
+        let entries = [5, 12, 0, 0, 0, 0, 0xe0, 0xfe, 0, 0, 0, 0];
         let parsed = parse_madt(&base(1, &entries)).unwrap();
-        assert_eq!(parsed.local_apic_address, 0);
+        assert_eq!(parsed.local_apic_address, 0xfee0_0000);
         assert!(parsed.has_legacy_pic);
     }
 
