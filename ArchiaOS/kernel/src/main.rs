@@ -321,6 +321,11 @@ pub extern "C" fn rust_kernel_main(
     // SAFETY: early boot is single-threaded and maskable interrupts remain disabled.
     unsafe { interrupts::install() };
     let _ = writeln!(serial, "ArchiaOS: x86-64 IDT installed (256 vectors; legacy PIC IRQs remain masked)");
+    if !interrupts::return_path_self_test() {
+        let _ = writeln!(serial, "ArchiaOS: ring-0 interrupt return-path self-test FAILED");
+        halt_forever();
+    }
+    let _ = writeln!(serial, "ArchiaOS: ring-0 software interrupt save/IRETQ self-test passed");
     // Remap the legacy PIC away from CPU exception vectors, but keep every
     // hardware IRQ masked until dedicated IRQ gates and dispatch are ready.
     unsafe { pic::initialize_masked() };
