@@ -1,0 +1,175 @@
+ARCHIAOS — LACUNES, ÉCARTS FONCTIONNELS ET PRIORITÉS
+======================================================
+
+Objet
+-----
+Ce document recense les principaux écarts identifiés dans la version actuelle
+d'ArchiaOS par rapport aux fonctionnalités présentes ou amorcées dans
+ArchiaOS-old. Il sert de feuille de route technique, pas de déclaration que
+chaque élément est totalement absent : certains composants existent déjà sous
+forme partielle, expérimentale ou insuffisamment validée.
+
+Principe de la refonte
+----------------------
+ArchiaOS est une refonte en Rust. L'objectif n'est pas de recopier l'ancien
+noyau ligne par ligne, mais de conserver les fondations propres de la nouvelle
+architecture et de porter sélectivement les algorithmes, invariants et tests
+utiles de l'ancienne version.
+
+OpenFS : EXCLU VOLONTAIREMENT DU PORTAGE IMMÉDIAT
+-------------------------------------------------
+OpenFS est en cours de réécriture en Rust. Son absence de l'intégration actuelle
+d'ArchiaOS n'est donc pas considérée comme une lacune accidentelle.
+
+En attendant que l'implémentation Rust et ses interfaces soient prêtes :
+- ne pas réintégrer automatiquement l'ancienne implémentation C/C++ ;
+- préparer une interface de système de fichiers et un adaptateur VFS propres ;
+- définir les contrats nécessaires entre VFS, stockage et OpenFS ;
+- réintégrer OpenFS lorsque ses API, ses invariants et ses tests seront assez
+  stables.
+
+PRIORITÉ 1 — MÉMOIRE VIRTUELLE ET ALLOCATION
+-------------------------------------------
+1. Étendre et clarifier les limites du gestionnaire de mémoire physique (PMM).
+   La version actuelle est limitée à une plage physique de 4 Gio, alors que
+   l'ancienne version prévoit une plage bien plus large. Éviter que cette limite
+   reste implicite ou bloque les machines disposant de davantage de RAM.
+
+2. Développer/compléter le gestionnaire de mémoire virtuelle (VMM).
+   À vérifier et à porter selon les besoins : création et modification des
+   mappings, permissions des pages, invalidation TLB, mappings du noyau et
+   gestion correcte des régions réservées.
+
+3. Ajouter une gestion robuste des espaces d'adressage par processus.
+   Les mappings d'un processus doivent être isolés de ceux des autres processus
+   et du noyau.
+
+4. Définir une stratégie d'allocation mémoire complète.
+   Cela inclut notamment le tas du noyau, les allocations/libérations, les
+   erreurs d'allocation et les règles de sécurité en contexte noyau.
+
+5. Tester les cas limites : mémoire indisponible, régions réservées, limites
+   d'adresses, alignement, libérations invalides et fragmentation.
+
+PRIORITÉ 2 — INTERRUPTIONS, ORDONNANCEMENT ET SMP
+-------------------------------------------------
+6. Consolider la gestion des exceptions et interruptions.
+   Vérifier les vecteurs, les sauvegardes/restaurations de contexte, les
+   interruptions masquables/non masquables, les erreurs CPU et les chemins de
+   retour. Documenter clairement ce qui est déjà implémenté et testé.
+
+7. Faire évoluer l'ordonnanceur coopératif actuel vers un ordonnanceur préemptif
+   si cela reste l'objectif du système.
+   Il faudra notamment définir les priorités, les états des tâches, les réveils,
+   les attentes, les blocages et le comportement en cas de tâche défaillante.
+
+8. Ajouter une source de temps fiable pour la préemption et les temporisations.
+   Définir le rôle du timer, la fréquence des interruptions et la gestion des
+   échéances sans supposer que les tests actuels prouvent déjà la préemption.
+
+9. Porter et valider le support SMP.
+   Cela comprend le démarrage des processeurs secondaires, la synchronisation,
+   les verrous adaptés au noyau, les structures par CPU, les interruptions
+   interprocesseurs et les interactions entre ordonnanceur et mémoire.
+
+10. Ajouter des tests concurrents et multi-CPU qui recherchent les blocages,
+    courses, corruptions d'état et problèmes de synchronisation.
+
+PRIORITÉ 3 — PROCESSUS, MODE UTILISATEUR ET IPC
+----------------------------------------------
+11. Mettre en place une frontière fiable entre noyau et espace utilisateur
+    (ring 3 sur x86_64), avec les privilèges et mappings appropriés.
+
+12. Compléter le chargement des exécutables ELF : validation stricte des
+    en-têtes et segments, permissions, relocalisations si nécessaires, pile
+    utilisateur, arguments et gestion des erreurs.
+
+13. Définir le cycle de vie des processus et threads : création, exécution,
+    attente, terminaison, récupération des ressources et propagation du statut
+    de sortie.
+
+14. Définir une interface d'appels système versionnée et vérifiée. Les entrées
+    utilisateur ne doivent jamais être considérées comme fiables.
+
+15. Compléter l'IPC avec des contrats explicites : droits, durée de vie,
+    synchronisation, erreurs et nettoyage lorsque l'un des participants meurt.
+
+16. Ajouter des tests d'isolation et de robustesse : pointeurs utilisateur
+    invalides, segments mal formés, accès interdits et appels système incorrects.
+
+PRIORITÉ 4 — PILOTES ET SERVICES DU NOYAU
+----------------------------------------
+17. Établir des interfaces de pilotes stables et adaptées à Rust, avec une
+    séparation claire entre détection du matériel, initialisation, opérations
+    d'E/S, interruptions et arrêt/réinitialisation.
+
+18. Vérifier les chemins réels d'accès au stockage. La présence d'une détection
+    de périphérique ne prouve pas à elle seule qu'un pilote sait effectuer des
+    lectures et écritures complètes. En particulier, ne pas considérer NVMe
+    comme opérationnel sans chemin d'E/S effectivement implémenté et testé.
+
+19. Préparer l'intégration future du stockage et du VFS sans coupler le noyau à
+    l'ancienne implémentation OpenFS.
+
+20. Continuer à valider l'initialisation ACPI/PCI et les interruptions matérielles
+    sur des configurations QEMU représentatives, puis sur du matériel réel quand
+    cela devient possible.
+
+PRIORITÉ 5 — TESTS, CI ET DOCUMENTATION
+--------------------------------------
+21. Élargir progressivement les tests d'intégration QEMU au-delà du démarrage,
+    du chargeur, du BootInfo et des tests unitaires actuels.
+
+22. Ajouter des scénarios reproductibles pour :
+    - démarrage et arrêt du noyau ;
+    - allocation et mapping mémoire ;
+    - exceptions et interruptions ;
+    - changements de contexte et préemption ;
+    - SMP et synchronisation ;
+    - processus, ELF, appels système et IPC ;
+    - détection et E/S de stockage ;
+    - échecs d'initialisation et manque de ressources.
+
+23. Pour chaque fonctionnalité, distinguer explicitement :
+    - NON IMPLÉMENTÉE ;
+    - EN COURS / PARTIELLE ;
+    - IMPLÉMENTÉE MAIS NON VALIDÉE EN INTÉGRATION ;
+    - TESTÉE EN QEMU ;
+    - VALIDÉE SUR MATÉRIEL.
+
+24. Mettre à jour les documents d'architecture qui ne reflètent plus le code
+    courant. En particulier, vérifier les mentions historiques de Limine ainsi
+    que les affirmations indiquant l'absence d'IDT ou d'ordonnanceur lorsqu'elles
+    ne correspondent plus à l'implémentation actuelle.
+
+25. Documenter les limites réelles et les invariants : limites d'adresses,
+    capacités maximales, hypothèses de démarrage, états de fonctionnalité et
+    tests qui justifient chaque affirmation.
+
+ORDRE DE TRAVAIL CONSEILLÉ
+--------------------------
+Phase A — Mémoire : PMM, VMM, mappings, tas et espaces d'adressage.
+Phase B — CPU : exceptions, changements de contexte, timer et préemption.
+Phase C — SMP : démarrage des CPU secondaires, synchronisation et tests.
+Phase D — Exécution : processus, ELF, ring 3, appels système et IPC.
+Phase E — Pilotes/VFS : stabiliser les interfaces en parallèle du portage Rust
+         d'OpenFS, puis intégrer le système de fichiers lorsque prêt.
+Phase F — Qualité : tests d'intégration, CI, documentation et validation
+         matérielle progressive.
+
+RÈGLES DE SUIVI
+---------------
+- Ne pas marquer une fonctionnalité comme terminée uniquement parce que des
+  structures ou des fichiers existent : il faut vérifier le chemin d'exécution.
+- Réutiliser les tests et invariants utiles d'ArchiaOS-old, mais les adapter à
+  l'architecture Rust au lieu de recopier aveuglément le code.
+- Chaque nouvelle fonctionnalité doit inclure ses tests et sa documentation.
+- Ne pas compter OpenFS comme un oubli : son portage Rust est volontairement
+  séparé et son intégration sera réalisée au moment opportun.
+- Mettre à jour ce document à mesure que le code et les tests évoluent.
+
+Note : cette liste est issue d'une comparaison de l'architecture, de fichiers
+source, de tests, de configurations et de workflows CI. Elle constitue un
+inventaire priorisé des principaux écarts identifiés, pas une certification
+formelle de chaque chemin d'exécution ni une preuve que tous les points sont
+totalement absents.
