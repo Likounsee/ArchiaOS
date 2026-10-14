@@ -142,6 +142,23 @@ def main() -> None:
     if "addr_of_mut!(IDT)" not in install_body or ".add(vector).write(entry)" not in install_body:
         fail("IDT install must write each constructed gate into the bounded IDT")
 
+    for struct_name in ("IdtEntry", "Idtr"):
+        struct_match = re.search(
+            rf'#\\[repr\\(C, packed\\)\\]\\s*struct {struct_name} \\{{(?P<body>.*?)\\n\\}}',
+            source,
+            re.DOTALL,
+        )
+        if not struct_match:
+            fail(f"{struct_name} must use repr(C, packed) for the hardware-defined layout")
+
+    for assertion in (
+        "const _: [(); 16] = [(); core::mem::size_of::<IdtEntry>()];",
+        "const _: [(); 10] = [(); core::mem::size_of::<Idtr>()];",
+        "const _: [(); IDT_ENTRY_COUNT] = [(); 256];",
+    ):
+        if assertion not in source:
+            fail(f"missing compile-time IDT layout/count assertion: {assertion}")
+
     gate_match = re.search(r'const INTERRUPT_GATE: u8 = (0x[0-9a-fA-F]+);', source)
     if not gate_match or int(gate_match.group(1), 16) != 0x8e:
         fail("IDT entries must use the present, ring-0 interrupt-gate attribute 0x8e")
