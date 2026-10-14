@@ -71,6 +71,74 @@ impl<T: ?Sized> SpinLock<T> {
     }
 }
 
+/// IRQ-safe wrapper for contexts that share data with local interrupt handlers.
+///
+/// `lock_irqsave` is kernel-only: it executes CLI and therefore must never
+/// be called by a host process at ring 3. Interrupts are restored only if IF was
+/// set on entry. The wrapped lock still provides inter-CPU exclusion.
+pub struct IrqSpinLock<T> {
+    inner: SpinLock<T>,
+}
+
+impl<T> IrqSpinLock<T> {
+    pub const fn new(value: T) -> Self {
+        Self { inner: SpinLock::new(value) }
+    }
+
+    /// Disable local maskable interrupts before acquiring the inter-CPU lock.
+    ///
+    /// # Safety
+    /// This method executes privileged CLI and is only valid in kernel mode on
+    /// x86-64 with a valid interrupt state. Do not use from NMI contexts.
+    pub unsafe fn lock_irqsave(&self) -> IrqSpinLockGuard<'_, T> {
+        let flags: u64;
+        // SAFETY: guaranteed by this method's kernel-mode contract.
+        unsafe {
+            core::arch::asm!(
+                "pushfq",
+                "pop {flags}",
+                "cli",
+                flags = out(reg) flags,
+                options(nomem)
+            );
+        }
+        let guard = self.inner.lock();
+        IrqSpinLockGuard { guard: Some(guard), restore_if: flags & (1 << 9) != 0 }
+    }
+}
+
+/// Guard that releases the lock before restoring the caller's interrupt state.
+pub struct IrqSpinLockGuard<'a, T> {
+    guard: Option<SpinLockGuard<'a, T>>,
+    restore_if: bool,
+}
+
+impl<T> Deref for IrqSpinLockGuard<'_, T> {
+    type Target = T;
+    fn deref(&self) -> &T { self.guard.as_ref().expect("live IRQ lock guard").deref() }
+}
+
+impl<T> DerefMut for IrqSpinLockGuard<'_, T> {
+    fn deref_mut(&mut self) -> &mut T { self.guard.as_mut().expect("live IRQ lock guard").deref_mut() }
+}
+
+impl<T> Drop for IrqSpinLockGuard<'_, T> {
+    fn drop(&mut self) {
+        // Release inter-CPU ownership while local interrupts are still masked.
+        drop(self.guard.take());
+        if self.restore_if {
+            // SAFETY: the lock was acquired only in kernel mode and IF was set
+            // on entry; restore it only after releasing the protected data.
+            unsafe { core::arch::asm!("sti", options(nomem, nostack)) };
+        }
+    }
+}
+
+/// Pure predicate used to test saved RFLAGS handling without privileged ops.
+pub const fn saved_if_was_enabled(rflags: u64) -> bool {
+    rflags & (1 << 9) != 0
+}
+
 /// RAII exclusive access; dropping the guard releases the lock.
 pub struct SpinLockGuard<'a, T: ?Sized> {
     lock: &'a SpinLock<T>,
@@ -101,9 +169,18 @@ impl<T: ?Sized> Drop for SpinLockGuard<'_, T> {
 
 #[cfg(test)]
 mod tests {
-    use super::SpinLock;
+    use super::{saved_if_was_enabled, SpinLock};
     use std::sync::Arc;
     use std::thread;
+
+    #[test]
+    fn irqsave_restoration_only_reenables_previously_enabled_interrupts() {
+        assert!(saved_if_was_enabled(1 << 9));
+        assert!(saved_if_was_enabled((1 << 9) | 2));
+        assert!(!saved_if_was_enabled(0));
+        assert!(!saved_if_was_enabled(2));
+        assert!(!saved_if_was_enabled(u64::MAX ^ (1 << 9)));
+    }
 
     #[test]
     fn try_lock_fails_while_guard_is_held_and_recovers_after_drop() {
