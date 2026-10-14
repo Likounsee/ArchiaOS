@@ -43,9 +43,6 @@ mod pic {
             port_out(MASTER_DATA, 0xFF);
             port_out(SLAVE_DATA, 0xFF);
 
-            let master_mask = port_in(MASTER_DATA);
-            let slave_mask = port_in(SLAVE_DATA);
-
             port_out(MASTER_COMMAND, ICW1_INITIALIZE);
             wait();
             port_out(SLAVE_COMMAND, ICW1_INITIALIZE);
@@ -64,9 +61,6 @@ mod pic {
             wait();
 
             // Keep all lines masked even if firmware left some enabled.
-            // Read prior masks only to make the destructive reset explicit;
-            // they are intentionally not restored.
-            let _ = (master_mask, slave_mask);
             port_out(MASTER_DATA, 0xFF);
             port_out(SLAVE_DATA, 0xFF);
         }
