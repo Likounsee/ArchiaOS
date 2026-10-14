@@ -142,7 +142,19 @@ def main() -> None:
     if "addr_of_mut!(IDT)" not in install_body or ".add(vector).write(entry)" not in install_body:
         fail("IDT install must write each constructed gate into the bounded IDT")
 
-    for struct_name in ("IdtEntry", "Idtr"):
+    expected_layouts = {
+        "IdtEntry": [
+            ("offset_low", "u16"),
+            ("selector", "u16"),
+            ("ist", "u8"),
+            ("attributes", "u8"),
+            ("offset_middle", "u16"),
+            ("offset_high", "u32"),
+            ("reserved", "u32"),
+        ],
+        "Idtr": [("limit", "u16"), ("base", "u64")],
+    }
+    for struct_name, expected_fields in expected_layouts.items():
         struct_match = re.search(
             rf'#\[repr\(C, packed\)\]\s*struct {struct_name} \{{(?P<body>.*?)\n\}}',
             source,
@@ -150,6 +162,16 @@ def main() -> None:
         )
         if not struct_match:
             fail(f"{struct_name} must use repr(C, packed) for the hardware-defined layout")
+        fields = re.findall(
+            r'^\s*(\w+):\s*(\w+),',
+            struct_match.group("body"),
+            re.MULTILINE,
+        )
+        if fields != expected_fields:
+            fail(
+                f"{struct_name} hardware field order/types changed: "
+                f"expected={expected_fields}, got={fields}"
+            )
 
     for assertion in (
         "const _: [(); 16] = [(); core::mem::size_of::<IdtEntry>()];",
