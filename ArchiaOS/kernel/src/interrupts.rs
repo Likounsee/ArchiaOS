@@ -121,6 +121,60 @@ pub fn return_path_self_test() -> bool {
     TEST_INTERRUPT_COUNT.load(Ordering::SeqCst) == before.wrapping_add(1)
 }
 
+/// Verify that the returning software-interrupt gate preserves every
+/// general-purpose register it promises to save. The handler must return the
+/// original interrupt frame, and IRETQ must restore the interrupted state.
+pub fn register_preservation_self_test() -> bool {
+    let (mut rax, mut rcx, mut rdx, mut rbx) = (
+        0x1122_3344_5566_7788u64,
+        0x2233_4455_6677_8899u64,
+        0x3344_5566_7788_99aau64,
+        0x4455_6677_8899_aabbu64,
+    );
+    let (mut rbp, mut rsi, mut rdi, mut r8) = (
+        0x5566_7788_99aa_bbccu64,
+        0x6677_8899_aabb_ccddu64,
+        0x7788_99aa_bbcc_ddeeu64,
+        0x8899_aabb_ccdd_eeffu64,
+    );
+    let (mut r9, mut r10, mut r11, mut r12) = (
+        0x99aa_bbcc_ddee_ff01u64,
+        0xaabb_ccdd_eeff_0123u64,
+        0xbbcc_ddee_ff01_2345u64,
+        0xccdd_eeff_0123_4567u64,
+    );
+    let (mut r13, mut r14, mut r15) = (
+        0xddee_ff01_2345_6789u64,
+        0xeeff_0123_4567_89abu64,
+        0xff01_2345_6789_abcdu64,
+    );
+    // SAFETY: vector 0xF1 is installed before this self-test and maskable
+    // interrupts are disabled by the boot-time caller. Each operand is both
+    // input and output so the compiler checks the actual register after IRETQ.
+    unsafe {
+        asm!(
+            "int 0xF1",
+            inout("rax") rax, inout("rcx") rcx, inout("rdx") rdx,
+            inout("rbx") rbx, inout("rbp") rbp, inout("rsi") rsi,
+            inout("rdi") rdi, inout("r8") r8, inout("r9") r9,
+            inout("r10") r10, inout("r11") r11, inout("r12") r12,
+            inout("r13") r13, inout("r14") r14, inout("r15") r15,
+            options(nostack),
+        );
+    }
+    (rax, rcx, rdx, rbx, rbp, rsi, rdi, r8, r9, r10, r11, r12, r13, r14, r15)
+        == (
+            0x1122_3344_5566_7788, 0x2233_4455_6677_8899,
+            0x3344_5566_7788_99aa, 0x4455_6677_8899_aabb,
+            0x5566_7788_99aa_bbcc, 0x6677_8899_aabb_ccdd,
+            0x7788_99aa_bbcc_ddee, 0x8899_aabb_ccdd_eeff,
+            0x99aa_bbcc_ddee_ff01, 0xaabb_ccdd_eeff_0123,
+            0xbbcc_ddee_ff01_2345, 0xccdd_eeff_0123_4567,
+            0xddee_ff01_2345_6789, 0xeeff_0123_4567_89ab,
+            0xff01_2345_6789_abcd,
+        )
+}
+
 /// Exercise the dedicated spurious-vector gate. A local-APIC spurious interrupt
 /// returns without EOI, so this path only records the event.
 pub fn spurious_return_path_self_test() -> bool {
