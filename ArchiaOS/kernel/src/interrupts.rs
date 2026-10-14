@@ -131,8 +131,13 @@ extern "C" fn archiaos_apic_interrupt_dispatch(frame: *mut u64) -> *mut u64 {
     // SAFETY: this entry is installed only for valid hardware vectors and runs
     // on the CPU whose local APIC was published above.
     match unsafe { apic.dispatch_vector(vector, dispatch_registered_apic_vector) } {
-        Ok(_) => frame,
-        Err(_) => fatal_unhandled_apic_irq(),
+        // A claimed vector is safe to return from after dispatch_vector has
+        // issued the single required EOI for this hardware interrupt.
+        Ok(true) => frame,
+        // dispatch_vector has already sent EOI for a real but unclaimed vector.
+        // Stop here rather than silently dropping an interrupt and continuing
+        // with potentially inconsistent device state.
+        Ok(false) | Err(_) => fatal_unhandled_apic_irq(),
     }
 }
 
