@@ -57,6 +57,27 @@ pub enum IpiKind {
     Startup,
 }
 
+/// Routing decision for a vector received through the local APIC.
+/// Spurious interrupts must return without EOI; real hardware vectors require
+/// normal dispatch followed by exactly one local-APIC EOI.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LocalApicVectorDisposition {
+    SpuriousNoEoi,
+    HardwareNeedsEoi,
+    Invalid,
+}
+
+/// Classify local-APIC vectors before dispatch or acknowledgement.
+pub fn local_apic_vector_disposition(vector: u8) -> LocalApicVectorDisposition {
+    if vector == APIC_SPURIOUS_VECTOR {
+        LocalApicVectorDisposition::SpuriousNoEoi
+    } else if validate_hardware_irq_vector(vector).is_ok() {
+        LocalApicVectorDisposition::HardwareNeedsEoi
+    } else {
+        LocalApicVectorDisposition::Invalid
+    }
+}
+
 /// Encode a physical-destination xAPIC IPI command without touching hardware.
 pub fn ipi_command(kind: IpiKind, vector: u8) -> Result<u32, ApicError> {
     match kind {
@@ -443,6 +464,22 @@ pub fn ioapic_destination_high(apic_id: u32) -> Result<u32, ApicError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_apic_vector_policy_never_eois_spurious_or_reserved_vectors() {
+        assert_eq!(local_apic_vector_disposition(APIC_SPURIOUS_VECTOR), LocalApicVectorDisposition::SpuriousNoEoi);
+        assert_eq!(local_apic_vector_disposition(APIC_TEST_RETURN_VECTOR), LocalApicVectorDisposition::Invalid);
+        for vector in 0u8..=u8::MAX {
+            let expected = if vector == APIC_SPURIOUS_VECTOR {
+                LocalApicVectorDisposition::SpuriousNoEoi
+            } else if vector < 32 || (0x20..=0x2f).contains(&vector) || vector == APIC_TEST_RETURN_VECTOR {
+                LocalApicVectorDisposition::Invalid
+            } else {
+                LocalApicVectorDisposition::HardwareNeedsEoi
+            };
+            assert_eq!(local_apic_vector_disposition(vector), expected, "vector {vector:#04x}");
+        }
+    }
 
     #[test]
     fn mapped_controller_constructors_reject_null_and_unaligned_addresses() {
