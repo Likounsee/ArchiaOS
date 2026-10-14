@@ -348,9 +348,9 @@ pub extern "C" fn rust_kernel_main(
         }
     }
 
-    // Validate the state model and then perform a real two-task round-robin
+    // Validate the state model and then perform a real three-task round-robin
     // context-switch test. Each task has a separate static stack and CPU context;
-    // both must yield, resume after suspension, and exit back to the boot stack.
+    // block/wake, yielding, and exit must return safely to the boot stack.
     match scheduler::Scheduler::self_test() {
         Ok(()) => {
             let _ = writeln!(serial, "ArchiaOS: cooperative scheduler state self-test passed");
@@ -364,11 +364,11 @@ pub extern "C" fn rust_kernel_main(
     match scheduler::runtime_self_test() {
         Ok(()) => {
             paint_status_line(info, 5, FB_SCHEDULER_OK);
-            let _ = writeln!(serial, "ArchiaOS: real task block/wake context-switch self-test passed");
+            let _ = writeln!(serial, "ArchiaOS: three-task block/wake/yield/exit context-switch self-test passed");
         }
         Err(error) => {
             paint_status_line(info, 5, FB_FAIL);
-            let _ = writeln!(serial, "ArchiaOS: two-task scheduler runtime self-test failed: {:?}", error);
+            let _ = writeln!(serial, "ArchiaOS: three-task scheduler runtime self-test failed: {:?}", error);
             halt_forever();
         }
     }
