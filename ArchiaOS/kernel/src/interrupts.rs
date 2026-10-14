@@ -13,7 +13,8 @@ const INTERRUPT_GATE: u8 = 0x8e;
 
 pub use crate::interrupt_vectors::{
     classify_interrupt_vector, cpu_exception_has_error_code, eoi_plan_for_handled_irq,
-    legacy_pic_irq_for_vector, legacy_pic_vector_for_irq, split_x86_64_idt_handler_address,
+    legacy_pic_irq_for_vector, legacy_pic_vector_for_irq, pic_irq_for_frame_vector,
+    split_x86_64_idt_handler_address,
     InterruptVectorClass,
     LEGACY_PIC_IRQ_COUNT,
     LEGACY_PIC_VECTOR_BASE,
@@ -117,11 +118,7 @@ extern "C" fn archiaos_pic_interrupt_dispatch(frame: *mut u64) -> *mut u64 {
     // Stack layout from isr_pic_common: 15 saved GPRs, vector, synthetic error.
     // SAFETY: assembly supplies a pointer to the complete normalized interrupt frame.
     let vector = unsafe { *frame.add(15) };
-    let Some(irq) = vector
-        .checked_sub(u64::from(LEGACY_PIC_VECTOR_BASE))
-        .filter(|irq| *irq < u64::from(LEGACY_PIC_IRQ_COUNT))
-        .map(|irq| irq as usize)
-    else {
+    let Some(irq) = pic_irq_for_frame_vector(vector) else {
         fatal_unhandled_pic_irq();
     };
     let raw = PIC_IRQ_HANDLERS[irq].load(Ordering::Acquire);
