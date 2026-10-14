@@ -8,6 +8,7 @@
 use core::arch::{asm, global_asm};
 
 const EXCEPTION_COUNT: usize = 32;
+const IDT_ENTRY_COUNT: usize = 256;
 const INTERRUPT_GATE: u8 = 0x8e;
 
 #[repr(C, packed)]
@@ -52,18 +53,28 @@ struct Idtr {
     base: u64,
 }
 
-static mut IDT: [IdtEntry; EXCEPTION_COUNT] = [IdtEntry::MISSING; EXCEPTION_COUNT];
+static mut IDT: [IdtEntry; IDT_ENTRY_COUNT] = [IdtEntry::MISSING; IDT_ENTRY_COUNT];
 
 extern "C" {
     static isr_stub_table: [u64; EXCEPTION_COUNT];
+    fn isr_default_stub();
 }
 
-/// Install exception vectors 0-31, preserving the active code-segment selector.
+/// Install all 256 IDT entries, preserving the active code-segment selector.
+/// CPU exceptions get dedicated stubs; every other vector gets a fatal default
+/// stub so an unexpected vector cannot immediately fault through an absent gate.
 /// Interrupts remain disabled; this does not enable timer IRQs or preemption.
 pub unsafe fn install() {
     let selector: u16;
     // SAFETY: reading CS is an architectural, side-effect-free operation.
     unsafe { asm!("mov {0:x}, cs", out(reg) selector, options(nomem, nostack, preserves_flags)) };
+
+    let default_handler = isr_default_stub as usize as u64;
+    for vector in 0..IDT_ENTRY_COUNT {
+        let entry = IdtEntry::interrupt_gate(default_handler, selector);
+        // SAFETY: bounded index; IDT is initialized before it is loaded.
+        unsafe { core::ptr::addr_of_mut!(IDT).cast::<IdtEntry>().add(vector).write(entry) };
+    }
 
     for vector in 0..EXCEPTION_COUNT {
         // SAFETY: this runs during single-threaded early boot before IDT use.
@@ -74,11 +85,11 @@ pub unsafe fn install() {
     }
 
     let descriptor = Idtr {
-        limit: (core::mem::size_of::<IdtEntry>() * EXCEPTION_COUNT - 1) as u16,
+        limit: (core::mem::size_of::<IdtEntry>() * IDT_ENTRY_COUNT - 1) as u16,
         base: core::ptr::addr_of!(IDT) as u64,
     };
     // SAFETY: IDT and descriptor remain valid for the kernel lifetime; the descriptor
-    // covers exactly the 32 initialized exception gates.
+    // covers all 256 initialized gates (exceptions plus fatal defaults).
     unsafe { asm!("lidt [{0}]", in(reg) &descriptor, options(readonly, nostack, preserves_flags)) };
 }
 
@@ -233,6 +244,11 @@ global_asm!(
     "isr_stub_31:",
     "pushq $0",
     "pushq $31",
+    "jmp isr_common",
+    ".global isr_default_stub",
+    "isr_default_stub:",
+    "pushq $0",
+    "pushq $255",
     "jmp isr_common",
     ".global isr_common",
     "isr_common:",
