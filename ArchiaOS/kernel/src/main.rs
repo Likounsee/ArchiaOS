@@ -515,7 +515,9 @@ pub extern "C" fn archiaos_exception_dispatch(vector: u64, error_code: u64, inst
     // Until a returning IRQ dispatcher exists, classify legacy PIC vectors
     // accurately and stop without sending an EOI from this fatal path.
     if vector <= u8::MAX as u64 {
-        if let Some(irq) = interrupts::legacy_pic_irq_for_vector(vector as u8) {
+        if let interrupts::InterruptVectorClass::LegacyPicIrq(irq) =
+            interrupts::classify_interrupt_vector(vector as u8)
+        {
             let _ = writeln!(
                 serial,
                 "ArchiaOS: FATAL unhandled legacy PIC IRQ vector={} irq={} (no EOI; interrupts remain disabled)",
