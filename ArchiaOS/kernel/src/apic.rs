@@ -75,7 +75,11 @@ pub fn ipi_command(kind: IpiKind, vector: u8) -> Result<u32, ApicError> {
 /// Reject vectors reserved for CPU exceptions, the software return-path test,
 /// or the local-APIC spurious gate before programming a hardware IRQ source.
 pub fn validate_hardware_irq_vector(vector: u8) -> Result<(), ApicError> {
-    if vector < 32 || vector == APIC_TEST_RETURN_VECTOR || vector == APIC_SPURIOUS_VECTOR {
+    if vector < 32
+        || (0x20..=0x2f).contains(&vector)
+        || vector == APIC_TEST_RETURN_VECTOR
+        || vector == APIC_SPURIOUS_VECTOR
+    {
         Err(ApicError::InvalidVector)
     } else {
         Ok(())
@@ -489,6 +493,8 @@ mod tests {
         assert_eq!(masked_timer_lvt(31), Err(ApicError::InvalidVector));
         assert_eq!(masked_timer_lvt(APIC_TEST_RETURN_VECTOR), Err(ApicError::InvalidVector));
         assert_eq!(masked_timer_lvt(APIC_SPURIOUS_VECTOR), Err(ApicError::InvalidVector));
+        assert_eq!(masked_timer_lvt(0x20), Err(ApicError::InvalidVector));
+        assert_eq!(masked_timer_lvt(0x2f), Err(ApicError::InvalidVector));
         assert_eq!(timer_divide_encoding(1), Ok(0b1011));
         assert_eq!(timer_divide_encoding(16), Ok(0b0011));
         assert_eq!(timer_divide_encoding(3), Err(ApicError::InvalidDivide));
@@ -511,6 +517,8 @@ mod tests {
         assert_eq!(masked_ioapic_low(0x40, 3, 3), Ok(0x1a040));
         assert_eq!(masked_ioapic_low(APIC_TEST_RETURN_VECTOR, 0, 0), Err(ApicError::InvalidVector));
         assert_eq!(masked_ioapic_low(APIC_SPURIOUS_VECTOR, 0, 0), Err(ApicError::InvalidVector));
+        assert_eq!(masked_ioapic_low(0x20, 0, 0), Err(ApicError::InvalidVector));
+        assert_eq!(masked_ioapic_low(0x2f, 0, 0), Err(ApicError::InvalidVector));
         assert_eq!(masked_ioapic_low(0x40, 2, 0), Err(ApicError::InvalidPolarity));
         assert_eq!(masked_ioapic_low(0x40, 0, 2), Err(ApicError::InvalidTriggerMode));
         assert_eq!(ioapic_destination_high(2), Ok(0x0200_0000));
