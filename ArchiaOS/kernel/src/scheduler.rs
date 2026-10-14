@@ -213,6 +213,13 @@ impl Scheduler {
     }
 
     pub fn check_invariants(&self) -> Result<(), SchedulerError> {
+        // The round-robin cursor participates in modulo-based slot selection.
+        // Treat an out-of-range cursor as corruption instead of silently
+        // normalizing it and potentially masking a scheduler state bug.
+        if self.cursor >= MAX_TASKS {
+            return Err(SchedulerError::InvariantViolation);
+        }
+
         let mut running = 0usize;
         for (index, task) in self.tasks.iter().enumerate() {
             if task.state == TaskState::Running {
@@ -745,6 +752,18 @@ mod tests {
         assert_eq!(scheduler.dispatch_or_idle(), Ok(DispatchDecision::Run(task)));
         assert_eq!(scheduler.state(task), Ok(TaskState::Running));
         assert_eq!(scheduler.check_invariants(), Ok(()));
+    }
+
+    #[test]
+    fn invariant_check_rejects_corrupted_round_robin_cursor() {
+        let mut scheduler = Scheduler::new();
+        scheduler.create_task().unwrap();
+        scheduler.check_invariants().unwrap();
+
+        // Unit tests can inspect private scheduler internals; production code
+        // cannot write the cursor directly.
+        scheduler.cursor = MAX_TASKS;
+        assert_eq!(scheduler.check_invariants(), Err(SchedulerError::InvariantViolation));
     }
 
     #[test]
