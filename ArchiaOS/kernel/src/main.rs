@@ -70,13 +70,14 @@ mod pic {
         Ok(())
     }
 
-    /// Acknowledge a delivered legacy PIC IRQ (slave first, then master).
+    /// Acknowledge a legacy PIC IRQ only after its handler claims it.
     ///
-    /// Call only from a future, validated IRQ dispatcher. It does not enable
-    /// interrupts and does not alter masks.
-    pub unsafe fn end_of_interrupt(irq: u8) -> Result<(), ()> {
+    /// Slave EOI is emitted before master EOI for IRQ8..=IRQ15. Unhandled or
+    /// invalid IRQs are rejected without touching either command port. This
+    /// does not enable interrupts and does not alter masks.
+    pub unsafe fn end_of_interrupt(irq: u8, handler_handled: bool) -> Result<(), ()> {
         let Some((send_slave_eoi, send_master_eoi)) =
-            super::interrupt_vectors::eoi_plan_for_irq(irq)
+            super::interrupt_vectors::eoi_plan_for_handled_irq(irq, handler_handled)
         else {
             return Err(());
         };
