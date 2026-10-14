@@ -383,6 +383,50 @@ unsafe fn discover_madt(rsdp_physical: u64) -> Result<acpi_madt::MadtInfo, &'sta
     Err("ACPI root table contains no MADT")
 }
 
+
+/// Persistent bootstrap IOAPIC objects. All discovered redirection entries are
+/// forced masked; this stage deliberately does not install or enable IRQ routes.
+static mut IOAPIC_STORAGE: [core::mem::MaybeUninit<apic::IoApic>; acpi_madt::MAX_MADT_IOAPICS] =
+    [const { core::mem::MaybeUninit::uninit() }; acpi_madt::MAX_MADT_IOAPICS];
+
+/// Map each MADT-declared IOAPIC and mask every hardware input before any route
+/// can be enabled. The bootloader already audited the MADT's physical metadata.
+unsafe fn initialize_ioapics_masked(
+    topology: &acpi_madt::MadtInfo,
+) -> Result<usize, &'static str> {
+    acpi_madt::validate_xapic_topology(topology)
+        .map_err(|_| "MADT topology failed validation before IOAPIC setup")?;
+    let storage = core::ptr::addr_of_mut!(IOAPIC_STORAGE);
+    let mut initialized = 0usize;
+
+    for record in topology.io_apics.iter().take(topology.io_apic_count).flatten() {
+        let physical = u64::from(record.physical_address);
+        // SAFETY: MADT records are checksum-validated and the topology validator
+        // requires a non-zero, page-aligned device address.
+        let mapped = unsafe { vmm::map_mmio_page(physical) }
+            .map_err(|_| "could not map an IOAPIC MMIO page")?;
+        // SAFETY: mapping is persistent, aligned and uncached; GSI base is from MADT.
+        let controller = unsafe {
+            apic::IoApic::from_mapped_base(mapped.cast::<u32>(), record.global_irq_base)
+        }.map_err(|_| "IOAPIC rejected its mapped register window")?;
+
+        // Keep the controller object alive for future route programming.
+        unsafe { (*storage)[initialized].write(controller); }
+        let ioapic = unsafe { (*storage)[initialized].assume_init_ref() };
+        // The hardware-reported count is authoritative. Mask every input while
+        // preserving its existing vector, destination and electrical mode.
+        let count = unsafe { ioapic.redirection_count() };
+        for pin in 0..count {
+            let gsi = record.global_irq_base.checked_add(pin)
+                .ok_or("IOAPIC GSI range overflows")?;
+            unsafe { ioapic.mask(gsi) }
+                .map_err(|_| "could not mask an IOAPIC redirection entry")?;
+        }
+        initialized += 1;
+    }
+    Ok(initialized)
+}
+
 fn halt_forever() -> ! {
     loop { unsafe { asm!("cli; hlt", options(nomem, nostack)) }; }
 }
@@ -620,6 +664,14 @@ pub extern "C" fn rust_kernel_main(
                     let _ = writeln!(serial, "ArchiaOS: ACPI MADT validated: local APIC={:#x}, CPUs={}, IOAPICs={}, overrides={}, legacy PIC={}",
                         topology.local_apic_address, topology.enabled_processor_count(),
                         topology.io_apic_count, topology.override_count, topology.has_legacy_pic);
+                    match unsafe { initialize_ioapics_masked(&topology) } {
+                        Ok(count) => {
+                            let _ = writeln!(serial, "ArchiaOS: {} IOAPIC controller(s) mapped; all redirection entries forced masked", count);
+                        }
+                        Err(reason) => {
+                            let _ = writeln!(serial, "ArchiaOS: IOAPIC initialization deferred: {}", reason);
+                        }
+                    }
                 }
                 Err(error) => {
                     let _ = writeln!(serial, "ArchiaOS: ACPI MADT topology rejected: {:?}", error);
