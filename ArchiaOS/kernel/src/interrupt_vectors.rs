@@ -20,6 +20,15 @@ pub enum InterruptVectorClass {
 }
 
 /// Classify a vector without hardware access so dispatch decisions are testable.
+/// Whether an architectural exception pushes an error-code word.
+///
+/// The ISR stubs use this architectural distinction to normalize their stack:
+/// exceptions with a CPU-pushed error code push only the vector, while all
+/// other vectors push a synthetic zero before the vector.
+pub const fn cpu_exception_has_error_code(vector: u8) -> bool {
+    matches!(vector, 8 | 10..=14 | 17 | 21 | 29 | 30)
+}
+
 pub const fn classify_interrupt_vector(vector: u8) -> InterruptVectorClass {
     if vector < LEGACY_PIC_VECTOR_BASE {
         InterruptVectorClass::CpuException
@@ -130,6 +139,23 @@ mod tests {
                 32..=47 => assert_eq!(class, InterruptVectorClass::LegacyPicIrq(vector - 32)),
                 _ => assert_eq!(class, InterruptVectorClass::Other),
             }
+        }
+    }
+
+    #[test]
+    fn identifies_cpu_pushed_error_code_vectors() {
+        for vector in 0u8..32 {
+            let expected = matches!(vector, 8 | 10..=14 | 17 | 21 | 29 | 30);
+            assert_eq!(
+                cpu_exception_has_error_code(vector),
+                expected,
+                "vector {vector}"
+            );
+        }
+
+        // PIC and software/other vectors do not receive a CPU error-code word.
+        for vector in [32, 33, 48, 128, 255] {
+            assert!(!cpu_exception_has_error_code(vector), "vector {vector}");
         }
     }
 
