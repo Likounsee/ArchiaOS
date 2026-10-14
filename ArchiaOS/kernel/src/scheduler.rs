@@ -392,9 +392,9 @@ fn runtime_block_current() -> Result<(), SchedulerError> {
 
 /// Block a task and hand control to the boot-time scheduler owner at idle.
 ///
- /// This is a deterministic test harness, not a production idle loop: the saved
- /// boot context regains control so the test can inject a wakeup without enabling
- /// interrupts.
+/// This is a deterministic test harness, not a production idle loop: the saved
+/// boot context regains control so the test can inject a wakeup without enabling
+/// interrupts.
 fn runtime_block_current_to_boot() -> Result<(), SchedulerError> {
     unsafe {
         let scheduler = core::ptr::addr_of_mut!(RUNTIME_SCHEDULER);
