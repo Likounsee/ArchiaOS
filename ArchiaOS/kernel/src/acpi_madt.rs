@@ -34,6 +34,7 @@ pub enum MadtError {
     InvalidRsdpLength,
     InvalidRsdpChecksum,
     UnsupportedRsdpRevision,
+    InvalidTopologyCounts,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -89,8 +90,7 @@ impl MadtInfo {
     }
 
     pub fn enabled_processor_count(&self) -> usize {
-        self.processors[..self.processor_count]
-            .iter()
+        self.processors.iter().take(self.processor_count.min(MAX_MADT_CPUS))
             .flatten()
             .filter(|cpu| cpu.enabled || cpu.online_capable)
             .count()
@@ -203,6 +203,12 @@ pub fn parse_root_table(root: &[u8]) -> Result<AcpiRootTable, MadtError> {
 /// This is intentionally pure: passing validation does not imply MMIO is mapped
 /// or that the processor supports xAPIC mode.
 pub fn validate_xapic_topology(info: &MadtInfo) -> Result<(), MadtError> {
+    if info.processor_count > MAX_MADT_CPUS
+        || info.io_apic_count > MAX_MADT_IOAPICS
+        || info.override_count > MAX_MADT_OVERRIDES
+    {
+        return Err(MadtError::InvalidTopologyCounts);
+    }
     if info.local_apic_address == 0 || info.local_apic_address & 0xfff != 0 {
         return Err(MadtError::InvalidLocalApicAddress);
     }
@@ -461,6 +467,22 @@ mod tests {
         let xsdt = parse_root_table(&root(b"XSDT", &[0x1_0000_1234], true)).unwrap();
         assert!(xsdt.xsdt);
         assert_eq!(xsdt.addresses[0], Some(0x1_0000_1234));
+    }
+
+    #[test]
+    fn rejects_corrupted_topology_counts_without_panicking() {
+        let mut info = MadtInfo::empty(0xfee0_0000, true);
+        info.processor_count = MAX_MADT_CPUS + 1;
+        assert_eq!(info.enabled_processor_count(), 0);
+        assert_eq!(validate_xapic_topology(&info), Err(MadtError::InvalidTopologyCounts));
+
+        info.processor_count = 0;
+        info.io_apic_count = MAX_MADT_IOAPICS + 1;
+        assert_eq!(validate_xapic_topology(&info), Err(MadtError::InvalidTopologyCounts));
+
+        info.io_apic_count = 0;
+        info.override_count = MAX_MADT_OVERRIDES + 1;
+        assert_eq!(validate_xapic_topology(&info), Err(MadtError::InvalidTopologyCounts));
     }
 
     #[test]
