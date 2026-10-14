@@ -36,6 +36,7 @@ pub enum SchedulerError {
     NoRunnableTask,
     NoCurrentTask,
     TaskNotBlocked,
+    StackCorrupted,
     InvariantViolation,
 }
 
@@ -453,9 +454,26 @@ fn runtime_halt() -> ! {
     }
 }
 
+/// Validate every statically allocated runtime stack before crossing a
+/// context boundary. Canaries are diagnostic checks, not memory protection.
+fn runtime_stack_guards_intact() -> bool {
+    unsafe {
+        let stacks = core::ptr::addr_of!(RUNTIME_STACKS).cast::<crate::context::TaskStack>();
+        for index in 0..RUNTIME_TASKS {
+            if !(&*stacks.add(index)).guards_intact() {
+                return false;
+            }
+        }
+        (&*core::ptr::addr_of!(RUNTIME_IDLE_STACK)).guards_intact()
+    }
+}
+
 /// Yield from the currently running runtime task and resume when it is selected
 /// again. Call only on the single boot CPU with maskable interrupts disabled.
 fn runtime_yield() -> Result<(), SchedulerError> {
+    if !runtime_stack_guards_intact() {
+        return Err(SchedulerError::StackCorrupted);
+    }
     unsafe {
         let scheduler = core::ptr::addr_of_mut!(RUNTIME_SCHEDULER);
         let previous = (*scheduler).current.ok_or(SchedulerError::NoCurrentTask)?;
@@ -468,6 +486,9 @@ fn runtime_yield() -> Result<(), SchedulerError> {
         // contexts are static, and their stacks remain alive for this test.
         crate::context::switch(&mut *contexts.add(previous), &*contexts.add(next));
     }
+    if !runtime_stack_guards_intact() {
+        return Err(SchedulerError::StackCorrupted);
+    }
     Ok(())
 }
 
@@ -478,6 +499,9 @@ fn runtime_yield() -> Result<(), SchedulerError> {
 /// architecture-level idle context is not installed yet. Do not use this helper
 /// as a general-purpose blocking primitive until that idle context exists.
 fn runtime_block_current() -> Result<(), SchedulerError> {
+    if !runtime_stack_guards_intact() {
+        return Err(SchedulerError::StackCorrupted);
+    }
     unsafe {
         let scheduler = core::ptr::addr_of_mut!(RUNTIME_SCHEDULER);
         let previous = (*scheduler).current.ok_or(SchedulerError::NoCurrentTask)?;
@@ -486,6 +510,9 @@ fn runtime_block_current() -> Result<(), SchedulerError> {
         // SAFETY: scheduler selected a runnable task; both contexts and stacks
         // are static and interrupts are disabled for this single-CPU test.
         crate::context::switch(&mut *contexts.add(previous), &*contexts.add(next));
+    }
+    if !runtime_stack_guards_intact() {
+        return Err(SchedulerError::StackCorrupted);
     }
     Ok(())
 }
@@ -496,6 +523,9 @@ fn runtime_block_current() -> Result<(), SchedulerError> {
 /// boot context regains control so the test can inject a wakeup without enabling
 /// interrupts.
 fn runtime_block_current_to_boot() -> Result<(), SchedulerError> {
+    if !runtime_stack_guards_intact() {
+        return Err(SchedulerError::StackCorrupted);
+    }
     unsafe {
         let scheduler = core::ptr::addr_of_mut!(RUNTIME_SCHEDULER);
         let previous = (*scheduler).current.ok_or(SchedulerError::NoCurrentTask)?;
