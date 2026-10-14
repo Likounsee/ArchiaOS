@@ -68,6 +68,8 @@ for marker in \
   "ArchiaOS: UEFI BootInfo validated" \
   "ArchiaOS: framebuffer probe=written" \
   "ArchiaOS: UEFI PMM allocation/free self-test passed" \
+  "ArchiaOS: APIC one-shot timer IRQ, handler, EOI and IRETQ self-test passed; timer re-masked" \
+  "ArchiaOS: external PIT IRQ0 traversed IOAPIC, IDT, handler and EOI; route re-masked" \
   "ArchiaOS: x87/SSE context state initialized (FXSAVE64/FXRSTOR64)" \
   "ArchiaOS: SSE4.1 optimized integer self-test passed" \
   "ArchiaOS: three-task block/wake/yield/exit context-switch self-test passed" \
