@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+"""Static audit of the x86-64 ISR stubs and their lookup table.
+
+This catches drift between vector numbers, CPU-pushed error-code exceptions,
+and the table consumed by interrupts::install without requiring a privileged
+CPU or executing the kernel.
+"""
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+
+SOURCE = Path(__file__).resolve().parents[1] / "kernel/src/interrupts.rs"
+ERROR_CODE_VECTORS = {8, 10, 11, 12, 13, 14, 17, 21, 29, 30}
+
+
+def fail(message: str) -> None:
+    print(f"ISR audit failed: {message}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def main() -> None:
+    source = SOURCE.read_text(encoding="utf-8")
+    stubs = list(re.finditer(
+        r'^\s*"isr_stub_(\d+):",(?P<body>.*?)(?=^\s*"\.global isr_stub_|^\s*"\.global isr_common")',
+        source,
+        re.MULTILINE | re.DOTALL,
+    ))
+    by_vector = {int(match.group(1)): match.group("body") for match in stubs}
+    expected_vectors = set(range(256))
+    if set(by_vector) != expected_vectors:
+        missing = sorted(expected_vectors - set(by_vector))
+        extra = sorted(set(by_vector) - expected_vectors)
+        fail(f"stub coverage mismatch; missing={missing}, extra={extra}")
+
+    for vector, body in by_vector.items():
+        pushes = [int(value) for value in re.findall(r'"pushq \$(\d+)",', body)]
+        expected = [vector] if vector in ERROR_CODE_VECTORS else [0, vector]
+        if pushes != expected:
+            fail(f"vector {vector}: expected push sequence {expected}, got {pushes}")
+
+        if '"jmp isr_common",' not in body:
+            fail(f"vector {vector}: does not branch to isr_common")
+
+    table_match = re.search(
+        r'"isr_stub_table:",(?P<table>.*?)options\(att_syntax\)',
+        source,
+        re.DOTALL,
+    )
+    if not table_match:
+        fail("isr_stub_table not found")
+    table = [int(value) for value in re.findall(r'isr_stub_(\d+)', table_match.group("table"))]
+    if table != list(range(256)):
+        fail("isr_stub_table must list every stub exactly once in vector order")
+
+    print("ISR audit passed: 256 stubs, error-code normalization, common entry, and table order")
+
+
+if __name__ == "__main__":
+    main()
