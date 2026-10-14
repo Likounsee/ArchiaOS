@@ -458,29 +458,8 @@ unsafe fn initialize_ioapics_masked(
     if !bsp_is_in_madt {
         return Err("bootstrap CPU APIC ID is absent from the validated MADT");
     }
-    // Resolve the full ISA route set before touching any redirection entry.
-    // Distinct IRQs must not alias the same GSI: otherwise the later route would
-    // silently replace the earlier vector in the same IOAPIC register. Do this
-    // as a preflight so a collision cannot leave a partially programmed table.
-    let mut resolved_gsis = [u32::MAX; 16];
-    for irq in 0u8..16 {
-        if irq == 2 { continue; }
-        let mut gsi = u32::from(irq);
-        for override_record in topology.overrides.iter()
-            .take(topology.override_count).flatten()
-        {
-            if override_record.bus == 0 && override_record.source_irq == irq {
-                gsi = override_record.global_irq;
-                break;
-            }
-        }
-        for previous_irq in 0u8..irq {
-            if previous_irq != 2 && resolved_gsis[previous_irq as usize] == gsi {
-                return Err("multiple ISA IRQs resolve to the same GSI");
-            }
-        }
-        resolved_gsis[irq as usize] = gsi;
-    }
+    acpi_madt::validate_isa_gsi_uniqueness(topology)
+        .map_err(|_| "multiple ISA IRQs resolve to the same GSI")?;
 
     let mut configured = 0usize;
     for irq in 0u8..16 {
