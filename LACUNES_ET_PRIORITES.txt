@@ -66,8 +66,14 @@ PRIORITÉ 2 — INTERRUPTIONS, ORDONNANCEMENT ET SMP
    - le PIC legacy reste masqué : ne pas présenter les IRQ matérielles comme
      opérationnelles simplement parce que leurs vecteurs ont une entrée IDT ;
    - le script scripts/verify-isr-stubs.py contrôle statiquement les stubs,
-     leur table, les vecteurs avec code d'erreur, l'ABI d'entrée, les champs et
-     tailles IDT/IDTR et l'ordre d'installation ;
+     leur table, l'absence de doublons, les vecteurs avec code d'erreur, l'ABI
+     d'entrée, les champs et tailles IDT/IDTR et l'ordre d'installation ;
+   - l'audit du dispatcher doit lire kernel/src/main.rs, où la fonction est
+     réellement définie, et vérifier ses trois paramètres u64 ainsi que son
+     retour non retournant. Le script a été corrigé pour inspecter ce fichier ;
+   - les documents docs/INTERRUPTS.md et docs/ARCHITECTURE.md ont été réalignés
+     sur l'IDT existante, le PIC masqué, le chemin d'exception fatal, le chargeur
+     UEFI propre et les limites mémoire/ordonnancement connues ;
    - l'audit statique ne remplace ni son exécution effective, ni les tests QEMU,
      ni une validation sur matériel. Ces validations restent à effectuer.
 
