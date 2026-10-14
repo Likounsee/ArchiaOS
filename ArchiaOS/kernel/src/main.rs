@@ -45,19 +45,22 @@ mod pic {
             return Err(());
         }
 
+        let master_mask = unsafe { port_in(MASTER_DATA) };
+        let slave_mask = unsafe { port_in(SLAVE_DATA) };
+        let Some((next_master, next_slave)) =
+            super::interrupt_vectors::masks_after_masking_irq(master_mask, slave_mask, irq)
+        else {
+            return Err(());
+        };
+
+        // Write only masks computed by the pure, host-tested transition helper.
+        // Keeping the cascade masked while any slave IRQ remains enabled avoids
+        // disconnecting an active slave line.
         unsafe {
-            if irq < 8 {
-                let mask = port_in(MASTER_DATA) | (1u8 << irq);
-                port_out(MASTER_DATA, mask);
-            } else {
-                let slave_mask = port_in(SLAVE_DATA) | (1u8 << (irq - 8));
-                port_out(SLAVE_DATA, slave_mask);
-                // The cascade line is unnecessary when every slave IRQ is masked.
-                if slave_mask == 0xFF {
-                    let master_mask = port_in(MASTER_DATA) | (1u8 << 2);
-                    port_out(MASTER_DATA, master_mask);
-                }
+            if irq >= 8 {
+                port_out(SLAVE_DATA, next_slave);
             }
+            port_out(MASTER_DATA, next_master);
         }
         Ok(())
     }
