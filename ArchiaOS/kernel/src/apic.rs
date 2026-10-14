@@ -180,13 +180,11 @@ impl IoApic {
         trigger_flags: u16,
         destination_apic_id: u32,
     ) -> Result<(), ApicError> {
-        let pin = gsi.checked_sub(self.gsi_base).ok_or(ApicError::InvalidGlobalInterrupt)?;
         let high = ioapic_destination_high(destination_apic_id)?;
         let low = masked_ioapic_low(vector, polarity_flags, trigger_flags)?;
         let _guard = self.lock_selector();
         let version = unsafe { self.read_register_locked(1) };
         let count = ((version >> 16) & 0xff) + 1;
-        if pin >= count { return Err(ApicError::InvalidGlobalInterrupt); }
         let (low_register, high_register) =
             ioapic_redirection_registers(gsi, self.gsi_base, count)?;
         // Keep the low dword masked before changing destination or trigger data.
@@ -203,11 +201,9 @@ impl IoApic {
     /// # Safety
     /// The IOAPIC mapping must remain valid and GSI must belong to this controller.
     pub unsafe fn mask(&self, gsi: u32) -> Result<(), ApicError> {
-        let pin = gsi.checked_sub(self.gsi_base).ok_or(ApicError::InvalidGlobalInterrupt)?;
         let _guard = self.lock_selector();
         let version = unsafe { self.read_register_locked(1) };
         let count = ((version >> 16) & 0xff) + 1;
-        if pin >= count { return Err(ApicError::InvalidGlobalInterrupt); }
         let (low_register, _) =
             ioapic_redirection_registers(gsi, self.gsi_base, count)?;
         let low = unsafe { self.read_register_locked(low_register) };
