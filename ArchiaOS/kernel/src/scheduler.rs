@@ -456,8 +456,9 @@ fn runtime_exit() -> ! {
 }
 
 /// Execute a real three-task scenario on separate stacks:
-/// A blocks -> B wakes A and yields -> A exits -> C exits -> B resumes and exits
-/// -> boot. This checks wakeup, round-robin order and three saved contexts.
+/// A blocks -> B wakes A and yields -> C exits -> A resumes and exits
+/// -> B resumes and exits -> boot. This checks wakeup, round-robin order and
+/// three saved contexts.
 pub fn runtime_self_test() -> Result<(), SchedulerError> {
     unsafe {
         core::ptr::write(core::ptr::addr_of_mut!(RUNTIME_SCHEDULER), Scheduler::new());
