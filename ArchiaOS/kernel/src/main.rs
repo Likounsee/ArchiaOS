@@ -489,13 +489,9 @@ unsafe fn initialize_ioapics_masked(
         }
 
         let mut covered = false;
-        for record in topology.io_apics.iter()
-            .take(topology.io_apic_count).flatten()
+        for (index, record) in topology.io_apics.iter()
+            .take(topology.io_apic_count).flatten().enumerate()
         {
-            let index = topology.io_apics.iter()
-                .take(topology.io_apic_count).position(|candidate| {
-                    candidate.map(|candidate| candidate.id) == Some(record.id)
-                }).ok_or("validated IOAPIC record lost its index")?;
             let end = record.global_irq_base.checked_add(redirection_counts[index])
                 .ok_or("IOAPIC GSI range overflows while preflighting ISA IRQ")?;
             if gsi >= record.global_irq_base && gsi < end {
