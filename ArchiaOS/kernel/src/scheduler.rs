@@ -780,6 +780,33 @@ mod tests {
     }
 
     #[test]
+    fn round_robin_wraps_across_full_task_capacity() {
+        let mut scheduler = Scheduler::new();
+        let mut ids = [TaskId(0); MAX_TASKS];
+
+        for slot in 0..MAX_TASKS {
+            ids[slot] = scheduler.create_task().unwrap();
+        }
+        assert_eq!(scheduler.schedule(), Ok(ids[0]));
+
+        for slot in 1..MAX_TASKS {
+            assert_eq!(scheduler.yield_current(), Ok(ids[slot]));
+            assert_eq!(scheduler.current(), Some(ids[slot]));
+            scheduler.check_invariants().unwrap();
+        }
+
+        // The cursor must wrap from the final slot back to the first runnable
+        // task without skipping a slot or creating two Running tasks.
+        assert_eq!(scheduler.yield_current(), Ok(ids[0]));
+        assert_eq!(scheduler.current(), Some(ids[0]));
+        for slot in 0..MAX_TASKS {
+            let expected = if slot == 0 { TaskState::Running } else { TaskState::Runnable };
+            assert_eq!(scheduler.state(ids[slot]), Ok(expected));
+        }
+        scheduler.check_invariants().unwrap();
+    }
+
+    #[test]
     fn exited_slots_are_not_reused_implicitly() {
         let mut scheduler = Scheduler::new();
         let mut ids = [TaskId(0); MAX_TASKS];
