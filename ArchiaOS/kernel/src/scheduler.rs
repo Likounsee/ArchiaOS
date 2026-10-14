@@ -405,6 +405,10 @@ pub fn runtime_self_test() -> Result<(), SchedulerError> {
             || (&*scheduler).state(second)? != TaskState::Exited
             || (&*scheduler).state(third)? != TaskState::Exited
             || (&*scheduler).current().is_some()
+            || !(&*contexts.add(first.0)).is_initialized()
+            || !(&*contexts.add(second.0)).is_initialized()
+            || !(&*contexts.add(third.0)).is_initialized()
+            || !(&*core::ptr::addr_of!(RUNTIME_BOOT_CONTEXT)).is_initialized()
             || (&*scheduler).check_invariants().is_err()
         {
             return Err(SchedulerError::InvariantViolation);
