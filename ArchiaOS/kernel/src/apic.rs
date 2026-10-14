@@ -39,6 +39,7 @@ pub enum ApicError {
     X2ApicUnsupported,
     BaseAddressMismatch,
     InvalidVector,
+    HandlerAlreadyRegistered,
     InvalidDivide,
     InvalidPolarity,
     InvalidTriggerMode,
