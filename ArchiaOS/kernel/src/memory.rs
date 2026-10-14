@@ -191,16 +191,6 @@ pub unsafe fn initialize_from_bootinfo<W: Write>(
     let bitmap_storage_base = find_bitmap_storage(&memory_map, info.framebuffer_base, info.framebuffer_size)?;
     let bitmap_storage_first = bitmap_storage_base / PAGE_SIZE;
     let bitmap_storage_last = bitmap_storage_first + BITMAP_STORAGE_BYTES / PAGE_SIZE;
-    unsafe {
-        ptr::write_volatile(ptr::addr_of_mut!(MANAGED_BITMAP), bitmap_storage_base as *mut u64);
-        ptr::write_volatile(
-            ptr::addr_of_mut!(FREE_BITMAP),
-            (bitmap_storage_base + (BITMAP_WORDS as u64) * 8) as *mut u64,
-        );
-        ptr::write_bytes(managed_bitmap_ptr(), 0, BITMAP_WORDS);
-        ptr::write_bytes(free_bitmap_ptr(), 0, BITMAP_WORDS);
-    }
-
     let mut usable_ranges = 0u64;
     let mut usable_bytes = 0u64;
     // Preflight every descriptor before touching the global allocator state.
@@ -237,6 +227,18 @@ pub unsafe fn initialize_from_bootinfo<W: Write>(
     }
     if usable_ranges == 0 {
         return Err(MemoryError::NoFreePages);
+    }
+
+    // Do not mutate allocator state or reserved RAM until every descriptor and
+    // the available allocation total have passed preflight validation.
+    unsafe {
+        ptr::write_volatile(ptr::addr_of_mut!(MANAGED_BITMAP), bitmap_storage_base as *mut u64);
+        ptr::write_volatile(
+            ptr::addr_of_mut!(FREE_BITMAP),
+            (bitmap_storage_base + (BITMAP_WORDS as u64) * 8) as *mut u64,
+        );
+        ptr::write_bytes(managed_bitmap_ptr(), 0, BITMAP_WORDS);
+        ptr::write_bytes(free_bitmap_ptr(), 0, BITMAP_WORDS);
     }
 
     // A previous failed initialization attempt must not leak stale managed/free
