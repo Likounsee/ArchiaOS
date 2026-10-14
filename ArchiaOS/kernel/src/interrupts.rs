@@ -13,7 +13,8 @@ const INTERRUPT_GATE: u8 = 0x8e;
 
 pub use crate::interrupt_vectors::{
     classify_interrupt_vector, cpu_exception_has_error_code, eoi_plan_for_handled_irq,
-    legacy_pic_irq_for_vector, legacy_pic_vector_for_irq, InterruptVectorClass,
+    legacy_pic_irq_for_vector, legacy_pic_vector_for_irq, split_x86_64_idt_handler_address,
+    InterruptVectorClass,
     LEGACY_PIC_IRQ_COUNT,
     LEGACY_PIC_VECTOR_BASE,
 };
@@ -42,13 +43,15 @@ impl IdtEntry {
     };
 
     fn interrupt_gate(handler: u64, selector: u16) -> Self {
+        let (offset_low, offset_middle, offset_high) =
+            split_x86_64_idt_handler_address(handler);
         Self {
-            offset_low: handler as u16,
+            offset_low,
             selector,
             ist: 0,
             attributes: INTERRUPT_GATE,
-            offset_middle: (handler >> 16) as u16,
-            offset_high: (handler >> 32) as u32,
+            offset_middle,
+            offset_high,
             reserved: 0,
         }
     }
