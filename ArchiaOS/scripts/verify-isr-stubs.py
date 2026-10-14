@@ -24,6 +24,9 @@ def fail(message: str) -> None:
 def main() -> None:
     source = SOURCE.read_text(encoding="utf-8")
     vector_source = VECTOR_SOURCE.read_text(encoding="utf-8")
+    count_match = re.search(r'const IDT_ENTRY_COUNT: usize = (\\d+);', source)
+    if not count_match or int(count_match.group(1)) != 256:
+        fail("IDT_ENTRY_COUNT must remain exactly 256")
     metadata_match = re.search(
         r'pub const fn cpu_exception_has_error_code\(vector: u8\) -> bool \{\s*matches!\(vector, ([^)]*)\)',
         vector_source,
@@ -153,6 +156,9 @@ def main() -> None:
     gate_body = gate_match.group("body")
     for field in (
         "split_x86_64_idt_handler_address(handler)",
+        "offset_low,",
+        "offset_middle,",
+        "offset_high,",
         "selector,",
         "ist: 0,",
         "attributes: INTERRUPT_GATE,",
