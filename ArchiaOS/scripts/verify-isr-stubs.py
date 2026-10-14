@@ -125,7 +125,42 @@ def main() -> None:
     if 'asm!("lidt [{0}]"' not in install_body:
         fail("IDT install must load the completed descriptor with LIDT")
 
-    print("ISR audit passed: 256 stubs, error-code normalization, common-entry ABI safeguards, IDT installation, and fatal dispatcher contract")
+    gate_match = re.search(r'const INTERRUPT_GATE: u8 = (0x[0-9a-fA-F]+);', source)
+    if not gate_match or int(gate_match.group(1), 16) != 0x8e:
+        fail("IDT entries must use the present, ring-0 interrupt-gate attribute 0x8e")
+
+    gate_match = re.search(
+        r'fn interrupt_gate\(handler: u64, selector: u16\) -> Self \{(?P<body>.*?)\n    \}',
+        source,
+        re.DOTALL,
+    )
+    if not gate_match:
+        fail("IDT interrupt-gate constructor not found")
+    gate_body = gate_match.group("body")
+    for field in (
+        "split_x86_64_idt_handler_address(handler)",
+        "selector,",
+        "ist: 0,",
+        "attributes: INTERRUPT_GATE,",
+        "reserved: 0,",
+    ):
+        if field not in gate_body:
+            fail(f"IDT gate constructor is missing required field/invariant: {field}")
+
+    descriptor_match = re.search(
+        r'let descriptor = Idtr \{(?P<body>.*?)\n    \};',
+        install_body,
+        re.DOTALL,
+    )
+    if not descriptor_match:
+        fail("IDTR descriptor construction not found")
+    descriptor_body = descriptor_match.group("body")
+    if "core::mem::size_of::<IdtEntry>() * IDT_ENTRY_COUNT - 1" not in descriptor_body:
+        fail("IDTR limit must cover all 256 IDT entries")
+    if "core::ptr::addr_of!(IDT) as u64" not in descriptor_body:
+        fail("IDTR base must point to the initialized IDT")
+
+    print("ISR audit passed: 256 stubs, error-code normalization, common-entry ABI safeguards, IDT gate layout, IDTR coverage, installation, and fatal dispatcher contract")
 
 
 if __name__ == "__main__":
