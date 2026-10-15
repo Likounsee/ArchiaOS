@@ -286,6 +286,17 @@ mod tests {
     }
 
     #[test]
+    fn event_sequence_wraparound_still_changes_the_observed_generation() {
+        let event = EventSequence::new();
+        event.generation.store(u64::MAX, Ordering::Relaxed);
+        let observed = event.observe();
+        assert_eq!(observed, u64::MAX);
+        assert_eq!(event.notify(), 0);
+        assert!(event.has_changed(observed));
+        assert_eq!(event.wait_for_change(observed), 0);
+    }
+
+    #[test]
     fn irqsave_restoration_only_reenables_previously_enabled_interrupts() {
         assert!(saved_if_was_enabled(1 << 9));
         assert!(saved_if_was_enabled((1 << 9) | 2));
