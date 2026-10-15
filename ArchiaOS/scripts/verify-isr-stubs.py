@@ -241,7 +241,7 @@ def main() -> None:
     # The controlled #BP gate is intentionally separate from the fatal vector-3
     # stub. Audit its normalized frame, complete GPR save/restore, and IRETQ path.
     breakpoint_stub = re.search(
-        r'"\\.global isr_breakpoint_test_stub",\\s*"isr_breakpoint_test_stub:",(?P<body>.*?)(?=^\\s*"\\.global isr_apic_stub_48")',
+        r'"\.global isr_breakpoint_test_stub",\s*"isr_breakpoint_test_stub:",(?P<body>.*?)(?=^\s*"\.global isr_apic_stub_48")',
         source,
         re.MULTILINE | re.DOTALL,
     )
