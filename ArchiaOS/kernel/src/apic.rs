@@ -783,6 +783,16 @@ mod tests {
         let apic = unsafe {
             LocalApic::from_mapped_base(page.0.as_mut_ptr()).expect("aligned mock page")
         };
+        let lvt = (APIC_LVT_TIMER_REGISTER / 4) as usize;
+        let divide = (APIC_DIVIDE_CONFIGURATION_REGISTER / 4) as usize;
+        let initial = (APIC_INITIAL_COUNT_REGISTER / 4) as usize;
+
+        // Sentinel values prove rejected requests preserve every timer register,
+        // rather than merely leaving already-zero registers untouched.
+        page.0[lvt] = 0xdead_beef;
+        page.0[divide] = 0xcafe_babe;
+        page.0[initial] = 0x1234_5678;
+        let before = [page.0[lvt], page.0[divide], page.0[initial]];
 
         // SAFETY: only ordinary memory is touched by this mock-register test.
         assert_eq!(
@@ -801,8 +811,7 @@ mod tests {
             unsafe { apic.start_timer_periodic(0x41, 3, 1000) },
             Err(ApicError::InvalidDivide)
         );
-        assert_eq!(page.0[(APIC_LVT_TIMER_REGISTER / 4) as usize], 0);
-        assert_eq!(page.0[(APIC_INITIAL_COUNT_REGISTER / 4) as usize], 0);
+        assert_eq!([page.0[lvt], page.0[divide], page.0[initial]], before);
 
         // SAFETY: this only writes the in-memory mock APIC page, not hardware.
         unsafe { apic.start_timer_periodic(0x41, 16, 1000).unwrap() };
