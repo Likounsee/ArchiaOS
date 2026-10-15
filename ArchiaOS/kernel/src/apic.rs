@@ -513,6 +513,12 @@ pub fn masked_timer_lvt(vector: u8) -> Result<u32, ApicError> {
     Ok(u32::from(vector) | APIC_LVT_MASKED)
 }
 
+/// Build an unmasked periodic local-APIC timer LVT value.
+pub fn periodic_timer_lvt(vector: u8) -> Result<u32, ApicError> {
+    validate_hardware_irq_vector(vector)?;
+    Ok(u32::from(vector) | APIC_LVT_PERIODIC)
+}
+
 /// APIC timer divide register encodings from Intel SDM, in accepted divisor order.
 pub fn timer_divide_encoding(divisor: u16) -> Result<u32, ApicError> {
     match divisor {
@@ -689,6 +695,14 @@ mod tests {
         assert_eq!(timer_divide_encoding(1), Ok(0b1011));
         assert_eq!(timer_divide_encoding(16), Ok(0b0011));
         assert_eq!(timer_divide_encoding(3), Err(ApicError::InvalidDivide));
+    }
+
+    #[test]
+    fn periodic_timer_lvt_is_validated_and_selects_periodic_mode() {
+        assert_eq!(periodic_timer_lvt(0x41), Ok(0x41 | APIC_LVT_PERIODIC));
+        for vector in [0, 31, 0x20, 0x2f, APIC_TEST_RETURN_VECTOR, APIC_SPURIOUS_VECTOR] {
+            assert_eq!(periodic_timer_lvt(vector), Err(ApicError::InvalidVector));
+        }
     }
 
     #[test]
