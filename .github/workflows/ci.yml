@@ -38,6 +38,8 @@ jobs:
           "$RUNNER_TEMP/archiaos-simd-tests"
           rustc --edition=2021 --test kernel/src/memory_ranges.rs -o "$RUNNER_TEMP/archiaos-memory-range-tests"
           "$RUNNER_TEMP/archiaos-memory-range-tests"
+          rustc --edition=2021 --test kernel/src/boot_status.rs -o "$RUNNER_TEMP/archiaos-boot-status-tests"
+          "$RUNNER_TEMP/archiaos-boot-status-tests"
       - name: Test defensive ACPI MADT parser on host
         run: |
           set -euo pipefail
