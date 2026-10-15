@@ -98,12 +98,15 @@ impl CpuTopology {
             .find(|entry| entry.apic_id == discovered.apic_id) else {
             return Err(TopologyError::UnknownApicId);
         };
-        existing.package_id = discovered.package_id;
-        existing.core_id = discovered.core_id;
-        existing.cache_domain_id = discovered.cache_domain_id;
-        existing.numa_node = discovered.numa_node;
-        existing.class = discovered.class;
-        existing.capacity = discovered.capacity;
+        if discovered.capacity == Some(0) {
+            return Err(TopologyError::InvalidCapacity);
+        }
+        if discovered.package_id.is_some() { existing.package_id = discovered.package_id; }
+        if discovered.core_id.is_some() { existing.core_id = discovered.core_id; }
+        if discovered.cache_domain_id.is_some() { existing.cache_domain_id = discovered.cache_domain_id; }
+        if discovered.numa_node.is_some() { existing.numa_node = discovered.numa_node; }
+        if discovered.class != CpuClass::Unknown { existing.class = discovered.class; }
+        if discovered.capacity.is_some() { existing.capacity = discovered.capacity; }
         Ok(())
     }
 
@@ -275,7 +278,11 @@ mod tests {
     #[test]
     fn cpuid_merge_requires_madt_identity_and_updates_only_matching_cpu() {
         let mut topology = CpuTopology::new();
-        topology.insert(entry(0x1234)).unwrap();
+        let mut original = entry(0x1234);
+        original.numa_node = Some(3);
+        original.class = CpuClass::Efficiency;
+        original.capacity = Some(110);
+        topology.insert(original).unwrap();
         let mut discovered = entry(0x1234);
         discovered.package_id = Some(2);
         discovered.core_id = Some(6);
@@ -285,9 +292,14 @@ mod tests {
         let merged = topology.get_by_apic_id(0x1234).unwrap();
         assert_eq!(merged.package_id, Some(2));
         assert_eq!(merged.core_id, Some(6));
+        assert_eq!(merged.numa_node, Some(3));
         assert_eq!(merged.class, CpuClass::Performance);
+        assert_eq!(merged.capacity, Some(220));
         assert_eq!(topology.len(), 1);
         assert_eq!(topology.merge_cpuid_entry(entry(0x9999)), Err(TopologyError::UnknownApicId));
+        let mut invalid = entry(0x1234);
+        invalid.capacity = Some(0);
+        assert_eq!(topology.merge_cpuid_entry(invalid), Err(TopologyError::InvalidCapacity));
         assert_eq!(topology.len(), 1);
     }
 
