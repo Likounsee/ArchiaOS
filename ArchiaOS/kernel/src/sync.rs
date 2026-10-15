@@ -298,6 +298,33 @@ mod tests {
     }
 
     #[test]
+    fn event_sequence_notification_is_observable_by_all_waiters() {
+        use std::sync::Barrier;
+
+        const WAITERS: usize = 4;
+        let event = Arc::new(EventSequence::new());
+        let rendezvous = Arc::new(Barrier::new(WAITERS + 1));
+        let workers: Vec<_> = (0..WAITERS).map(|_| {
+            let event = Arc::clone(&event);
+            let rendezvous = Arc::clone(&rendezvous);
+            thread::spawn(move || {
+                let observed = event.observe();
+                rendezvous.wait();
+                event.wait_for_change(observed)
+            })
+        }).collect();
+
+        // Every worker has captured the old generation before notification.
+        rendezvous.wait();
+        let notified_generation = event.notify();
+
+        for worker in workers {
+            assert_eq!(worker.join().expect("waiter thread panicked"), notified_generation);
+        }
+        assert_eq!(event.observe(), notified_generation);
+    }
+
+    #[test]
     fn irqsave_restoration_only_reenables_previously_enabled_interrupts() {
         assert!(saved_if_was_enabled(1 << 9));
         assert!(saved_if_was_enabled((1 << 9) | 2));
