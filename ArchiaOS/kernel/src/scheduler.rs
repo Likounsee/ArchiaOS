@@ -1,10 +1,11 @@
-use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
-
 //! Allocation-free cooperative scheduler and x86-64 context integration (P2).
 //!
 //! The state model remains independently testable. A bounded boot-time runtime
 //! test also binds task IDs to dedicated static stacks/CPU contexts and performs
 //! real round-robin context switches. Timer preemption and SMP are out of scope.
+
+use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+
 
 pub const MAX_TASKS: usize = 8;
 
@@ -15,6 +16,7 @@ static SCHEDULER_TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
 static SCHEDULER_RESCHEDULE_PENDING: AtomicBool = AtomicBool::new(false);
 static SCHEDULER_TIMER_VECTOR: AtomicUsize = AtomicUsize::new(0);
 
+#[cfg(target_os = "none")]
 /// Register the scheduler's APIC timer callback before unmasking/arming the timer.
 /// The caller still owns timer calibration and periodic timer configuration.
 pub fn register_scheduler_timer_vector(vector: u8) -> Result<(), crate::apic::ApicError> {
