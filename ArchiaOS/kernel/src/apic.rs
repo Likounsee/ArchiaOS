@@ -712,6 +712,11 @@ mod tests {
                 "timer vector {vector:#04x}"
             );
             assert_eq!(
+                periodic_timer_lvt(vector).is_ok(),
+                !reserved,
+                "periodic timer vector {vector:#04x}"
+            );
+            assert_eq!(
                 masked_ioapic_low(vector, 0, 0).is_ok(),
                 !reserved,
                 "IOAPIC vector {vector:#04x}"
