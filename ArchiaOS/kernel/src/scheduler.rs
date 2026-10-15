@@ -1127,7 +1127,7 @@ mod tests {
             let counts = scheduler.task_counts();
             assert_eq!(counts.empty + counts.runnable + counts.running + counts.blocked + counts.exited, MAX_TASKS);
             assert!(counts.running <= 1);
-            assert_eq!(counts.running, usize::from(scheduler.current().is_some()));
+            assert_eq!(counts.running, if scheduler.current().is_some() { 1 } else { 0 });
         }
     }
 
