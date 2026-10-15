@@ -40,8 +40,8 @@ pub enum MadtError {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Processor {
-    pub acpi_uid: u8,
-    pub apic_id: u8,
+    pub acpi_uid: u32,
+    pub apic_id: u32,
     pub enabled: bool,
     pub online_capable: bool,
 }
@@ -354,8 +354,22 @@ pub fn parse_madt(bytes: &[u8]) -> Result<MadtInfo, MadtError> {
                 if info.processor_count == MAX_MADT_CPUS { return Err(MadtError::TooManyProcessors); }
                 let flags = u32_at(e, 4).ok_or(MadtError::InvalidEntryLength)?;
                 info.processors[info.processor_count] = Some(Processor {
-                    acpi_uid: e[2], apic_id: e[3],
+                    acpi_uid: u32::from(e[2]), apic_id: u32::from(e[3]),
                     enabled: flags & 1 != 0, online_capable: flags & 2 != 0,
+                });
+                info.processor_count += 1;
+            }
+            // ACPI MADT type 9: Processor Local x2APIC structure. Unlike
+            // type 0, both the APIC ID and ACPI UID are 32-bit values.
+            9 => {
+                if entry_len < 16 { return Err(MadtError::InvalidEntryLength); }
+                if info.processor_count == MAX_MADT_CPUS { return Err(MadtError::TooManyProcessors); }
+                let flags = u32_at(e, 8).ok_or(MadtError::InvalidEntryLength)?;
+                info.processors[info.processor_count] = Some(Processor {
+                    apic_id: u32_at(e, 4).ok_or(MadtError::InvalidEntryLength)?,
+                    enabled: flags & 1 != 0,
+                    online_capable: flags & 2 != 0,
+                    acpi_uid: u32_at(e, 12).ok_or(MadtError::InvalidEntryLength)?,
                 });
                 info.processor_count += 1;
             }
@@ -448,6 +462,18 @@ mod tests {
         }));
         assert_eq!(parsed.overrides[0], Some(InterruptOverride {
             bus: 0, source_irq: 0, global_irq: 2, polarity_flags: 1, trigger_flags: 3,
+        }));
+    }
+
+    #[test]
+    fn parses_x2apic_processor_with_full_width_ids() {
+        let entries = [
+            9, 16, 0, 0, 0x34, 0x12, 0, 0, 1, 0, 0, 0, 0x78, 0x56, 0, 0,
+        ];
+        let parsed = parse_madt(&base(0, &entries)).unwrap();
+        assert_eq!(parsed.processor_count, 1);
+        assert_eq!(parsed.processors[0], Some(Processor {
+            acpi_uid: 0x5678, apic_id: 0x1234, enabled: true, online_capable: false,
         }));
     }
 
