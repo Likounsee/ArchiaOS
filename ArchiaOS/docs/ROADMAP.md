@@ -272,7 +272,7 @@ Le code actuel de la branche `ArchiaOS` est `29644ef8bd95faf8f9b992cdc254523dcf4
 - [ ] Ajouter la gestion des tâches bloquées/réveillées au runtime réel, avec rollback propre quand aucune tâche n'est exécutable et sans perdre de réveil.
 - [ ] Définir la politique de réclamation/réutilisation des piles après sortie ; aucune pile ne doit être réutilisée tant que son contexte n'est plus actif.
 - [ ] Définir la convention d'appel et l'état sauvegardé par architecture ; documenter explicitement que la primitive actuelle est x86-64/System V et ne constitue pas une abstraction ARM64.
-- [~] Ajouter une primitive de synchronisation FIFO (TicketLock), tests de contention multi-thread, ordre FIFO déterministe et débordement des compteurs ; l'intégration à une file d'attente du scheduler, au park/unpark et aux tests d'interleavings de réveil reste à faire.
+- [~] Ajouter une primitive de synchronisation FIFO (TicketLock), tests de contention multi-thread, ordre FIFO déterministe, débordement des compteurs et acquisition opportuniste `try_lock` sans dépassement de file ; l'intégration à une file d'attente du scheduler, au park/unpark et aux tests d'interleavings de réveil reste à faire.
 - [ ] Configurer un timer fiable et son acquittement, d'abord en mode coopératif puis avec préemption après validation de l'état complet sauvegardé.
 - [ ] Ajouter GDT/TSS/IST et piles dédiées aux exceptions critiques ; tester double fault et stack fault sans dépendre de la pile fautive.
 - [ ] Définir la stratégie SMP, les données par CPU, les verrous/atomiques et les règles d'ordre mémoire avant de réveiller un second cœur.

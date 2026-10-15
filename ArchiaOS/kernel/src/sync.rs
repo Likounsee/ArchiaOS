@@ -114,6 +114,23 @@ impl<T: ?Sized> TicketLock<T> {
         TicketLockGuard { lock: self, ticket }
     }
 
+    /// Attempt to acquire the lock only when no owner or queued waiter exists.
+    ///
+    /// A failed attempt never reserves a ticket and can never jump ahead of an
+    /// already queued caller. Use this for opportunistic paths that must not spin.
+    pub fn try_lock(&self) -> Option<TicketLockGuard<'_, T>> {
+        let serving = self.serving.load(Ordering::Acquire);
+        self.next_ticket
+            .compare_exchange(
+                serving,
+                serving.wrapping_add(1),
+                Ordering::Acquire,
+                Ordering::Relaxed,
+            )
+            .ok()
+            .map(|_| TicketLockGuard { lock: self, ticket: serving })
+    }
+
     /// Whether a ticket is currently outstanding; diagnostic only.
     pub fn is_locked(&self) -> bool {
         self.next_ticket.load(Ordering::Relaxed)
@@ -485,6 +502,36 @@ mod tests {
         second.join().expect("second ticket-lock worker panicked");
         assert_eq!(*order.lock().unwrap(), vec![1, 2]);
         assert!(!lock.is_locked());
+    }
+
+    #[test]
+    fn ticket_lock_try_lock_never_bypasses_a_queued_waiter() {
+        use core::hint::spin_loop;
+
+        let lock = Arc::new(TicketLock::new(0usize));
+        let owner = lock.lock();
+        let worker_lock = Arc::clone(&lock);
+        let worker = thread::spawn(move || {
+            let mut guard = worker_lock.lock();
+            *guard = 2;
+        });
+
+        let mut spins = 0usize;
+        while lock.next_ticket.load(Ordering::Acquire) != 2 {
+            spin_loop();
+            spins += 1;
+            assert!(spins < 10_000_000, "worker did not reserve a ticket");
+        }
+        assert!(lock.try_lock().is_none(), "try_lock must not jump the queue");
+        drop(owner);
+        worker.join().expect("queued worker panicked");
+        {
+            let mut guard = lock.try_lock().expect("idle lock should be acquired immediately");
+            assert_eq!(*guard, 2);
+            *guard = 3;
+        }
+        assert!(!lock.is_locked());
+        assert_eq!(*lock.lock(), 3);
     }
 
     #[test]
