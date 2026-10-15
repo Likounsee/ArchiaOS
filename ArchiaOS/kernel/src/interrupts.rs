@@ -362,6 +362,9 @@ struct TestInterruptFrame {
 
 static BREAKPOINT_TEST_COUNT: AtomicU64 = AtomicU64::new(0);
 static BREAKPOINT_TEST_LAST_ERROR: AtomicU64 = AtomicU64::new(u64::MAX);
+static BREAKPOINT_TEST_LAST_RIP: AtomicU64 = AtomicU64::new(0);
+static BREAKPOINT_TEST_LAST_CS: AtomicU64 = AtomicU64::new(0);
+static BREAKPOINT_TEST_LAST_RFLAGS: AtomicU64 = AtomicU64::new(u64::MAX);
 
 #[no_mangle]
 extern "C" fn archiaos_test_interrupt_dispatch(frame: *mut TestInterruptFrame) -> *mut TestInterruptFrame {
@@ -371,6 +374,9 @@ extern "C" fn archiaos_test_interrupt_dispatch(frame: *mut TestInterruptFrame) -
         let vector = unsafe { (*frame).vector };
         if vector == 3 {
             BREAKPOINT_TEST_LAST_ERROR.store(unsafe { (*frame).error_code }, Ordering::SeqCst);
+            BREAKPOINT_TEST_LAST_RIP.store(unsafe { (*frame).rip }, Ordering::SeqCst);
+            BREAKPOINT_TEST_LAST_CS.store(unsafe { (*frame).cs }, Ordering::SeqCst);
+            BREAKPOINT_TEST_LAST_RFLAGS.store(unsafe { (*frame).rflags }, Ordering::SeqCst);
             BREAKPOINT_TEST_COUNT.fetch_add(1, Ordering::SeqCst);
         } else {
             TEST_INTERRUPT_COUNT.fetch_add(1, Ordering::SeqCst);
@@ -386,6 +392,9 @@ pub fn breakpoint_exception_self_test() -> bool {
     let idt = core::ptr::addr_of_mut!(IDT).cast::<IdtEntry>();
     let before = BREAKPOINT_TEST_COUNT.load(Ordering::SeqCst);
     BREAKPOINT_TEST_LAST_ERROR.store(u64::MAX, Ordering::SeqCst);
+    BREAKPOINT_TEST_LAST_RIP.store(0, Ordering::SeqCst);
+    BREAKPOINT_TEST_LAST_CS.store(0, Ordering::SeqCst);
+    BREAKPOINT_TEST_LAST_RFLAGS.store(u64::MAX, Ordering::SeqCst);
     let flags: u64;
     unsafe {
         asm!("pushfq", "pop {flags}", "cli", flags = out(reg) flags);
@@ -402,6 +411,10 @@ pub fn breakpoint_exception_self_test() -> bool {
     }
     BREAKPOINT_TEST_COUNT.load(Ordering::SeqCst) == before.wrapping_add(1)
         && BREAKPOINT_TEST_LAST_ERROR.load(Ordering::SeqCst) == 0
+        && BREAKPOINT_TEST_LAST_RIP.load(Ordering::SeqCst) != 0
+        && BREAKPOINT_TEST_LAST_CS.load(Ordering::SeqCst) != 0
+        // IF was cleared before INT3; IRETQ must preserve that controlled state.
+        && BREAKPOINT_TEST_LAST_RFLAGS.load(Ordering::SeqCst) & (1 << 9) == 0
 }
 
 #[no_mangle]
