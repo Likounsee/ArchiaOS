@@ -238,7 +238,45 @@ def main() -> None:
     if "core::ptr::addr_of!(IDT) as u64" not in descriptor_body:
         fail("IDTR base must point to the initialized IDT")
 
-    print("ISR audit passed: 256 stubs, error-code normalization, common-entry ABI safeguards, IDT gate layout, IDTR coverage, installation, and fatal dispatcher contract")
+    # The controlled #BP gate is intentionally separate from the fatal vector-3
+    # stub. Audit its normalized frame, complete GPR save/restore, and IRETQ path.
+    breakpoint_stub = re.search(
+        r'"\\.global isr_breakpoint_test_stub",\\s*"isr_breakpoint_test_stub:",(?P<body>.*?)(?=^\\s*"\\.global isr_apic_stub_48")',
+        source,
+        re.MULTILINE | re.DOTALL,
+    )
+    if not breakpoint_stub:
+        fail("dedicated returning #BP self-test stub not found")
+    breakpoint_body = breakpoint_stub.group("body")
+    breakpoint_instructions = [
+        '"pushq $0",',
+        '"pushq $3",',
+        '"movq %rsp, %rdi",',
+        '"andq $-16, %rsp",',
+        '"call archiaos_test_interrupt_dispatch",',
+        '"movq %rax, %rsp",',
+        '"addq $16, %rsp",',
+        '"iretq",',
+    ]
+    breakpoint_positions = [breakpoint_body.find(item) for item in breakpoint_instructions]
+    if any(position < 0 for position in breakpoint_positions):
+        fail("#BP test stub is missing normalized frame, aligned dispatch, stack restoration, or IRETQ")
+    if breakpoint_positions != sorted(breakpoint_positions):
+        fail("#BP test stub instruction order violates its normalized-frame contract")
+    for register in ("rax", "rcx", "rdx", "rbx", "rbp", "rsi", "rdi", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"):
+        if f'"pushq %{register}",' not in breakpoint_body or f'"popq %{register}",' not in breakpoint_body:
+            fail(f"#BP test stub must preserve %{register}")
+    for assertion in (
+        "BREAKPOINT_TEST_LAST_ERROR.load(Ordering::SeqCst) == 0",
+        "BREAKPOINT_TEST_LAST_RIP.load(Ordering::SeqCst) != 0",
+        "BREAKPOINT_TEST_LAST_CS.load(Ordering::SeqCst) != 0",
+        "BREAKPOINT_TEST_LAST_RFLAGS.load(Ordering::SeqCst) & (1 << 9) == 0",
+        'asm!("int3");',
+    ):
+        if assertion not in source:
+            fail(f"controlled #BP self-test is missing frame assertion: {assertion}")
+
+    print("ISR audit passed: 256 stubs, error-code normalization, #BP frame/IRETQ preservation, common-entry ABI safeguards, IDT gate layout, IDTR coverage, installation, and fatal dispatcher contract")
 
 
 if __name__ == "__main__":
