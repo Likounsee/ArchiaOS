@@ -7,7 +7,7 @@ extern crate std;
 /// The memory map remains owned by the bootloader allocation and is not copied.
 pub mod bootinfo {
     pub const BOOT_INFO_MAGIC: u64 = 0x4942_4149_4843_5241; // "ARCHIABI"
-    pub const BOOT_INFO_VERSION: u32 = 1;
+    pub const BOOT_INFO_VERSION: u32 = 2;
     /// UEFI currently defines EFI_MEMORY_DESCRIPTOR_VERSION as 1.
     pub const UEFI_MEMORY_DESCRIPTOR_VERSION: u32 = 1;
     pub const MAX_MEMORY_MAP_SIZE: u64 = 1024 * 1024;
@@ -27,6 +27,14 @@ pub mod bootinfo {
         pub device_tree: u64,
         pub framebuffer_base: u64,
         pub framebuffer_size: u64,
+        /// GOP horizontal pixel resolution.
+        pub framebuffer_width: u32,
+        /// GOP vertical pixel resolution.
+        pub framebuffer_height: u32,
+        /// GOP pixel stride in pixels (may exceed visible width).
+        pub framebuffer_stride: u32,
+        /// EFI_GRAPHICS_PIXEL_FORMAT: 0=RGB, 1=BGR, 2=bitmask.
+        pub framebuffer_pixel_format: u32,
     }
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1451,6 +1459,10 @@ mod tests {
             device_tree: 0,
             framebuffer_base: 0,
             framebuffer_size: 0,
+            framebuffer_width: 0,
+            framebuffer_height: 0,
+            framebuffer_stride: 0,
+            framebuffer_pixel_format: 0,
         }
     }
 
