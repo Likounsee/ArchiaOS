@@ -1444,4 +1444,20 @@ mod tests {
         assert_eq!(exited.state(exited_task), Ok(TaskState::Exited));
         assert_eq!(exited.check_invariants(), Ok(()));
     }
+    #[test]
+    fn selected_wakeup_rejects_invalid_task_id_without_partial_mutation() {
+        let mut scheduler = Scheduler::new();
+        let first = scheduler.create_task().unwrap();
+        let second = scheduler.create_task().unwrap();
+        assert_eq!(scheduler.schedule(), Ok(first));
+        assert_eq!(scheduler.block_current(), Ok(second));
+        assert_eq!(scheduler.block_current(), Err(SchedulerError::NoRunnableTask));
+
+        let invalid = TaskId(usize::MAX);
+        assert_eq!(scheduler.wake_many_blocked(&[first, invalid]), Err(SchedulerError::InvalidTask));
+        assert_eq!(scheduler.state(first), Ok(TaskState::Blocked));
+        assert_eq!(scheduler.state(second), Ok(TaskState::Blocked));
+        assert_eq!(scheduler.check_invariants(), Ok(()));
+    }
+
 }

@@ -254,19 +254,3 @@ fn selected_wakeup_is_transactional_and_does_not_wake_unrelated_tasks() {
     assert_eq!(scheduler.state(first), Ok(TaskState::Blocked));
     assert_eq!(scheduler.check_invariants(), Ok(()));
 }
-
-#[test]
-fn selected_wakeup_rejects_invalid_task_id_without_partial_mutation() {
-    let mut scheduler = Scheduler::new();
-    let first = scheduler.create_task().expect("first task");
-    let second = scheduler.create_task().expect("second task");
-    assert_eq!(scheduler.schedule(), Ok(first));
-    assert_eq!(scheduler.block_current(), Ok(second));
-    assert_eq!(scheduler.block_current(), Err(SchedulerError::NoRunnableTask));
-
-    let invalid = scheduler::TaskId(usize::MAX);
-    assert_eq!(scheduler.wake_many_blocked(&[first, invalid]), Err(SchedulerError::InvalidTask));
-    assert_eq!(scheduler.state(first), Ok(TaskState::Blocked));
-    assert_eq!(scheduler.state(second), Ok(TaskState::Blocked));
-    assert_eq!(scheduler.check_invariants(), Ok(()));
-}
