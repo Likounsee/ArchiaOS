@@ -908,6 +908,14 @@ mod tests {
         // Leave the callback unconfigured so no unrelated test can observe a
         // stale vector. No hardware handler was registered by this unit test.
         SCHEDULER_TIMER_VECTOR.store(0, Ordering::Release);
+        assert_eq!(
+            scheduler_timer_snapshot(),
+            SchedulerTimerSnapshot {
+                ticks: before.wrapping_add(2),
+                reschedule_pending: false,
+                vector: None,
+            }
+        );
     }
 
     #[test]
