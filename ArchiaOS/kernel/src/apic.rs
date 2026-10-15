@@ -787,6 +787,38 @@ mod tests {
     }
 
     #[test]
+    fn periodic_timer_can_be_safely_masked_after_arming() {
+        let mut page = MockApicPage([0; 1024]);
+        // SAFETY: this aligned writable page is only an in-memory APIC test double.
+        let apic = unsafe {
+            LocalApic::from_mapped_base(page.0.as_mut_ptr()).expect("aligned mock page")
+        };
+
+        // SAFETY: the test uses ordinary memory, not hardware MMIO.
+        unsafe { apic.start_timer_periodic(0x41, 16, 1000).unwrap() };
+        assert_eq!(
+            page.0[(APIC_LVT_TIMER_REGISTER / 4) as usize],
+            0x41 | APIC_LVT_PERIODIC
+        );
+        assert_eq!(page.0[(APIC_INITIAL_COUNT_REGISTER / 4) as usize], 1000);
+
+        // SAFETY: the same mock page remains valid and exclusively owned.
+        unsafe { apic.mask_timer(0x41).unwrap() };
+        assert_eq!(
+            page.0[(APIC_LVT_TIMER_REGISTER / 4) as usize],
+            0x41 | APIC_LVT_MASKED
+        );
+        assert_eq!(page.0[(APIC_INITIAL_COUNT_REGISTER / 4) as usize], 0);
+
+        let lvt_before = page.0[(APIC_LVT_TIMER_REGISTER / 4) as usize];
+        let count_before = page.0[(APIC_INITIAL_COUNT_REGISTER / 4) as usize];
+        // Invalid cleanup requests must not modify the already-masked timer.
+        assert_eq!(unsafe { apic.mask_timer(APIC_SPURIOUS_VECTOR) }, Err(ApicError::InvalidVector));
+        assert_eq!(page.0[(APIC_LVT_TIMER_REGISTER / 4) as usize], lvt_before);
+        assert_eq!(page.0[(APIC_INITIAL_COUNT_REGISTER / 4) as usize], count_before);
+    }
+
+    #[test]
     fn ioapic_gsi_mapping_checks_ranges_and_register_overflow() {
         assert_eq!(ioapic_redirection_registers(0, 0, 24), Ok((0x10, 0x11)));
         assert_eq!(ioapic_redirection_registers(23, 0, 24), Ok((0x3e, 0x3f)));
