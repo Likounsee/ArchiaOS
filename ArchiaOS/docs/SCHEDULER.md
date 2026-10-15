@@ -94,3 +94,8 @@ Les données inconnues restent admissibles comme repli et ne sont jamais deviné
 
 Cette fonction est pour l'instant une politique pure testable, pas encore raccordée
 au dispatch des tâches. Elle ne constitue ni un équilibrage de charge ni du SMP.
+
+
+### Erreurs explicites de placement
+
+`try_select_cpu` distingue maintenant l'absence de CPU confirmé en ligne de l'absence de CPU satisfaisant l'affinité stricte. L'appelant peut ainsi différencier un problème de démarrage CPU d'une contrainte de tâche impossible, sans deviner à partir d'un simple `None`. `select_cpu` reste disponible comme raccourci optionnel. Des tests vérifient les deux erreurs. Cette API reste une politique pure : aucun dispatch ni SMP n'est activé.

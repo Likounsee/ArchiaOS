@@ -145,13 +145,30 @@ pub struct CpuPlacementHint<'a> {
     pub preferred_cache_domain: Option<u16>,
 }
 
-/// Select a deterministic candidate using affinity first, then cache locality,
-/// requested CPU class, and known capacity. Unknown metadata remains eligible
-/// as a fallback; ties keep firmware enumeration order.
-pub fn select_cpu<'a>(
+/// Why a placement request could not select a processor.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CpuSelectionError {
+    /// No topology entry is confirmed online by the CPU bring-up layer.
+    NoOnlineCpu,
+    /// CPUs are online, but none satisfy the task's strict affinity.
+    NoCpuAllowedByAffinity,
+}
+
+/// Select a deterministic candidate and preserve the reason for failure.
+/// Cache locality outranks class and capacity; unknown metadata is a fallback.
+pub fn try_select_cpu<'a>(
     topology: &'a CpuTopology,
     hint: CpuPlacementHint<'_>,
-) -> Option<&'a CpuTopologyEntry> {
+) -> Result<&'a CpuTopologyEntry, CpuSelectionError> {
+    if !topology.iter().any(|entry| hint.online_apic_ids.contains(&entry.apic_id)) {
+        return Err(CpuSelectionError::NoOnlineCpu);
+    }
+    if let Some(allowed) = hint.allowed_apic_ids {
+        if !topology.iter().any(|entry| hint.online_apic_ids.contains(&entry.apic_id)
+            && allowed.contains(&entry.apic_id)) {
+            return Err(CpuSelectionError::NoCpuAllowedByAffinity);
+        }
+    }
     let mut best: Option<(&CpuTopologyEntry, (u8, u8, u8))> = None;
     for entry in topology.iter() {
         // MADT's "online-capable" flag does not mean a processor is online.
@@ -177,7 +194,15 @@ pub fn select_cpu<'a>(
             best = Some((entry, score));
         }
     }
-    best.map(|(entry, _)| entry)
+    best.map(|(entry, _)| entry).ok_or(CpuSelectionError::NoOnlineCpu)
+}
+
+/// Convenience wrapper for callers that only need an optional candidate.
+pub fn select_cpu<'a>(
+    topology: &'a CpuTopology,
+    hint: CpuPlacementHint<'_>,
+) -> Option<&'a CpuTopologyEntry> {
+    try_select_cpu(topology, hint).ok()
 }
 
 /// Convert MADT processor records into a scheduler topology snapshot.
@@ -416,6 +441,18 @@ mod tests {
             preferred_class: None,
             preferred_cache_domain: None,
         }).is_none());
+        assert_eq!(try_select_cpu(&topology, CpuPlacementHint {
+            online_apic_ids: &[],
+            allowed_apic_ids: None,
+            preferred_class: None,
+            preferred_cache_domain: None,
+        }), Err(CpuSelectionError::NoOnlineCpu));
+        assert_eq!(try_select_cpu(&topology, CpuPlacementHint {
+            online_apic_ids: &all_online,
+            allowed_apic_ids: Some(&[99]),
+            preferred_class: None,
+            preferred_cache_domain: None,
+        }), Err(CpuSelectionError::NoCpuAllowedByAffinity));
     }
 
     #[test]
