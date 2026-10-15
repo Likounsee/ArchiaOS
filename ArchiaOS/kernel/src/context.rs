@@ -344,6 +344,7 @@ mod tests {
             unsafe { switch_checked(&mut old, &uninitialized, &stack) },
             Err(ContextSwitchError::TargetUninitialized),
         );
+        assert_eq!(old.rsp, 0, "rejected target must not save or mutate the source context");
 
         let mut context = CpuContext::empty();
         stack.initialize(&mut context, never_run);
@@ -352,12 +353,23 @@ mod tests {
             unsafe { switch_checked(&mut old, &context, &other_stack) },
             Err(ContextSwitchError::TargetContextOutsideStack),
         );
+        assert_eq!(old.rsp, 0, "wrong-stack rejection must happen before assembly");
 
+        let start = stack.bytes.as_ptr() as usize;
+        context.rsp = (start - core::mem::size_of::<u64>()) as u64;
+        assert_eq!(
+            unsafe { switch_checked(&mut old, &context, &stack) },
+            Err(ContextSwitchError::TargetContextOutsideStack),
+        );
+        assert_eq!(old.rsp, 0, "guard-area rejection must happen before assembly");
+
+        stack.initialize(&mut context, never_run);
         stack.upper_guard[STACK_GUARD_WORDS - 1] ^= 1;
         assert_eq!(
             unsafe { switch_checked(&mut old, &context, &stack) },
             Err(ContextSwitchError::TargetStackCorrupted),
         );
+        assert_eq!(old.rsp, 0, "canary rejection must happen before assembly");
     }
 
     #[test]
@@ -370,8 +382,14 @@ mod tests {
         context.rsp = (start + 1) as u64;
         assert!(!stack.contains_context(&context), "unaligned RSP");
 
+        context.rsp = (end - 7 * core::mem::size_of::<u64>()) as u64;
+        assert!(stack.contains_context(&context), "exactly complete restore frame at upper bound");
+
         context.rsp = (end - 6 * core::mem::size_of::<u64>()) as u64;
         assert!(!stack.contains_context(&context), "frame lacks return address");
+
+        context.rsp = (end - 7 * core::mem::size_of::<u64>() + 1) as u64;
+        assert!(!stack.contains_context(&context), "frame extending one byte past stack");
 
         context.rsp = end as u64;
         assert!(!stack.contains_context(&context), "RSP points past usable stack");
