@@ -260,7 +260,7 @@ impl FramebufferConsole {
         // Publish the initialized renderer before sending the banner through the common
         // serial writer; from this point onward every boot log is mirrored to the monitor.
         unsafe { FRAMEBUFFER_CONSOLE = Some(console); }
-        for byte in b"ARCHIAOS KERNEL STARTING...\\n" {
+        for byte in b"ARCHIAOS KERNEL STARTING...\n" {
             framebuffer_console_write_byte(*byte);
         }
         true
@@ -811,21 +811,12 @@ fn framebuffer_pixels(info: &archiaos_bootloader::bootinfo::BootInfo) -> Option<
 }
 
 fn paint_status_line(_info: &archiaos_bootloader::bootinfo::BootInfo, _line: usize, _color: u32) {
-    /* Text output now communicates progress and errors. */
-    return;
-    #[allow(unreachable_code)]
-    let Some((framebuffer, pixels)) = framebuffer_pixels(_info) else { return; };
-    let Some(start) = line.checked_mul(FB_PIXELS_PER_STATUS_LINE) else { return; };
-    if start >= pixels { return; }
-    let end = start.saturating_add(FB_PIXELS_PER_STATUS_LINE).min(pixels);
-    for index in start..end {
-        // SAFETY: the index is bounded by the firmware-reported framebuffer range.
-        unsafe { ptr::write_volatile(framebuffer.add(index), color) };
-    }
+    // Kept temporarily to avoid churn in existing failure paths; text logs now
+    // provide the visible status instead of painting opaque colored bands.
 }
 
 fn show_framebuffer_boot_status(info: &archiaos_bootloader::bootinfo::BootInfo) -> u8 {
-    let Some((framebuffer, pixels)) = framebuffer_pixels(info) else {
+    let Some((_framebuffer, pixels)) = framebuffer_pixels(info) else {
         return 1;
     };
     if !FramebufferConsole::initialize(info) {
