@@ -58,7 +58,7 @@ mod tests {
 
     #[test]
     fn rejects_wrapping_or_unmapped_physical_ranges() {
-        assert_eq!(validated_pixel_count(u64::MAX - 0x1000, 0x2000, 1, 1, 1, 0), None);
+        assert_eq!(validated_pixel_count(u64::MAX - 3, 4096, 2, 1, 2, 0), None);
         assert_eq!(validated_pixel_count(BOOTSTRAP_PHYSICAL_LIMIT - 4, 4096, 2, 1, 2, 0), None);
     }
 }
