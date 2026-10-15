@@ -2,6 +2,7 @@
 #![no_main]
 
 mod memory_ranges;
+mod boot_status;
 mod memory;
 mod vmm;
 mod heap;
@@ -346,48 +347,12 @@ impl FramebufferConsole {
         }
     }
 
-    fn line_contains(&self, needle: &[u8]) -> bool {
-        !needle.is_empty()
-            && self.line[..self.line_len]
-                .windows(needle.len())
-                // Boot diagnostics can come from both uppercase stage markers and
-                // mixed-case Rust errors; classification must not depend on casing.
-                .any(|window| window.eq_ignore_ascii_case(needle))
-    }
-
     fn flush_line(&mut self) {
-        let (prefix, color): (&[u8], u32) =
-            if self.line_contains(b"failed")
-                || self.line_contains(b"failure")
-                || self.line_contains(b"invalid")
-                || self.line_contains(b"unavailable")
-                || self.line_contains(b"unsupported")
-                || self.line_contains(b"not initialized")
-                || self.line_contains(b"not validated")
-                || self.line_contains(b"not installed")
-                || self.line_contains(b"not available")
-                || self.line_contains(b"not supported")
-                || self.line_contains(b"missing")
-                || self.line_contains(b"cannot")
-                || self.line_contains(b"unable to")
-                || self.line_contains(b"could not")
-                || self.line_contains(b"rejected")
-                || self.line_contains(b"refusing")
-                || self.line_contains(b"error")
-            {
-                (b"[FAIL] ", 0x00ff7777)
-            } else if self.line_contains(b"passed")
-                || self.line_contains(b"validated")
-                || self.line_contains(b"initialized")
-                || self.line_contains(b"installed")
-                || self.line_contains(b"complete")
-                || self.line_contains(b"written")
-                || self.line_contains(b"entered")
-            {
-                (b"[ OK ] ", 0x007cf2a0)
-            } else {
-                (b"[ .. ] ", 0x00c0c8d0)
-            };
+        let (prefix, color): (&[u8], u32) = match boot_status::classify(&self.line[..self.line_len]) {
+            boot_status::Status::Failure => (b"[FAIL] ", 0x00ff7777),
+            boot_status::Status::Success => (b"[ OK ] ", 0x007cf2a0),
+            boot_status::Status::Pending => (b"[ .. ] ", 0x00c0c8d0),
+        };
         for byte in prefix {
             self.render_byte(*byte, color);
         }
