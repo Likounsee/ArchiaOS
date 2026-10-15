@@ -481,6 +481,7 @@ mod tests {
         while lock.next_ticket.load(Ordering::Acquire) != 2 {
             spin_loop();
             spins += 1;
+            if spins % 1024 == 0 { thread::yield_now(); }
             assert!(spins < 10_000_000, "first contender did not reserve a ticket");
         }
 
@@ -494,6 +495,7 @@ mod tests {
         while lock.next_ticket.load(Ordering::Acquire) != 3 {
             spin_loop();
             spins += 1;
+            if spins % 1024 == 0 { thread::yield_now(); }
             assert!(spins < 10_000_000, "second contender did not reserve a ticket");
         }
 
@@ -520,6 +522,7 @@ mod tests {
         while lock.next_ticket.load(Ordering::Acquire) != 2 {
             spin_loop();
             spins += 1;
+            if spins % 1024 == 0 { thread::yield_now(); }
             assert!(spins < 10_000_000, "worker did not reserve a ticket");
         }
         assert!(lock.try_lock().is_none(), "try_lock must not jump the queue");
