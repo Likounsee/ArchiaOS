@@ -507,6 +507,30 @@ mod tests {
     }
 
     #[test]
+    fn ticket_lock_failed_try_lock_never_reserves_or_skips_a_ticket() {
+        let lock = TicketLock::new(0usize);
+        let owner = lock.lock();
+        assert_eq!(lock.next_ticket.load(Ordering::Acquire), 1);
+        assert_eq!(lock.serving.load(Ordering::Acquire), 0);
+
+        // Repeated failures must be side-effect free: a try-lock caller is
+        // opportunistic and must not leave a phantom ticket in the FIFO queue.
+        for _ in 0..10_000 {
+            assert!(lock.try_lock().is_none());
+        }
+        assert_eq!(lock.next_ticket.load(Ordering::Acquire), 1);
+        assert_eq!(lock.serving.load(Ordering::Acquire), 0);
+        drop(owner);
+
+        let mut guard = lock.try_lock().expect("released lock should be available");
+        *guard = 9;
+        drop(guard);
+        assert_eq!(lock.next_ticket.load(Ordering::Acquire), 2);
+        assert_eq!(lock.serving.load(Ordering::Acquire), 2);
+        assert!(!lock.is_locked());
+    }
+
+    #[test]
     fn ticket_lock_try_lock_never_bypasses_a_queued_waiter() {
         use core::hint::spin_loop;
 
