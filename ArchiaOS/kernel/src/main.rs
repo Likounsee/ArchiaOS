@@ -350,7 +350,9 @@ impl FramebufferConsole {
         !needle.is_empty()
             && self.line[..self.line_len]
                 .windows(needle.len())
-                .any(|window| window == needle)
+                // Boot diagnostics can come from both uppercase stage markers and
+                // mixed-case Rust errors; classification must not depend on casing.
+                .any(|window| window.eq_ignore_ascii_case(needle))
     }
 
     fn flush_line(&mut self) {
