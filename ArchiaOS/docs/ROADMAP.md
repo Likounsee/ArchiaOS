@@ -260,7 +260,7 @@ Le code actuel de la branche `ArchiaOS` est `29644ef8bd95faf8f9b992cdc254523dcf4
 - [x] Ajouter des tests hôte ciblés : un réveil seulement par tâche bloquée, le second réveil doit échouer sans mutation, le round-robin doit reprendre la tâche réveillée et les identifiants des tâches terminées ne sont pas réutilisés.
 - [x] Ajouter `dispatch_or_idle()` pour signaler explicitement l'absence de tâche exécutable et permettre une reprise après réveil ; tests hôte pour tâches toutes bloquées et toutes terminées (la boucle idle d'architecture reste à implémenter).
 - [x] Valider dans la CI le scénario de blocage/réveil : A bloque, B réveille A, A reprend et termine, puis B termine ; vérifier les invariants et le retour à la pile de démarrage (CI complète réussie sur `ee42f21`).
-- [ ] Définir un modèle de topologie/capacités CPU commun au scheduler, avec données inconnues explicites et tests synthétiques.
+- [x] Définir un premier modèle borné de topologie/capacités CPU avec données inconnues explicites, identifiants APIC uniques, validation de capacité et tests synthétiques. La découverte CPUID/ACPI et la politique de placement restent à faire.
 - [ ] Découvrir les types de cœurs, domaines de cache, CCD/CCX et informations NUMA exposés par CPUID/ACPI, sans dépendre des noms de modèles.
 - [ ] Ajouter un placement adapté aux CPU homogènes et hétérogènes : Intel P/E, AMD avec caches/3D V-Cache asymétriques, affinités et localité.
 - [ ] Tester la politique sur topologies synthétiques (homogène, hybride, CCD/cache asymétriques, informations partielles) avant de l'activer avec SMP.

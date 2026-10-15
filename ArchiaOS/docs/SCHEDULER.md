@@ -17,6 +17,10 @@ Cas obligatoires à couvrir :
 - **CPU homogènes** : conserver un comportement correct et simple lorsque les cœurs sont équivalents ou que les détails de topologie ne sont pas disponibles.
 - **Autres CPU/architectures** : le cœur générique du scheduler ne doit pas dépendre d'identifiants de modèles Intel/AMD. Les détecteurs propres à une architecture ou un fournisseur alimentent un contrat commun ; la portabilité vers une autre ISA exige son backend de contexte/interruptions propre.
 
+## Contrat logiciel de topologie (première étape P2)
+
+Le module `kernel/src/scheduler_topology.rs` fournit un instantané borné de 256 processeurs logiques. Chaque entrée utilise l'identifiant APIC comme identité et conserve séparément package, cœur, domaine de cache, nœud NUMA, classe et capacité. Les champs indisponibles restent `None`, la classe peut rester `Unknown`, les identifiants APIC en double et les capacités nulles sont rejetés sans mutation. Ce modèle est uniquement descriptif : il n'effectue pas encore la découverte CPUID/ACPI, ne démarre aucun processeur et ne choisit pas de CPU pour une tâche.
+
 ## Modèle matériel prévu
 
 La couche de découverte devra construire une description bornée et vérifiable des processeurs logiques et des domaines de partage :

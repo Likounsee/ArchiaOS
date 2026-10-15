@@ -13,6 +13,7 @@ mod cpu_features;
 mod simd;
 mod pci;
 mod scheduler;
+mod scheduler_topology;
 mod context;
 mod interrupts;
 mod interrupt_vectors;
