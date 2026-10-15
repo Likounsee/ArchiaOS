@@ -1090,6 +1090,40 @@ pub extern "C" fn rust_kernel_main(
                     let _ = writeln!(serial, "ArchiaOS: ACPI MADT validated: local APIC={:#x}, CPUs={}, IOAPICs={}, overrides={}, legacy PIC={}",
                         topology.local_apic_address, topology.enabled_processor_count(),
                         topology.io_apic_count, topology.override_count, topology.has_legacy_pic);
+
+                    // Build the scheduler's eligible-CPU snapshot from the validated
+                    // firmware list, then enrich only the bootstrap CPU if CPUID's
+                    // x2APIC identity matches a MADT entry. This is metadata only:
+                    // it neither starts APs nor enables SMP or preemption.
+                    let processor_count = topology.processor_count.min(acpi_madt::MAX_MADT_CPUS);
+                    match scheduler_topology::from_madt_processors(&topology.processors[..processor_count]) {
+                        Ok(mut cpu_topology) => {
+                            let discovered = cpu::detect_current_topology_entry();
+                            let merge_status = match discovered {
+                                Some(entry) => match cpu_topology.merge_cpuid_entry(entry) {
+                                    Ok(()) => "matched",
+                                    Err(scheduler_topology::TopologyError::UnknownApicId) => "CPUID APIC ID absent from MADT",
+                                    Err(_) => "CPUID metadata rejected",
+                                },
+                                None => "CPUID topology unavailable",
+                            };
+                            let _ = writeln!(serial,
+                                "ArchiaOS: scheduler topology snapshot CPUs={} current-CPU merge={}",
+                                cpu_topology.len(), merge_status);
+                            if let Some(entry) = discovered {
+                                if let Some(merged) = cpu_topology.get_by_apic_id(entry.apic_id) {
+                                    let _ = writeln!(serial,
+                                        "ArchiaOS: scheduler CPU APIC={} package={:?} core={:?} NUMA={:?} class={:?} capacity={:?}",
+                                        merged.apic_id, merged.package_id, merged.core_id,
+                                        merged.numa_node, merged.class, merged.capacity);
+                                }
+                            }
+                        }
+                        Err(error) => {
+                            let _ = writeln!(serial, "ArchiaOS: scheduler topology snapshot rejected: {:?}", error);
+                        }
+                    }
+
                     match unsafe { initialize_ioapics_masked(&topology) } {
                         Ok((count, routes)) => {
                             let _ = writeln!(serial, "ArchiaOS: {} IOAPIC controller(s) mapped; {} ISA routes configured and kept masked", count, routes);

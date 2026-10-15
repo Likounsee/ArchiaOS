@@ -67,3 +67,16 @@ La fonction `cpu::detect_current_topology_entry()` interroge le CPU courant via 
 ## Rapprochement CPUID ↔ MADT
 
 `CpuTopology::merge_cpuid_entry` enrichit un processeur déjà présent dans la liste ACPI en utilisant son identifiant APIC comme clé. Une découverte CPUID dont l'identifiant n'existe pas dans MADT est rejetée : elle ne peut donc pas ajouter implicitement un CPU non annoncé par le firmware. Les métadonnées inconnues restent inconnues ; cette opération ne démarre pas de processeur secondaire et n'active pas le SMP.
+
+## Intégration initiale de la topologie P2
+
+Au démarrage, après validation de la MADT, le noyau construit maintenant un instantané
+`CpuTopology` à partir des processeurs activés ou capables d'être activés dans
+la liste firmware. Il tente ensuite de fusionner les champs CPUID du processeur courant,
+uniquement si son APIC ID correspond à un processeur de la MADT. Les champs absents
+ne remplacent pas les métadonnées connues ; un CPU absent de la MADT n'est jamais ajouté.
+
+L'instantané est pour le moment local au bloc d'initialisation et sert à la validation
+et au diagnostic série. Il n'est pas publié comme état global de l'ordonnanceur :
+aucun AP n'est démarré, aucune affinité n'est appliquée et aucune préemption SMP n'est
+activée par cette étape.
