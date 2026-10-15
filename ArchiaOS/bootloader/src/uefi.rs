@@ -1325,12 +1325,12 @@ fn platform_table_address(pointer: *mut c_void) -> u64 {
 
 /// Return the active GOP framebuffer range when firmware exposes a usable mode.
 /// This is metadata discovery only: it does not write pixels or assume a pixel format.
-unsafe fn discover_framebuffer(boot_services: *mut BootServices) -> (u64, u64) {
+unsafe fn discover_framebuffer(boot_services: *mut BootServices) -> (u64, u64, u32, u32, u32, u32) {
     if boot_services.is_null() {
-        return (0, 0);
+        return (0, 0, 0, 0, 0, 0);
     }
     let Some(locate_protocol) = (unsafe { (*boot_services).locate_protocol }) else {
-        return (0, 0);
+        return (0, 0, 0, 0, 0, 0);
     };
     let mut raw = ptr::null_mut();
     // SAFETY: GOP is queried while UEFI boot services are active; the output is writable.
@@ -1342,13 +1342,13 @@ unsafe fn discover_framebuffer(boot_services: *mut BootServices) -> (u64, u64) {
         )
     };
     if status != EFI_SUCCESS || raw.is_null() {
-        return (0, 0);
+        return (0, 0, 0, 0, 0, 0);
     }
     let gop = raw.cast::<GraphicsOutputProtocol>();
     // SAFETY: LocateProtocol returned the GOP interface for the active firmware mode.
     let mode = unsafe { (*gop).mode };
     if mode.is_null() {
-        return (0, 0);
+        return (0, 0, 0, 0, 0, 0);
     }
     // Reject inconsistent mode metadata before interpreting the firmware-provided
     // GraphicsOutputModeInformation pointer as a complete structure.
@@ -1356,14 +1356,14 @@ unsafe fn discover_framebuffer(boot_services: *mut BootServices) -> (u64, u64) {
     let current_mode = unsafe { (*mode).mode };
     let info_size = unsafe { (*mode).size_of_info };
     if !gop_mode_metadata_is_valid(max_mode, current_mode, info_size) {
-        return (0, 0);
+        return (0, 0, 0, 0, 0, 0);
     }
     // SAFETY: the current GOP mode reports enough bytes for the full information structure.
     let mode_info = unsafe { (*mode).info };
     let base = unsafe { (*mode).framebuffer_base };
     let size = unsafe { (*mode).framebuffer_size } as u64;
     if mode_info.is_null() || base == 0 || size == 0 || base.checked_add(size).is_none() {
-        return (0, 0);
+        return (0, 0, 0, 0, 0, 0);
     }
     // Do not publish a partial or blit-only mode as a linear framebuffer. The
     // kernel receives only the physical range, so the byte capacity must cover
@@ -1372,7 +1372,7 @@ unsafe fn discover_framebuffer(boot_services: *mut BootServices) -> (u64, u64) {
     // The structure layout is defined by GOP information version 0. Do not
     // interpret an unknown future layout using the current field offsets.
     if !gop_mode_information_is_supported(info.version) {
-        return (0, 0);
+        return (0, 0, 0, 0, 0, 0);
     }
     if !archiaos_bootloader::framebuffer::is_usable(
         base,
@@ -1382,9 +1382,9 @@ unsafe fn discover_framebuffer(boot_services: *mut BootServices) -> (u64, u64) {
         info.pixel_format,
         info.pixels_per_scan_line,
     ) {
-        return (0, 0);
+        return (0, 0, 0, 0, 0, 0);
     }
-    (base, size)
+    (base, size, info.horizontal_resolution, info.vertical_resolution, info.pixels_per_scan_line, info.pixel_format)
 }
 
 fn gop_mode_metadata_is_valid(max_mode: u32, current_mode: u32, info_size: usize) -> bool {
@@ -2156,7 +2156,8 @@ pub unsafe fn transfer_to_kernel(
     };
     // Query GOP before the final memory-map snapshot. A missing or malformed GOP
     // is a supported headless mode; a discovered range is audited below as reserved.
-    let (framebuffer_base, framebuffer_size) = unsafe { discover_framebuffer(boot_services) };
+    let (framebuffer_base, framebuffer_size, framebuffer_width, framebuffer_height, framebuffer_stride, framebuffer_pixel_format) =
+        unsafe { discover_framebuffer(boot_services) };
     let mut leaked_info = ptr::null_mut::<BootInfo>();
     let mut leaked_map = ptr::null_mut::<u8>();
 
@@ -2361,6 +2362,10 @@ pub unsafe fn transfer_to_kernel(
                     device_tree,
                     framebuffer_base,
                     framebuffer_size,
+                    framebuffer_width,
+                    framebuffer_height,
+                    framebuffer_stride,
+                    framebuffer_pixel_format,
                 },
             );
         }
