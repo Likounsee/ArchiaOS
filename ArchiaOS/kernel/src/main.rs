@@ -240,7 +240,7 @@ static mut EARLY_LOG_LEN: usize = 0;
 
 impl FramebufferConsole {
     fn initialize(info: &archiaos_bootloader::bootinfo::BootInfo) -> bool {
-        let Some(required_pixels) = framebuffer::validated_pixel_count(
+        let Some(_required_pixels) = framebuffer::validated_pixel_count(
             info.framebuffer_base,
             info.framebuffer_size,
             info.framebuffer_width,
