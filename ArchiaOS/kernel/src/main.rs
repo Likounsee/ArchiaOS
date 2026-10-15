@@ -3,6 +3,7 @@
 
 mod memory_ranges;
 mod boot_status;
+mod framebuffer;
 mod memory;
 mod vmm;
 mod heap;
@@ -239,22 +240,16 @@ static mut EARLY_LOG_LEN: usize = 0;
 
 impl FramebufferConsole {
     fn initialize(info: &archiaos_bootloader::bootinfo::BootInfo) -> bool {
-        if info.framebuffer_base == 0
-            || info.framebuffer_width == 0
-            || info.framebuffer_height == 0
-            || info.framebuffer_stride < info.framebuffer_width
-            || info.framebuffer_pixel_format > 1
-        {
+        let Some(required_pixels) = framebuffer::validated_pixel_count(
+            info.framebuffer_base,
+            info.framebuffer_size,
+            info.framebuffer_width,
+            info.framebuffer_height,
+            info.framebuffer_stride,
+            info.framebuffer_pixel_format,
+        ) else {
             return false;
-        }
-        let Some(required_pixels) = (info.framebuffer_stride as u64)
-            .checked_mul(info.framebuffer_height as u64) else { return false; };
-        let Some(required_bytes) = required_pixels.checked_mul(4) else { return false; };
-        if required_bytes > info.framebuffer_size || info.framebuffer_base % 4 != 0 {
-            return false;
-        }
-        let Some(end) = info.framebuffer_base.checked_add(required_bytes) else { return false; };
-        if end > (1u64 << 39) { return false; }
+        };
         let mut console = Self {
             pixels: info.framebuffer_base as *mut u32,
             width: info.framebuffer_width as usize,
