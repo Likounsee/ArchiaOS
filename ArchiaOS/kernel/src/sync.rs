@@ -71,6 +71,62 @@ impl<T: ?Sized> SpinLock<T> {
     }
 }
 
+
+/// Monotonic notification sequence for wait protocols that must not lose a wakeup.
+///
+/// A waiter snapshots `observe()` before checking its predicate. If the
+/// predicate is still false, it calls `wait_for_change(snapshot)`; a notifier
+/// increments the sequence with release ordering. A notification arriving
+/// between the predicate check and the wait is therefore still observable.
+/// This primitive deliberately spins and does not block a scheduler task.
+/// Integrating it with task parking requires an atomic park/register protocol.
+pub struct EventSequence {
+    generation: core::sync::atomic::AtomicU64,
+}
+
+impl EventSequence {
+    pub const fn new() -> Self {
+        Self { generation: core::sync::atomic::AtomicU64::new(0) }
+    }
+
+    /// Capture the current generation before checking the protected predicate.
+    #[inline]
+    pub fn observe(&self) -> u64 {
+        self.generation.load(Ordering::Acquire)
+    }
+
+    /// Publish a state change and notify any waiter observing an older generation.
+    #[inline]
+    pub fn notify(&self) -> u64 {
+        self.generation.fetch_add(1, Ordering::Release).wrapping_add(1)
+    }
+
+    /// Return immediately if a notification happened since `observed`.
+    #[inline]
+    pub fn has_changed(&self, observed: u64) -> bool {
+        self.generation.load(Ordering::Acquire) != observed
+    }
+
+    /// Busy-wait until a notification changes the generation.
+    ///
+    /// This is useful only for short low-level waits. It must not be used as a
+    /// replacement for scheduler blocking or while holding a lock needed by
+    /// the notifier.
+    pub fn wait_for_change(&self, observed: u64) -> u64 {
+        loop {
+            let current = self.generation.load(Ordering::Acquire);
+            if current != observed {
+                return current;
+            }
+            spin_loop();
+        }
+    }
+}
+
+impl Default for EventSequence {
+    fn default() -> Self { Self::new() }
+}
+
 /// IRQ-safe wrapper for contexts that share data with local interrupt handlers.
 ///
 /// `lock_irqsave` is kernel-only: it executes CLI and therefore must never
@@ -168,9 +224,66 @@ impl<T: ?Sized> Drop for SpinLockGuard<'_, T> {
 
 #[cfg(test)]
 mod tests {
-    use super::{saved_if_was_enabled, SpinLock};
+    use super::{saved_if_was_enabled, EventSequence, SpinLock};
     use std::sync::Arc;
     use std::thread;
+
+
+    #[test]
+    fn event_sequence_detects_notification_between_observe_and_wait() {
+        let event = EventSequence::new();
+        let observed = event.observe();
+
+        // This models the race window: the notification lands after the
+        // waiter snapshots the sequence but before it starts waiting.
+        assert_eq!(event.notify(), observed + 1);
+        assert!(event.has_changed(observed));
+        assert_eq!(event.wait_for_change(observed), observed + 1);
+    }
+
+    #[test]
+    fn event_sequence_counts_every_notification_without_losing_wakeups() {
+        const THREADS: usize = 8;
+        const NOTIFICATIONS: usize = 2_000;
+        let event = Arc::new(EventSequence::new());
+        let workers: Vec<_> = (0..THREADS).map(|_| {
+            let event = Arc::clone(&event);
+            thread::spawn(move || {
+                for _ in 0..NOTIFICATIONS {
+                    event.notify();
+                }
+            })
+        }).collect();
+
+        for worker in workers {
+            worker.join().expect("notifier thread panicked");
+        }
+        assert_eq!(event.observe(), (THREADS * NOTIFICATIONS) as u64);
+    }
+
+    #[test]
+    fn event_sequence_waiter_observes_cross_thread_notification() {
+        let event = Arc::new(EventSequence::new());
+        let observed = event.observe();
+        let notifier = Arc::clone(&event);
+        let worker = thread::spawn(move || {
+            notifier.notify();
+        });
+
+        let changed = event.wait_for_change(observed);
+        worker.join().expect("notifier thread panicked");
+        assert_ne!(changed, observed);
+        assert_eq!(changed, event.observe());
+    }
+
+    #[test]
+    fn event_sequence_default_starts_at_zero_and_notifications_are_monotonic() {
+        let event = EventSequence::default();
+        assert_eq!(event.observe(), 0);
+        assert_eq!(event.notify(), 1);
+        assert_eq!(event.notify(), 2);
+        assert_eq!(event.observe(), 2);
+    }
 
     #[test]
     fn irqsave_restoration_only_reenables_previously_enabled_interrupts() {
