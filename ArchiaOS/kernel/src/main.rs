@@ -257,9 +257,12 @@ impl FramebufferConsole {
             y: 8,
         };
         console.clear();
-        console.write_text("ARCHIAOS KERNEL STARTING...\n");
-        // SAFETY: early boot is single-threaded and the framebuffer range was validated above.
+        // Publish the initialized renderer before sending the banner through the common
+        // serial writer; from this point onward every boot log is mirrored to the monitor.
         unsafe { FRAMEBUFFER_CONSOLE = Some(console); }
+        for byte in b"ARCHIAOS KERNEL STARTING...\\n" {
+            framebuffer_console_write_byte(*byte);
+        }
         true
     }
 
