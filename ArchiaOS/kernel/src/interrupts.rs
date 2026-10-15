@@ -360,10 +360,48 @@ struct TestInterruptFrame {
     vector: u64, error_code: u64, rip: u64, cs: u64, rflags: u64,
 }
 
+static BREAKPOINT_TEST_COUNT: AtomicU64 = AtomicU64::new(0);
+static BREAKPOINT_TEST_LAST_ERROR: AtomicU64 = AtomicU64::new(u64::MAX);
+
 #[no_mangle]
 extern "C" fn archiaos_test_interrupt_dispatch(frame: *mut TestInterruptFrame) -> *mut TestInterruptFrame {
-    TEST_INTERRUPT_COUNT.fetch_add(1, Ordering::SeqCst);
+    if !frame.is_null() {
+        // A dedicated #BP test stub normalizes the CPU frame and preserves all
+        // GPRs before entering Rust. Other callers use the generic test vector.
+        let vector = unsafe { (*frame).vector };
+        if vector == 3 {
+            BREAKPOINT_TEST_LAST_ERROR.store(unsafe { (*frame).error_code }, Ordering::SeqCst);
+            BREAKPOINT_TEST_COUNT.fetch_add(1, Ordering::SeqCst);
+        } else {
+            TEST_INTERRUPT_COUNT.fetch_add(1, Ordering::SeqCst);
+        }
+    }
     frame
+}
+
+/// Exercise the actual CPU breakpoint exception, not merely a software IRQ.
+/// Temporarily replace vector 3's fatal gate, verify its normalized frame and
+/// IRETQ return, then restore the original fatal gate before continuing boot.
+pub fn breakpoint_exception_self_test() -> bool {
+    let idt = core::ptr::addr_of_mut!(IDT).cast::<IdtEntry>();
+    let before = BREAKPOINT_TEST_COUNT.load(Ordering::SeqCst);
+    BREAKPOINT_TEST_LAST_ERROR.store(u64::MAX, Ordering::SeqCst);
+    let flags: u64;
+    unsafe {
+        asm!("pushfq", "pop {flags}", "cli", flags = out(reg) flags);
+        let original = idt.add(3).read();
+        idt.add(3).write(IdtEntry::interrupt_gate(
+            isr_breakpoint_test_stub as usize as u64,
+            original.selector,
+        ));
+        asm!("int3");
+        idt.add(3).write(original);
+        if saved_interrupts_enabled(flags) {
+            asm!("sti", options(nostack));
+        }
+    }
+    BREAKPOINT_TEST_COUNT.load(Ordering::SeqCst) == before.wrapping_add(1)
+        && BREAKPOINT_TEST_LAST_ERROR.load(Ordering::SeqCst) == 0
 }
 
 #[no_mangle]
