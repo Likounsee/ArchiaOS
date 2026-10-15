@@ -72,6 +72,83 @@ impl<T: ?Sized> SpinLock<T> {
 }
 
 
+/// FIFO ticket spin mutex for short critical sections that need bounded ordering
+/// between contenders. It provides inter-CPU mutual exclusion only; it does not
+/// disable local interrupts or park the current task.
+pub struct TicketLock<T: ?Sized> {
+    next_ticket: core::sync::atomic::AtomicUsize,
+    serving: core::sync::atomic::AtomicUsize,
+    value: UnsafeCell<T>,
+}
+
+// SAFETY: the ticket protocol grants exclusive access to T to one guard at a time.
+unsafe impl<T: ?Sized + Send> Send for TicketLock<T> {}
+// SAFETY: shared access is only exposed while the caller owns the serving ticket.
+unsafe impl<T: ?Sized + Send> Sync for TicketLock<T> {}
+
+impl<T> TicketLock<T> {
+    pub const fn new(value: T) -> Self {
+        Self {
+            next_ticket: core::sync::atomic::AtomicUsize::new(0),
+            serving: core::sync::atomic::AtomicUsize::new(0),
+            value: UnsafeCell::new(value),
+        }
+    }
+
+    pub fn into_inner(self) -> T {
+        self.value.into_inner()
+    }
+}
+
+impl<T: ?Sized> TicketLock<T> {
+    /// Acquire a monotonically ordered ticket and wait until it is served.
+    ///
+    /// Never sleep, block, or enter an interrupt handler that can preempt the
+    /// current owner while holding this lock. Ticket wraparound is safe as long
+    /// as fewer than usize::MAX tickets can be outstanding simultaneously.
+    pub fn lock(&self) -> TicketLockGuard<'_, T> {
+        let ticket = self.next_ticket.fetch_add(1, Ordering::Relaxed);
+        while self.serving.load(Ordering::Acquire) != ticket {
+            spin_loop();
+        }
+        TicketLockGuard { lock: self, ticket }
+    }
+
+    /// Whether a ticket is currently outstanding; diagnostic only.
+    pub fn is_locked(&self) -> bool {
+        self.next_ticket.load(Ordering::Relaxed)
+            != self.serving.load(Ordering::Relaxed)
+    }
+}
+
+/// RAII guard that advances the FIFO queue when the critical section ends.
+pub struct TicketLockGuard<'a, T: ?Sized> {
+    lock: &'a TicketLock<T>,
+    ticket: usize,
+}
+
+impl<T: ?Sized> Deref for TicketLockGuard<'_, T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        // SAFETY: this guard owns the currently served ticket.
+        unsafe { &*self.lock.value.get() }
+    }
+}
+
+impl<T: ?Sized> DerefMut for TicketLockGuard<'_, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        // SAFETY: this guard owns the currently served ticket.
+        unsafe { &mut *self.lock.value.get() }
+    }
+}
+
+impl<T: ?Sized> Drop for TicketLockGuard<'_, T> {
+    fn drop(&mut self) {
+        self.lock.serving.store(self.ticket.wrapping_add(1), Ordering::Release);
+    }
+}
+
 /// Monotonic notification sequence for wait protocols that must not lose a wakeup.
 ///
 /// A waiter snapshots `observe()` before checking its predicate. If the
@@ -224,7 +301,7 @@ impl<T: ?Sized> Drop for SpinLockGuard<'_, T> {
 
 #[cfg(test)]
 mod tests {
-    use super::{saved_if_was_enabled, EventSequence, SpinLock};
+    use super::{saved_if_was_enabled, EventSequence, SpinLock, TicketLock};
     use core::sync::atomic::Ordering;
     use std::sync::Arc;
     use std::thread;
@@ -351,6 +428,40 @@ mod tests {
         let lock = SpinLock::new(1usize);
         *lock.lock() += 41;
         assert_eq!(*lock.lock(), 42);
+    }
+
+    #[test]
+    fn ticket_lock_guard_releases_and_reports_idle_state() {
+        let lock = TicketLock::new(7usize);
+        assert!(!lock.is_locked());
+        {
+            let mut guard = lock.lock();
+            assert!(lock.is_locked());
+            *guard += 5;
+            assert_eq!(*guard, 12);
+        }
+        assert!(!lock.is_locked());
+        assert_eq!(*lock.lock(), 12);
+    }
+
+    #[test]
+    fn ticket_lock_serializes_concurrent_updates_under_contention() {
+        const THREADS: usize = 8;
+        const ITERATIONS: usize = 10_000;
+        let shared = Arc::new(TicketLock::new(0usize));
+        let workers: Vec<_> = (0..THREADS).map(|_| {
+            let shared = Arc::clone(&shared);
+            thread::spawn(move || {
+                for _ in 0..ITERATIONS {
+                    *shared.lock() += 1;
+                }
+            })
+        }).collect();
+        for worker in workers {
+            worker.join().expect("ticket-lock worker thread panicked");
+        }
+        assert_eq!(*shared.lock(), THREADS * ITERATIONS);
+        assert!(!shared.is_locked());
     }
 
     #[test]
