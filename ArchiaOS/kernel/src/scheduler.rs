@@ -6,6 +6,54 @@
 
 pub const MAX_TASKS: usize = 8;
 
+/// APIC timer ticks observed by the scheduler integration layer. The interrupt
+/// handler only records a deferred reschedule request; it never switches stacks
+/// from an IRQ frame, because the cooperative context format is not an IRQ frame.
+static SCHEDULER_TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
+static SCHEDULER_RESCHEDULE_PENDING: AtomicBool = AtomicBool::new(false);
+static SCHEDULER_TIMER_VECTOR: AtomicUsize = AtomicUsize::new(0);
+
+/// Register the scheduler's APIC timer callback before unmasking/arming the timer.
+/// The caller still owns timer calibration and periodic timer configuration.
+pub fn register_scheduler_timer_vector(vector: u8) -> Result<(), crate::apic::ApicError> {
+    crate::apic::validate_hardware_irq_vector(vector)?;
+    SCHEDULER_TIMER_VECTOR
+        .compare_exchange(0, usize::from(vector), Ordering::AcqRel, Ordering::Acquire)
+        .map_err(|_| crate::apic::ApicError::HandlerAlreadyRegistered)?;
+    if let Err(error) = crate::interrupts::register_apic_vector_handler(
+        vector,
+        scheduler_timer_interrupt_handler,
+    ) {
+        SCHEDULER_TIMER_VECTOR.store(0, Ordering::Release);
+        return Err(error);
+    }
+    Ok(())
+}
+
+/// Hard-IRQ callback: acknowledge work at the dispatcher level, count the tick,
+/// and request deferred scheduling. It deliberately does not call Scheduler or
+/// context::switch from the interrupt stack.
+extern "C" fn scheduler_timer_interrupt_handler(vector: u8) -> bool {
+    if SCHEDULER_TIMER_VECTOR.load(Ordering::Acquire) != usize::from(vector) {
+        return false;
+    }
+    SCHEDULER_TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
+    SCHEDULER_RESCHEDULE_PENDING.store(true, Ordering::Release);
+    true
+}
+
+/// Number of scheduler timer interrupts observed since boot.
+pub fn scheduler_timer_ticks() -> u64 {
+    SCHEDULER_TIMER_TICKS.load(Ordering::Acquire)
+}
+
+/// Consume the deferred reschedule request. A true result means the safe
+/// scheduler boundary must arrange a yield; it does not imply preemption ran.
+pub fn take_scheduler_reschedule_request() -> bool {
+    SCHEDULER_RESCHEDULE_PENDING.swap(false, Ordering::AcqRel)
+}
+
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TaskId(usize);
 
@@ -783,6 +831,31 @@ pub fn runtime_idle_wakeup_self_test() -> Result<(), SchedulerError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn timer_irq_records_tick_and_defers_rescheduling_out_of_interrupt_context() {
+        // This callback-level test intentionally does not register/unmask a
+        // hardware timer; it checks only the IRQ-to-deferred-work contract.
+        SCHEDULER_TIMER_VECTOR.store(0x41, Ordering::Release);
+        SCHEDULER_RESCHEDULE_PENDING.store(false, Ordering::Release);
+        let before = SCHEDULER_TIMER_TICKS.load(Ordering::Acquire);
+
+        assert!(!scheduler_timer_interrupt_handler(0x42));
+        assert_eq!(SCHEDULER_TIMER_TICKS.load(Ordering::Acquire), before);
+        assert!(!take_scheduler_reschedule_request());
+
+        assert!(scheduler_timer_interrupt_handler(0x41));
+        assert_eq!(scheduler_timer_ticks(), before.wrapping_add(1));
+        assert!(take_scheduler_reschedule_request());
+        assert!(!take_scheduler_reschedule_request());
+        assert!(scheduler_timer_interrupt_handler(0x41));
+        assert!(take_scheduler_reschedule_request());
+        assert_eq!(scheduler_timer_ticks(), before.wrapping_add(2));
+
+        // Leave the callback unconfigured so no unrelated test can observe a
+        // stale vector. No hardware handler was registered by this unit test.
+        SCHEDULER_TIMER_VECTOR.store(0, Ordering::Release);
+    }
 
     #[test]
     fn round_robin_block_wake_exit_and_capacity() {
