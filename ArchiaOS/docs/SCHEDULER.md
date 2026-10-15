@@ -61,3 +61,6 @@ La détection CPU déjà présente dans `kernel/src/cpu.rs` relève surtout l'id
 ## Découverte initiale de topologie CPU (P2)
 
 La fonction `cpu::detect_current_topology_entry()` interroge le CPU courant via CPUID `0x1F`, avec repli sur `0x0B`. Le décodeur pur construit les identifiants package/core à partir des niveaux SMT/core et rejette les niveaux incohérents. Cache, NUMA, classe performance/efficacité et capacité restent inconnus plutôt que d'être devinés. Cette API n'énumère pas les autres processeurs et n'active pas SMP ; l'étape suivante est le rapprochement prudent avec ACPI MADT et l'énumération AP.
+## Import de la liste CPU ACPI/MADT
+
+`scheduler_topology::from_madt_processors` convertit les enregistrements processeur MADT en instantané borné pour l'ordonnanceur. Il conserve les processeurs activés ou marqués « online-capable », refuse les doublons et les trous dans la tranche d'entrée, et laisse package/cœur/cache/NUMA/classe inconnus tant que l'identifiant CPUID correspondant n'a pas été rapproché. Cela prépare l'intégration sans démarrer de CPU secondaire ni activer SMP.

@@ -59,6 +59,7 @@ pub enum TopologyError {
     Full,
     DuplicateApicId,
     InvalidCapacity,
+    InvalidMadt,
 }
 
 /// Fixed-capacity topology snapshot. Entries are descriptive metadata only;
@@ -106,6 +107,26 @@ impl CpuTopology {
     pub fn iter(&self) -> impl Iterator<Item = &CpuTopologyEntry> {
         self.entries[..self.len].iter().flatten()
     }
+}
+
+/// Convert MADT processor records into a scheduler topology snapshot.
+/// Only enabled or online-capable processors are included; CPUID-derived
+/// package/core fields are intentionally not copied to CPUs whose identity
+/// has not been matched yet. Input records are validated before publication.
+pub fn from_madt_processors(
+    processors: &[Option<super::acpi_madt::Processor>],
+) -> Result<CpuTopology, TopologyError> {
+    if processors.len() > MAX_LOGICAL_CPUS { return Err(TopologyError::Full); }
+    let mut topology = CpuTopology::new();
+    for record in processors {
+        let Some(cpu) = record else { return Err(TopologyError::InvalidMadt); };
+        if !(cpu.enabled || cpu.online_capable) { continue; }
+        topology.insert(CpuTopologyEntry {
+            apic_id: cpu.apic_id, package_id: None, core_id: None,
+            cache_domain_id: None, numa_node: None, class: CpuClass::Unknown, capacity: None,
+        })?;
+    }
+    Ok(topology)
 }
 
 impl Default for CpuTopology {
@@ -202,6 +223,35 @@ mod tests {
         assert_eq!(topology.len(), 2);
         assert_eq!(topology.get_by_apic_id(1).unwrap().class, CpuClass::Performance);
         assert_eq!(topology.get_by_apic_id(9).unwrap().class, CpuClass::Efficiency);
+    }
+
+    #[test]
+    fn madt_conversion_keeps_only_enabled_processors_and_unknown_metadata() {
+        use super::super::acpi_madt::Processor;
+        let records = [
+            Some(Processor { acpi_uid: 0, apic_id: 0x1234, enabled: true, online_capable: false }),
+            Some(Processor { acpi_uid: 1, apic_id: 0x1235, enabled: false, online_capable: false }),
+            Some(Processor { acpi_uid: 2, apic_id: 0x1236, enabled: false, online_capable: true }),
+        ];
+        let topology = from_madt_processors(&records).unwrap();
+        assert_eq!(topology.len(), 2);
+        assert!(topology.get_by_apic_id(0x1234).is_some());
+        assert!(topology.get_by_apic_id(0x1235).is_none());
+        let online = topology.get_by_apic_id(0x1236).unwrap();
+        assert_eq!(online.package_id, None);
+        assert_eq!(online.class, CpuClass::Unknown);
+    }
+
+    #[test]
+    fn madt_conversion_rejects_duplicate_ids_and_holes() {
+        use super::super::acpi_madt::Processor;
+        let duplicate = [
+            Some(Processor { acpi_uid: 0, apic_id: 7, enabled: true, online_capable: false }),
+            Some(Processor { acpi_uid: 1, apic_id: 7, enabled: true, online_capable: false }),
+        ];
+        assert_eq!(from_madt_processors(&duplicate).err(), Some(TopologyError::DuplicateApicId));
+        let hole: [Option<Processor>; 1] = [None];
+        assert_eq!(from_madt_processors(&hole).err(), Some(TopologyError::InvalidMadt));
     }
 
     #[test]
