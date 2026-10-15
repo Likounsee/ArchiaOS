@@ -977,6 +977,20 @@ pub extern "C" fn rust_kernel_main(
         halt_forever();
     }
     let _ = writeln!(serial, "ArchiaOS: SSE4.1 optimized integer self-test passed");
+    // Report topology only when architectural CPUID topology leaves are available.
+    // Unknown cache/NUMA/class data stays unknown; this is not AP enumeration.
+    match cpu::detect_current_topology_entry() {
+        Some(topology) => {
+            let _ = writeln!(
+                serial,
+                "ArchiaOS: current CPU topology APIC={} package={:?} core={:?} cache=unknown numa=unknown class=unknown",
+                topology.apic_id, topology.package_id, topology.core_id
+            );
+        }
+        None => {
+            let _ = writeln!(serial, "ArchiaOS: current CPU topology unavailable (CPUID 0x1F/0x0B unsupported or invalid)");
+        }
+    }
     let vendor = cpu::printable_field(&cpu_info.vendor);
     let brand = cpu::printable_field(&cpu_info.brand);
     let _ = writeln!(serial, "ArchiaOS: CPU vendor: {}", vendor);
