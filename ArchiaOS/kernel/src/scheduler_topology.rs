@@ -6,6 +6,30 @@
 
 pub const MAX_LOGICAL_CPUS: usize = 256;
 
+/// One valid subleaf returned by CPUID leaf 0x1F or 0x0B.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CpuidTopologyLevel { pub shift: u8, pub logical_count: u16, pub level_type: u8, pub x2apic_id: u32 }
+
+/// Decode topology levels without executing CPUID, allowing synthetic tests.
+pub fn entry_from_cpuid_levels(levels: &[CpuidTopologyLevel]) -> Option<CpuTopologyEntry> {
+    let first = levels.iter().find(|l| l.logical_count != 0 && l.level_type != 0)?;
+    let apic_id = first.x2apic_id;
+    if levels.iter().any(|l| l.logical_count != 0 && l.level_type != 0 && l.x2apic_id != apic_id) { return None; }
+    let mut smt_shift = None;
+    let mut core_shift = None;
+    for level in levels.iter().filter(|l| l.logical_count != 0 && l.level_type != 0) {
+        if level.shift > 31 || level.shift < smt_shift.unwrap_or(0) { return None; }
+        match level.level_type { 1 => smt_shift = Some(level.shift), 2 => core_shift = Some(level.shift), _ => {} }
+    }
+    let (package_id, core_id) = if let Some(package_shift) = core_shift {
+        let smt = smt_shift.unwrap_or(0);
+        let width = package_shift.saturating_sub(smt);
+        let mask = if width == 32 { u32::MAX } else { (1u32 << width) - 1 };
+        (u16::try_from(apic_id >> package_shift).ok(), u16::try_from((apic_id >> smt) & mask).ok())
+    } else { (None, None) };
+    Some(CpuTopologyEntry { apic_id, package_id, core_id, cache_domain_id: None, numa_node: None, class: CpuClass::Unknown, capacity: None })
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CpuClass {
     /// The hardware did not expose a reliable class.
@@ -104,6 +128,30 @@ mod tests {
             class: CpuClass::Unknown,
             capacity: None,
         }
+    }
+
+    #[test]
+    fn cpuid_levels_decode_smt_core_and_package_ids() {
+        let levels = [
+            CpuidTopologyLevel { shift: 1, logical_count: 2, level_type: 1, x2apic_id: 0x2d },
+            CpuidTopologyLevel { shift: 4, logical_count: 16, level_type: 2, x2apic_id: 0x2d },
+        ];
+        let cpu = entry_from_cpuid_levels(&levels).unwrap();
+        assert_eq!(cpu.apic_id, 0x2d);
+        assert_eq!(cpu.package_id, Some(2));
+        assert_eq!(cpu.core_id, Some(6));
+        assert_eq!(cpu.class, CpuClass::Unknown);
+        assert_eq!(cpu.cache_domain_id, None);
+    }
+
+    #[test]
+    fn cpuid_levels_reject_inconsistent_ids_and_empty_levels() {
+        assert_eq!(entry_from_cpuid_levels(&[]), None);
+        let levels = [
+            CpuidTopologyLevel { shift: 1, logical_count: 2, level_type: 1, x2apic_id: 1 },
+            CpuidTopologyLevel { shift: 4, logical_count: 8, level_type: 2, x2apic_id: 2 },
+        ];
+        assert_eq!(entry_from_cpuid_levels(&levels), None);
     }
 
     #[test]
