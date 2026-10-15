@@ -6,7 +6,6 @@
 
 use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
-
 pub const MAX_TASKS: usize = 8;
 
 /// APIC timer ticks observed by the scheduler integration layer. The interrupt
@@ -68,6 +67,24 @@ extern "C" fn scheduler_timer_interrupt_handler(vector: u8) -> bool {
     SCHEDULER_TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
     SCHEDULER_RESCHEDULE_PENDING.store(true, Ordering::Release);
     true
+}
+
+/// Read-only diagnostic snapshot of the scheduler timer integration.
+/// Several ticks may coalesce into one deferred action; the tick counter remains exact.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SchedulerTimerSnapshot {
+    pub ticks: u64,
+    pub reschedule_pending: bool,
+    pub vector: Option<u8>,
+}
+
+pub fn scheduler_timer_snapshot() -> SchedulerTimerSnapshot {
+    let vector = SCHEDULER_TIMER_VECTOR.load(Ordering::Acquire);
+    SchedulerTimerSnapshot {
+        ticks: SCHEDULER_TIMER_TICKS.load(Ordering::Acquire),
+        reschedule_pending: SCHEDULER_RESCHEDULE_PENDING.load(Ordering::Acquire),
+        vector: u8::try_from(vector).ok().filter(|value| *value != 0),
+    }
 }
 
 /// Number of scheduler timer interrupts observed since boot.
@@ -873,12 +890,20 @@ mod tests {
         assert!(!take_scheduler_reschedule_request());
 
         assert!(scheduler_timer_interrupt_handler(0x41));
-        assert_eq!(scheduler_timer_ticks(), before.wrapping_add(1));
+        assert!(scheduler_timer_interrupt_handler(0x41));
+        assert_eq!(scheduler_timer_ticks(), before.wrapping_add(2));
+        assert_eq!(
+            scheduler_timer_snapshot(),
+            SchedulerTimerSnapshot {
+                ticks: before.wrapping_add(2),
+                reschedule_pending: true,
+                vector: Some(0x41),
+            }
+        );
+        // Multiple ticks coalesce into one deferred request, not lost ticks.
         assert!(take_scheduler_reschedule_request());
         assert!(!take_scheduler_reschedule_request());
-        assert!(scheduler_timer_interrupt_handler(0x41));
-        assert!(take_scheduler_reschedule_request());
-        assert_eq!(scheduler_timer_ticks(), before.wrapping_add(2));
+        assert!(!scheduler_timer_snapshot().reschedule_pending);
 
         // Leave the callback unconfigured so no unrelated test can observe a
         // stale vector. No hardware handler was registered by this unit test.
