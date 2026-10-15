@@ -130,6 +130,47 @@ impl CpuTopology {
     }
 }
 
+
+/// Hints for a future scheduler placement decision. Affinity, when supplied,
+/// is strict; all other hints are preferences and never make unknown metadata
+/// look known. This selector is pure policy and does not dispatch a task.
+#[derive(Clone, Copy, Debug)]
+pub struct CpuPlacementHint<'a> {
+    pub allowed_apic_ids: Option<&'a [u32]>,
+    pub preferred_class: Option<CpuClass>,
+    pub preferred_cache_domain: Option<u16>,
+}
+
+/// Select a deterministic candidate using affinity first, then cache locality,
+/// requested CPU class, and known capacity. Unknown metadata remains eligible
+/// as a fallback; ties keep firmware enumeration order.
+pub fn select_cpu<'a>(
+    topology: &'a CpuTopology,
+    hint: CpuPlacementHint<'_>,
+) -> Option<&'a CpuTopologyEntry> {
+    let mut best: Option<(&CpuTopologyEntry, (u8, u8, u8))> = None;
+    for entry in topology.iter() {
+        if let Some(allowed) = hint.allowed_apic_ids {
+            if !allowed.contains(&entry.apic_id) {
+                continue;
+            }
+        }
+        let cache_match = match (hint.preferred_cache_domain, entry.cache_domain_id) {
+            (Some(wanted), Some(actual)) if wanted == actual => 1,
+            _ => 0,
+        };
+        let class_match = match (hint.preferred_class, entry.class) {
+            (Some(wanted), actual) if wanted == actual => 1,
+            _ => 0,
+        };
+        let score = (cache_match, class_match, entry.capacity.unwrap_or(0));
+        if best.map_or(true, |(_, best_score)| score > best_score) {
+            best = Some((entry, score));
+        }
+    }
+    best.map(|(entry, _)| entry)
+}
+
 /// Convert MADT processor records into a scheduler topology snapshot.
 /// Only enabled or online-capable processors are included; CPUID-derived
 /// package/core fields are intentionally not copied to CPUs whose identity
@@ -301,6 +342,52 @@ mod tests {
         invalid.capacity = Some(0);
         assert_eq!(topology.merge_cpuid_entry(invalid), Err(TopologyError::InvalidCapacity));
         assert_eq!(topology.len(), 1);
+    }
+
+    #[test]
+    fn placement_respects_strict_affinity_then_uses_preferences_with_fallback() {
+        let mut topology = CpuTopology::new();
+        let mut efficient = entry(2);
+        efficient.class = CpuClass::Efficiency;
+        efficient.capacity = Some(120);
+        efficient.cache_domain_id = Some(1);
+        topology.insert(efficient).unwrap();
+
+        let mut performance = entry(4);
+        performance.class = CpuClass::Performance;
+        performance.capacity = Some(230);
+        performance.cache_domain_id = Some(2);
+        topology.insert(performance).unwrap();
+
+        let mut unknown = entry(6);
+        topology.insert(unknown).unwrap();
+
+        let preferred = select_cpu(&topology, CpuPlacementHint {
+            allowed_apic_ids: None,
+            preferred_class: Some(CpuClass::Performance),
+            preferred_cache_domain: None,
+        }).unwrap();
+        assert_eq!(preferred.apic_id, 4);
+
+        let local = select_cpu(&topology, CpuPlacementHint {
+            allowed_apic_ids: None,
+            preferred_class: Some(CpuClass::Performance),
+            preferred_cache_domain: Some(1),
+        }).unwrap();
+        assert_eq!(local.apic_id, 2, "cache locality is ranked before class");
+
+        let strict = select_cpu(&topology, CpuPlacementHint {
+            allowed_apic_ids: Some(&[6]),
+            preferred_class: Some(CpuClass::Performance),
+            preferred_cache_domain: Some(2),
+        }).unwrap();
+        assert_eq!(strict.apic_id, 6, "unknown metadata remains eligible under affinity");
+
+        assert!(select_cpu(&topology, CpuPlacementHint {
+            allowed_apic_ids: Some(&[99]),
+            preferred_class: None,
+            preferred_cache_domain: None,
+        }).is_none());
     }
 
     #[test]

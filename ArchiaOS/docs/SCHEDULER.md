@@ -80,3 +80,15 @@ L'instantané est pour le moment local au bloc d'initialisation et sert à la va
 et au diagnostic série. Il n'est pas publié comme état global de l'ordonnanceur :
 aucun AP n'est démarré, aucune affinité n'est appliquée et aucune préemption SMP n'est
 activée par cette étape.
+
+
+## Politique de placement (socle P2)
+
+Le module de topologie expose maintenant un sélecteur déterministe de candidat :
+l'affinité explicite est stricte ; à l'intérieur de cet ensemble, le domaine cache
+préféré, la classe CPU demandée et la capacité connue départagent les candidats.
+Les données inconnues restent admissibles comme repli et ne sont jamais devinées.
+À égalité, l'ordre MADT est conservé.
+
+Cette fonction est pour l'instant une politique pure testable, pas encore raccordée
+au dispatch des tâches. Elle ne constitue ni un équilibrage de charge ni du SMP.
