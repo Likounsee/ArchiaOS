@@ -357,8 +357,8 @@ impl FramebufferConsole {
 
     fn flush_line(&mut self) {
         let (prefix, color): (&[u8], u32) =
-            if self.line_contains(b"FAILED")
-                || self.line_contains(b"failed")
+            if self.line_contains(b"failed")
+                || self.line_contains(b"failure")
                 || self.line_contains(b"invalid")
                 || self.line_contains(b"unavailable")
                 || self.line_contains(b"unsupported")
@@ -366,10 +366,14 @@ impl FramebufferConsole {
                 || self.line_contains(b"not validated")
                 || self.line_contains(b"not installed")
                 || self.line_contains(b"not available")
+                || self.line_contains(b"not supported")
+                || self.line_contains(b"missing")
+                || self.line_contains(b"cannot")
+                || self.line_contains(b"unable to")
+                || self.line_contains(b"could not")
                 || self.line_contains(b"rejected")
                 || self.line_contains(b"refusing")
-                || self.line_contains(b"ERROR")
-                || self.line_contains(b"Error")
+                || self.line_contains(b"error")
             {
                 (b"[FAIL] ", 0x00ff7777)
             } else if self.line_contains(b"passed")
