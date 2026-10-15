@@ -263,9 +263,21 @@ def main() -> None:
         fail("#BP test stub is missing normalized frame, aligned dispatch, stack restoration, or IRETQ")
     if breakpoint_positions != sorted(breakpoint_positions):
         fail("#BP test stub instruction order violates its normalized-frame contract")
-    for register in ("rax", "rcx", "rdx", "rbx", "rbp", "rsi", "rdi", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"):
-        if f'"pushq %{register}",' not in breakpoint_body or f'"popq %{register}",' not in breakpoint_body:
-            fail(f"#BP test stub must preserve %{register}")
+    registers = ("rax", "rcx", "rdx", "rbx", "rbp", "rsi", "rdi", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15")
+    push_positions = [breakpoint_body.find(f'"pushq %{register}",') for register in registers]
+    pop_positions = [breakpoint_body.find(f'"popq %{register}",') for register in reversed(registers)]
+    if any(position < 0 for position in push_positions + pop_positions):
+        fail("#BP test stub must preserve every general-purpose register")
+    if push_positions != sorted(push_positions):
+        fail("#BP test stub GPR pushes are not in the expected frame order")
+    if pop_positions != sorted(pop_positions):
+        fail("#BP test stub GPR pops do not reverse the save order")
+    cleanup_position = breakpoint_body.find('"addq $16, %rsp",')
+    iret_position = breakpoint_body.find('"iretq",')
+    if cleanup_position < 0 or iret_position < 0 or cleanup_position > iret_position:
+        fail("#BP test stub must remove vector/error words before IRETQ")
+    if '"sti"' in breakpoint_body:
+        fail("#BP test stub must let IRETQ restore the saved interrupt state")
     for assertion in (
         "BREAKPOINT_TEST_LAST_ERROR.load(Ordering::SeqCst) == 0",
         "BREAKPOINT_TEST_LAST_RIP.load(Ordering::SeqCst) != 0",
