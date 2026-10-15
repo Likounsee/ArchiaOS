@@ -294,7 +294,7 @@ impl LocalApic {
         initial_count: u32,
     ) -> Result<(), ApicError> {
         if initial_count == 0 {
-            return Err(ApicError::InvalidDivide);
+            return Err(ApicError::InvalidTimerCount);
         }
         // Validate before touching registers, and keep the timer masked while
         // programming the divisor and initial count. Unmask only as final write.
@@ -756,6 +756,10 @@ mod tests {
         // SAFETY: only ordinary memory is touched by this mock-register test.
         assert_eq!(
             unsafe { apic.start_timer_periodic(0x41, 16, 0) },
+            Err(ApicError::InvalidTimerCount)
+        );
+        assert_eq!(
+            unsafe { apic.start_timer_one_shot(0x41, 16, 0) },
             Err(ApicError::InvalidTimerCount)
         );
         assert_eq!(
