@@ -225,6 +225,7 @@ impl<T: ?Sized> Drop for SpinLockGuard<'_, T> {
 #[cfg(test)]
 mod tests {
     use super::{saved_if_was_enabled, EventSequence, SpinLock};
+    use core::sync::atomic::Ordering;
     use std::sync::Arc;
     use std::thread;
 
