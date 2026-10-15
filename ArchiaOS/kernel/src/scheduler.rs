@@ -325,6 +325,23 @@ impl Scheduler {
         Ok(())
     }
 
+    /// Wake every blocked task, as required by broadcast-style notifications.
+    ///
+    /// This mutates only the scheduler state model. Callers must still arrange
+    /// a safe dispatch/context handoff, and must serialize access to Scheduler.
+    /// Returns the number of tasks transitioned from Blocked to Runnable.
+    pub fn wake_all_blocked(&mut self) -> Result<usize, SchedulerError> {
+        self.check_invariants()?;
+        let mut awakened = 0;
+        for task in &mut self.tasks {
+            if task.state == TaskState::Blocked {
+                task.state = TaskState::Runnable;
+                awakened += 1;
+            }
+        }
+        Ok(awakened)
+    }
+
     pub fn exit_current(&mut self) -> Result<TaskId, SchedulerError> {
         self.check_invariants()?;
         let previous = self.current.ok_or(SchedulerError::NoCurrentTask)?;
@@ -1338,6 +1355,47 @@ mod tests {
         assert_eq!(scheduler.create_task(), Err(SchedulerError::NoTaskSlot));
         assert_eq!(scheduler.state(ids[0]), Ok(TaskState::Exited));
         assert_eq!(scheduler.state(ids[MAX_TASKS - 1]), Ok(TaskState::Runnable));
+        assert_eq!(scheduler.check_invariants(), Ok(()));
+    }
+
+    #[test]
+    fn broadcast_wakeup_only_transitions_blocked_tasks_and_reports_count() {
+        let mut scheduler = Scheduler::new();
+        let first = scheduler.create_task().unwrap();
+        let second = scheduler.create_task().unwrap();
+        let third = scheduler.create_task().unwrap();
+
+        assert_eq!(scheduler.schedule(), Ok(first));
+        assert_eq!(scheduler.block_current(), Ok(second));
+        assert_eq!(scheduler.block_current(), Ok(third));
+        assert_eq!(scheduler.block_current(), Err(SchedulerError::NoRunnableTask));
+        assert_eq!(scheduler.idle_reason(), Ok(Some(IdleReason::WaitingForWakeup)));
+
+        assert_eq!(scheduler.wake_all_blocked(), Ok(3));
+        assert_eq!(scheduler.state(first), Ok(TaskState::Runnable));
+        assert_eq!(scheduler.state(second), Ok(TaskState::Runnable));
+        assert_eq!(scheduler.state(third), Ok(TaskState::Runnable));
+        assert_eq!(scheduler.wake_all_blocked(), Ok(0));
+        assert_eq!(scheduler.dispatch_or_idle(), Ok(DispatchDecision::Run(first)));
+        assert_eq!(scheduler.check_invariants(), Ok(()));
+    }
+
+    #[test]
+    fn broadcast_wakeup_preserves_running_and_exited_tasks() {
+        let mut scheduler = Scheduler::new();
+        let running = scheduler.create_task().unwrap();
+        let blocked = scheduler.create_task().unwrap();
+        let exited = scheduler.create_task().unwrap();
+
+        assert_eq!(scheduler.schedule(), Ok(running));
+        assert_eq!(scheduler.block_current(), Ok(blocked));
+        assert_eq!(scheduler.exit_current(), Ok(exited));
+        assert_eq!(scheduler.state(running), Ok(TaskState::Blocked));
+        assert_eq!(scheduler.state(blocked), Ok(TaskState::Exited));
+        assert_eq!(scheduler.wake_all_blocked(), Ok(1));
+        assert_eq!(scheduler.state(running), Ok(TaskState::Runnable));
+        assert_eq!(scheduler.state(blocked), Ok(TaskState::Exited));
+        assert_eq!(scheduler.state(exited), Ok(TaskState::Running));
         assert_eq!(scheduler.check_invariants(), Ok(()));
     }
 

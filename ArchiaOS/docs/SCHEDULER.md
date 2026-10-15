@@ -99,3 +99,13 @@ au dispatch des tâches. Elle ne constitue ni un équilibrage de charge ni du SM
 ### Erreurs explicites de placement
 
 `try_select_cpu` distingue maintenant l'absence de CPU confirmé en ligne de l'absence de CPU satisfaisant l'affinité stricte. L'appelant peut ainsi différencier un problème de démarrage CPU d'une contrainte de tâche impossible, sans deviner à partir d'un simple `None`. `select_cpu` reste disponible comme raccourci optionnel. Des tests vérifient les deux erreurs. Cette API reste une politique pure : aucun dispatch ni SMP n'est activé.
+
+
+## Réveil broadcast du scheduler
+
+Le modèle expose `wake_all_blocked()` pour les notifications broadcast : l'appel
+réveille tous les slots actuellement `Blocked`, retourne le nombre de transitions
+effectuées et laisse intacts les états `Runnable`, `Running`, `Exited` et
+`Empty`. La méthode valide les invariants avant mutation. Elle ne remplace pas
+une file d'attente de synchronisation ni le protocole atomique de mise en sommeil ;
+l'appelant doit encore sérialiser l'accès au scheduler et gérer le dispatch sûr.
