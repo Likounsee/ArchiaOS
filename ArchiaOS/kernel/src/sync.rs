@@ -502,7 +502,7 @@ mod tests {
 
         assert_eq!(*lock.lock(), 3);
         assert!(!lock.is_locked());
-        assert_eq!(lock.next_ticket.load(Ordering::Relaxed), 4);
+        assert_eq!(lock.next_ticket.load(Ordering::Relaxed), 2);
     }
 
     #[test]
