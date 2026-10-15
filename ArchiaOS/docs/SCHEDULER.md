@@ -109,3 +109,8 @@ effectuées et laisse intacts les états `Runnable`, `Running`, `Exited` et
 `Empty`. La méthode valide les invariants avant mutation. Elle ne remplace pas
 une file d'attente de synchronisation ni le protocole atomique de mise en sommeil ;
 l'appelant doit encore sérialiser l'accès au scheduler et gérer le dispatch sûr.
+
+
+## Réveil ciblé et transactionnel
+
+wake_many_blocked(ids) complète le réveil broadcast pour les files d'attente liées à un événement précis. La méthode vérifie d'abord tous les identifiants et leur état Blocked, puis effectue les transitions ; une entrée invalide ne produit donc aucun réveil partiel. Les identifiants répétés ne sont comptés qu'une fois. La sérialisation du scheduler et le protocole atomique park/wake restent à la charge de l'intégration : cette méthode seule ne garantit pas l'absence de réveil perdu entre le test du prédicat et le blocage.

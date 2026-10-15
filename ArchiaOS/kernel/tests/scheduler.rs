@@ -225,3 +225,48 @@ fn idle_dispatch_is_stable_until_a_blocked_task_is_woken() {
     assert_eq!(scheduler.current(), Some(first));
     assert_eq!(scheduler.check_invariants(), Ok(()));
 }
+
+
+#[test]
+fn selected_wakeup_is_transactional_and_does_not_wake_unrelated_tasks() {
+    let mut scheduler = Scheduler::new();
+    let first = scheduler.create_task().expect("first task");
+    let second = scheduler.create_task().expect("second task");
+    let third = scheduler.create_task().expect("third task");
+    let fourth = scheduler.create_task().expect("fourth task");
+
+    assert_eq!(scheduler.schedule(), Ok(first));
+    assert_eq!(scheduler.block_current(), Ok(second));
+    assert_eq!(scheduler.block_current(), Ok(third));
+    assert_eq!(scheduler.block_current(), Ok(fourth));
+    assert_eq!(scheduler.block_current(), Err(SchedulerError::NoRunnableTask));
+
+    assert_eq!(scheduler.wake_many_blocked(&[first, second]), Err(SchedulerError::TaskNotBlocked));
+    assert_eq!(scheduler.state(first), Ok(TaskState::Blocked));
+    assert_eq!(scheduler.state(second), Ok(TaskState::Blocked));
+    assert_eq!(scheduler.state(third), Ok(TaskState::Blocked));
+    assert_eq!(scheduler.state(fourth), Ok(TaskState::Blocked));
+
+    assert_eq!(scheduler.wake_many_blocked(&[second, fourth, second]), Ok(2));
+    assert_eq!(scheduler.state(second), Ok(TaskState::Runnable));
+    assert_eq!(scheduler.state(fourth), Ok(TaskState::Runnable));
+    assert_eq!(scheduler.state(third), Ok(TaskState::Blocked));
+    assert_eq!(scheduler.state(first), Ok(TaskState::Blocked));
+    assert_eq!(scheduler.check_invariants(), Ok(()));
+}
+
+#[test]
+fn selected_wakeup_rejects_invalid_task_id_without_partial_mutation() {
+    let mut scheduler = Scheduler::new();
+    let first = scheduler.create_task().expect("first task");
+    let second = scheduler.create_task().expect("second task");
+    assert_eq!(scheduler.schedule(), Ok(first));
+    assert_eq!(scheduler.block_current(), Ok(second));
+    assert_eq!(scheduler.block_current(), Err(SchedulerError::NoRunnableTask));
+
+    let invalid = scheduler::TaskId(usize::MAX);
+    assert_eq!(scheduler.wake_many_blocked(&[first, invalid]), Err(SchedulerError::InvalidTask));
+    assert_eq!(scheduler.state(first), Ok(TaskState::Blocked));
+    assert_eq!(scheduler.state(second), Ok(TaskState::Blocked));
+    assert_eq!(scheduler.check_invariants(), Ok(()));
+}

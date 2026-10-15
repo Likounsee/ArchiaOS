@@ -342,6 +342,33 @@ impl Scheduler {
         Ok(awakened)
     }
 
+    /// Wake a selected set of blocked tasks as one validated state transition.
+    ///
+    /// This is useful for event-specific wait queues: unlike wake_all_blocked,
+    /// it does not wake tasks waiting for unrelated events. All IDs and states
+    /// are validated before any mutation, so an invalid member cannot leave a
+    /// partially awakened set. Repeated IDs are harmless and counted once.
+    /// Access to the scheduler must still be serialized by the caller.
+    pub fn wake_many_blocked(&mut self, ids: &[TaskId]) -> Result<usize, SchedulerError> {
+        self.check_invariants()?;
+        for id in ids {
+            let task = self.tasks.get(id.0).ok_or(SchedulerError::InvalidTask)?;
+            if task.state != TaskState::Blocked {
+                return Err(SchedulerError::TaskNotBlocked);
+            }
+        }
+
+        let mut awakened = 0;
+        for id in ids {
+            let task = &mut self.tasks[id.0];
+            if task.state == TaskState::Blocked {
+                task.state = TaskState::Runnable;
+                awakened += 1;
+            }
+        }
+        Ok(awakened)
+    }
+
     pub fn exit_current(&mut self) -> Result<TaskId, SchedulerError> {
         self.check_invariants()?;
         let previous = self.current.ok_or(SchedulerError::NoCurrentTask)?;
