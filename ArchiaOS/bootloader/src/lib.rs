@@ -1512,7 +1512,11 @@ mod tests {
 
         let mut info = valid_boot_info();
         info.framebuffer_base = 0x8000_0000;
-        info.framebuffer_size = 0x1000;
+        info.framebuffer_width = 640;
+        info.framebuffer_height = 480;
+        info.framebuffer_stride = 640;
+        info.framebuffer_pixel_format = 0;
+        info.framebuffer_size = 640 * 480 * 4;
         assert_eq!(validate_header(&info), Ok(()));
     }
 
@@ -1648,7 +1652,8 @@ mod tests {
 
     #[test]
     fn boot_info_layout_is_stable() {
-        assert_eq!(core::mem::size_of::<super::bootinfo::BootInfo>(), 88);
+        // Version 2 adds four u32 GOP geometry/format fields to the v1 ABI.
+        assert_eq!(core::mem::size_of::<super::bootinfo::BootInfo>(), 104);
     }
 
     #[test]
