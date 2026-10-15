@@ -107,6 +107,27 @@ pub mod bootinfo {
         {
             return Err(BootInfoError::InvalidFramebufferRange);
         }
+        let geometry_is_zero = info.framebuffer_width == 0
+            && info.framebuffer_height == 0
+            && info.framebuffer_stride == 0
+            && info.framebuffer_pixel_format == 0;
+        if info.framebuffer_base == 0 {
+            if !geometry_is_zero {
+                return Err(BootInfoError::InvalidFramebufferRange);
+            }
+        } else {
+            let required_pixels = u64::from(info.framebuffer_stride)
+                .checked_mul(u64::from(info.framebuffer_height));
+            let required_bytes = required_pixels.and_then(|pixels| pixels.checked_mul(4));
+            if info.framebuffer_width == 0
+                || info.framebuffer_height == 0
+                || info.framebuffer_stride < info.framebuffer_width
+                || info.framebuffer_pixel_format > 2
+                || required_bytes.map_or(true, |bytes| bytes > info.framebuffer_size)
+            {
+                return Err(BootInfoError::InvalidFramebufferRange);
+            }
+        }
         Ok(())
     }
 }
