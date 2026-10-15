@@ -64,3 +64,6 @@ La fonction `cpu::detect_current_topology_entry()` interroge le CPU courant via 
 ## Import de la liste CPU ACPI/MADT
 
 `scheduler_topology::from_madt_processors` convertit les enregistrements processeur MADT en instantané borné pour l'ordonnanceur. Il conserve les processeurs activés ou marqués « online-capable », refuse les doublons et les trous dans la tranche d'entrée, et laisse package/cœur/cache/NUMA/classe inconnus tant que l'identifiant CPUID correspondant n'a pas été rapproché. Cela prépare l'intégration sans démarrer de CPU secondaire ni activer SMP.
+## Rapprochement CPUID ↔ MADT
+
+`CpuTopology::merge_cpuid_entry` enrichit un processeur déjà présent dans la liste ACPI en utilisant son identifiant APIC comme clé. Une découverte CPUID dont l'identifiant n'existe pas dans MADT est rejetée : elle ne peut donc pas ajouter implicitement un CPU non annoncé par le firmware. Les métadonnées inconnues restent inconnues ; cette opération ne démarre pas de processeur secondaire et n'active pas le SMP.

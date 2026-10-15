@@ -500,7 +500,7 @@ Grille A0–A4 : A0 entrée (10 %), A1 transfert UEFI (20 %), A2 mémoire/MMU (2
 - [x] Ajouter au runtime de test un vrai blocage d'A, un réveil d'A par B, la reprise sur la pile/context d'origine et la terminaison des deux tâches.
 - [x] Exiger un marqueur de réussite distinct dans le journal UEFI/CI.
 - [x] Vérifier que la CI hôte et QEMU passent sur le SHA exact (`e73bc1e`, run 38695471107 réussi). P2 reste à 34 % tant que les critères de timer/préemption, synchronisation multi-cœur et infrastructure CPU restants ne sont pas implémentés.
-- [ ] Étendre ensuite les tests de transitions (toutes les erreurs sans mutation involontaire, réveils répétés, blocage quand aucune tâche n'est runnable).\n- [x] Ajouter un modèle de topologie borné et un décodeur CPUID testable pour les niveaux SMT/core.\n- [x] Convertir les enregistrements processeur MADT vers l'instantané topologie borné, avec filtrage enabled/online-capable et tests de doublons/trous.\n- [ ] Rapprocher les identifiants CPUID du BSP et ceux de MADT ; les AP et le placement restent à faire.
+- [ ] Étendre ensuite les tests de transitions (toutes les erreurs sans mutation involontaire, réveils répétés, blocage quand aucune tâche n'est runnable).\n- [x] Ajouter un modèle de topologie borné et un décodeur CPUID testable pour les niveaux SMT/core.\n- [x] Convertir les enregistrements processeur MADT vers l'instantané topologie borné, avec filtrage enabled/online-capable et tests de doublons/trous.\n- [x] Ajouter le mécanisme sûr de rapprochement CPUID/MADT par identifiant APIC, sans ajout de CPU absent du firmware.\n- [ ] Intégrer ce rapprochement au démarrage puis concevoir le placement multi-cœur ; les AP et le SMP restent inactifs.
 
 ### Étapes P2 suivantes — après validation du lot courant
 
