@@ -214,6 +214,177 @@ global_asm!(
 );
 
 const COM1: u16 = 0x3F8;
+
+// Minimal 5x7 text console for early boot. The GOP mode geometry comes from BootInfo v2;
+// no resolution or scan-line stride is guessed. The font is intentionally uppercase-only
+// so the implementation stays small and has no external font dependency.
+struct FramebufferConsole {
+    pixels: *mut u32,
+    width: usize,
+    height: usize,
+    stride: usize,
+    pixel_format: u32,
+    x: usize,
+    y: usize,
+}
+static mut FRAMEBUFFER_CONSOLE: Option<FramebufferConsole> = None;
+
+impl FramebufferConsole {
+    fn initialize(info: &archiaos_bootloader::bootinfo::BootInfo) -> bool {
+        if info.framebuffer_base == 0
+            || info.framebuffer_width == 0
+            || info.framebuffer_height == 0
+            || info.framebuffer_stride < info.framebuffer_width
+            || info.framebuffer_pixel_format > 1
+        {
+            return false;
+        }
+        let Some(required_pixels) = (info.framebuffer_stride as u64)
+            .checked_mul(info.framebuffer_height as u64) else { return false; };
+        let Some(required_bytes) = required_pixels.checked_mul(4) else { return false; };
+        if required_bytes > info.framebuffer_size || info.framebuffer_base % 4 != 0 {
+            return false;
+        }
+        let Some(end) = info.framebuffer_base.checked_add(required_bytes) else { return false; };
+        if end > (1u64 << 39) { return false; }
+        let mut console = Self {
+            pixels: info.framebuffer_base as *mut u32,
+            width: info.framebuffer_width as usize,
+            height: info.framebuffer_height as usize,
+            stride: info.framebuffer_stride as usize,
+            pixel_format: info.framebuffer_pixel_format,
+            x: 8,
+            y: 8,
+        };
+        console.clear();
+        console.write_text("ARCHIAOS KERNEL STARTING...\n");
+        // SAFETY: early boot is single-threaded and the framebuffer range was validated above.
+        unsafe { FRAMEBUFFER_CONSOLE = Some(console); }
+        true
+    }
+
+    fn color(&self, rgb: u32) -> u32 {
+        // The green component is in the same byte in both supported GOP layouts.
+        if self.pixel_format == 0 {
+            ((rgb & 0x000000ff) << 16) | (rgb & 0x0000ff00) | ((rgb & 0x00ff0000) >> 16)
+        } else {
+            rgb
+        }
+    }
+
+    fn clear(&mut self) {
+        let total = self.stride.saturating_mul(self.height);
+        for i in 0..total {
+            // SAFETY: total is bounded by the checked GOP stride * height range.
+            unsafe { ptr::write_volatile(self.pixels.add(i), 0x00000000); }
+        }
+    }
+
+    fn pixel(&mut self, x: usize, y: usize, color: u32) {
+        if x >= self.width || y >= self.height { return; }
+        let Some(index) = y.checked_mul(self.stride).and_then(|v| v.checked_add(x)) else { return; };
+        // SAFETY: x/y are inside visible resolution and index is inside validated stride * height.
+        unsafe { ptr::write_volatile(self.pixels.add(index), self.color(color)); }
+    }
+
+    fn scroll(&mut self) {
+        const CELL_H: usize = 9;
+        if self.height <= CELL_H {
+            self.clear();
+            self.y = 0;
+            return;
+        }
+        let rows = self.height - CELL_H;
+        for y in 0..rows {
+            for x in 0..self.width {
+                let src = y.saturating_add(CELL_H).saturating_mul(self.stride).saturating_add(x);
+                let dst = y.saturating_mul(self.stride).saturating_add(x);
+                // SAFETY: source and destination stay within the validated framebuffer.
+                let value = unsafe { ptr::read_volatile(self.pixels.add(src)) };
+                unsafe { ptr::write_volatile(self.pixels.add(dst), value); }
+            }
+        }
+        for y in rows..self.height {
+            for x in 0..self.width {
+                let index = y.saturating_mul(self.stride).saturating_add(x);
+                unsafe { ptr::write_volatile(self.pixels.add(index), 0); }
+            }
+        }
+        self.y = rows;
+    }
+
+    fn newline(&mut self) {
+        self.x = 8;
+        self.y = self.y.saturating_add(9);
+        if self.y.saturating_add(7) >= self.height { self.scroll(); }
+    }
+
+    fn write_byte(&mut self, byte: u8) {
+        if byte == b'\r' { return; }
+        if byte == b'\n' { self.newline(); return; }
+        if byte == b'\t' {
+            self.x = self.x.saturating_add(24);
+            if self.x.saturating_add(5) >= self.width { self.newline(); }
+            return;
+        }
+        if self.x.saturating_add(5) >= self.width { self.newline(); }
+        let glyph = glyph5x7(byte);
+        let color = if byte == b'!' || byte == b'?' { 0x00ffcc55 } else { 0x00b7f7c2 };
+        for (gx, column) in glyph.iter().enumerate() {
+            for gy in 0..7 {
+                if (column >> gy) & 1 != 0 {
+                    self.pixel(self.x + gx, self.y + gy, color);
+                }
+            }
+        }
+        self.x = self.x.saturating_add(6);
+    }
+}
+
+fn glyph5x7(byte: u8) -> [u8; 5] {
+    match byte.to_ascii_uppercase() {
+        b'A' => [0x7e,0x11,0x11,0x11,0x7e], b'B' => [0x7f,0x49,0x49,0x49,0x36],
+        b'C' => [0x3e,0x41,0x41,0x41,0x22], b'D' => [0x7f,0x41,0x41,0x22,0x1c],
+        b'E' => [0x7f,0x49,0x49,0x49,0x41], b'F' => [0x7f,0x09,0x09,0x09,0x01],
+        b'G' => [0x3e,0x41,0x49,0x49,0x7a], b'H' => [0x7f,0x08,0x08,0x08,0x7f],
+        b'I' => [0x00,0x41,0x7f,0x41,0x00], b'J' => [0x20,0x40,0x41,0x3f,0x01],
+        b'K' => [0x7f,0x08,0x14,0x22,0x41], b'L' => [0x7f,0x40,0x40,0x40,0x40],
+        b'M' => [0x7f,0x02,0x0c,0x02,0x7f], b'N' => [0x7f,0x04,0x08,0x10,0x7f],
+        b'O' => [0x3e,0x41,0x41,0x41,0x3e], b'P' => [0x7f,0x09,0x09,0x09,0x06],
+        b'Q' => [0x3e,0x41,0x51,0x21,0x5e], b'R' => [0x7f,0x09,0x19,0x29,0x46],
+        b'S' => [0x46,0x49,0x49,0x49,0x31], b'T' => [0x01,0x01,0x7f,0x01,0x01],
+        b'U' => [0x3f,0x40,0x40,0x40,0x3f], b'V' => [0x1f,0x20,0x40,0x20,0x1f],
+        b'W' => [0x3f,0x40,0x38,0x40,0x3f], b'X' => [0x63,0x14,0x08,0x14,0x63],
+        b'Y' => [0x07,0x08,0x70,0x08,0x07], b'Z' => [0x61,0x51,0x49,0x45,0x43],
+        b'0' => [0x3e,0x51,0x49,0x45,0x3e], b'1' => [0x00,0x42,0x7f,0x40,0x00],
+        b'2' => [0x42,0x61,0x51,0x49,0x46], b'3' => [0x21,0x41,0x45,0x4b,0x31],
+        b'4' => [0x18,0x14,0x12,0x7f,0x10], b'5' => [0x27,0x45,0x45,0x45,0x39],
+        b'6' => [0x3c,0x4a,0x49,0x49,0x30], b'7' => [0x01,0x71,0x09,0x05,0x03],
+        b'8' => [0x36,0x49,0x49,0x49,0x36], b'9' => [0x06,0x49,0x49,0x29,0x1e],
+        b'[' => [0x00,0x7f,0x41,0x41,0x00], b']' => [0x00,0x41,0x41,0x7f,0x00],
+        b'(' => [0x00,0x1c,0x22,0x41,0x00], b')' => [0x00,0x41,0x22,0x1c,0x00],
+        b':' => [0x00,0x36,0x36,0x00,0x00], b';' => [0x00,0x56,0x36,0x00,0x00],
+        b'.' => [0x00,0x60,0x60,0x00,0x00], b',' => [0x00,0x40,0x20,0x00,0x00],
+        b'-' => [0x08,0x08,0x08,0x08,0x08], b'_' => [0x40,0x40,0x40,0x40,0x40],
+        b'/' => [0x20,0x10,0x08,0x04,0x02], b'\\' => [0x02,0x04,0x08,0x10,0x20],
+        b'=' => [0x14,0x14,0x14,0x14,0x14], b'+' => [0x08,0x08,0x3e,0x08,0x08],
+        b'!' => [0x00,0x00,0x5f,0x00,0x00], b'?' => [0x02,0x01,0x51,0x09,0x06],
+        b'#' => [0x14,0x7f,0x14,0x7f,0x14], b'\'' => [0x00,0x05,0x03,0x00,0x00],
+        b'"' => [0x00,0x07,0x00,0x07,0x00], b'>' => [0x41,0x22,0x14,0x08,0x00],
+        b'<' => [0x08,0x14,0x22,0x41,0x00], b'|' => [0x00,0x00,0x7f,0x00,0x00],
+        b' ' => [0; 5], _ => [0x02,0x01,0x51,0x09,0x06],
+    }
+}
+
+fn framebuffer_console_write_byte(byte: u8) {
+    // SAFETY: the console is installed only after BootInfo and GOP geometry validation.
+    unsafe {
+        if let Some(console) = FRAMEBUFFER_CONSOLE.as_mut() {
+            console.write_byte(byte);
+        }
+    }
+}
+
 struct Serial;
 
 impl Serial {
@@ -229,6 +400,7 @@ impl Serial {
         }
     }
     fn write_byte(&mut self, byte: u8) {
+        framebuffer_console_write_byte(byte);
         for _ in 0..100_000 {
             if unsafe { port_in(COM1 + 5) } & 0x20 != 0 {
                 unsafe { port_out(COM1, byte) };
@@ -609,9 +781,8 @@ fn halt_forever() -> ! {
     loop { unsafe { asm!("cli; hlt", options(nomem, nostack)) }; }
 }
 
-// Early visual diagnostics use colored framebuffer bands until a text renderer
-// and GOP geometry are part of the boot ABI. Each band is a persistent stage
-// marker; a red band means the corresponding operation failed.
+// Early boot now uses a text console; the old status-band API remains as a no-op
+// during this transition so legacy call sites cannot paint over diagnostic text.
 const FB_BACKGROUND: u32 = 0x0010_1828;
 const FB_ACTIVE: u32 = 0x0050_D8_F0;
 const FB_BOOTINFO_OK: u32 = 0x0000_C050;
@@ -636,8 +807,11 @@ fn framebuffer_pixels(info: &archiaos_bootloader::bootinfo::BootInfo) -> Option<
     Some((info.framebuffer_base as *mut u32, pixels))
 }
 
-fn paint_status_line(info: &archiaos_bootloader::bootinfo::BootInfo, line: usize, color: u32) {
-    let Some((framebuffer, pixels)) = framebuffer_pixels(info) else { return; };
+fn paint_status_line(_info: &archiaos_bootloader::bootinfo::BootInfo, _line: usize, _color: u32) {
+    /* Text output now communicates progress and errors. */
+    return;
+    #[allow(unreachable_code)]
+    let Some((framebuffer, pixels)) = framebuffer_pixels(_info) else { return; };
     let Some(start) = line.checked_mul(FB_PIXELS_PER_STATUS_LINE) else { return; };
     if start >= pixels { return; }
     let end = start.saturating_add(FB_PIXELS_PER_STATUS_LINE).min(pixels);
@@ -651,11 +825,11 @@ fn show_framebuffer_boot_status(info: &archiaos_bootloader::bootinfo::BootInfo) 
     let Some((framebuffer, pixels)) = framebuffer_pixels(info) else {
         return 1;
     };
-    for index in 0..pixels {
-        // SAFETY: the index is bounded by the firmware-reported framebuffer range.
-        unsafe { ptr::write_volatile(framebuffer.add(index), FB_BACKGROUND) };
+    if !FramebufferConsole::initialize(info) {
+        return 6;
     }
-    paint_status_line(info, 0, FB_ACTIVE);
+    // Console initialization clears the visible framebuffer and writes the banner.
+    let _ = pixels;
     0
 }
 
@@ -721,6 +895,7 @@ pub extern "C" fn rust_kernel_main(
         3 => { let _ = writeln!(serial, "ArchiaOS: framebuffer probe=rejected (range overflow)"); }
         4 => { let _ = writeln!(serial, "ArchiaOS: framebuffer probe=rejected (above low-canonical 512 GiB)"); }
         5 => { let _ = writeln!(serial, "ArchiaOS: framebuffer probe=rejected (unaligned base)"); }
+        6 => { let _ = writeln!(serial, "ArchiaOS: framebuffer text console unavailable (unsupported GOP geometry or pixel format)"); }
         _ => { let _ = writeln!(serial, "ArchiaOS: framebuffer probe=rejected (size conversion failed)"); }
     }
     paint_status_line(info, 1, FB_BOOTINFO_OK);
