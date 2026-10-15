@@ -85,10 +85,12 @@ activée par cette étape.
 ## Politique de placement (socle P2)
 
 Le module de topologie expose maintenant un sélecteur déterministe de candidat :
-l'affinité explicite est stricte ; à l'intérieur de cet ensemble, le domaine cache
+il filtre d'abord sur la liste des APIC IDs confirmés en ligne par le mécanisme
+de démarrage des processeurs, puis applique l'affinité stricte. Une entrée MADT
+« online-capable » n'est pas considérée active par défaut. Le domaine cache
 préféré, la classe CPU demandée et la capacité connue départagent les candidats.
 Les données inconnues restent admissibles comme repli et ne sont jamais devinées.
-À égalité, l'ordre MADT est conservé.
+À égalité, l'ordre MADT est conservé. Une liste en ligne vide donne aucun candidat.
 
 Cette fonction est pour l'instant une politique pure testable, pas encore raccordée
 au dispatch des tâches. Elle ne constitue ni un équilibrage de charge ni du SMP.

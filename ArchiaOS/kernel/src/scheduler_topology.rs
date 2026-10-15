@@ -136,6 +136,10 @@ impl CpuTopology {
 /// look known. This selector is pure policy and does not dispatch a task.
 #[derive(Clone, Copy, Debug)]
 pub struct CpuPlacementHint<'a> {
+    /// APIC IDs confirmed online by the platform's CPU bring-up layer.
+    /// Online-capable MADT entries are not sufficient: they may not be started.
+    pub online_apic_ids: &'a [u32],
+    /// Optional strict task affinity, intersected with the online CPU set.
     pub allowed_apic_ids: Option<&'a [u32]>,
     pub preferred_class: Option<CpuClass>,
     pub preferred_cache_domain: Option<u16>,
@@ -150,6 +154,11 @@ pub fn select_cpu<'a>(
 ) -> Option<&'a CpuTopologyEntry> {
     let mut best: Option<(&CpuTopologyEntry, (u8, u8, u8))> = None;
     for entry in topology.iter() {
+        // MADT's "online-capable" flag does not mean a processor is online.
+        // Never return a candidate until the AP bring-up layer confirms it.
+        if !hint.online_apic_ids.contains(&entry.apic_id) {
+            continue;
+        }
         if let Some(allowed) = hint.allowed_apic_ids {
             if !allowed.contains(&entry.apic_id) {
                 continue;
@@ -362,7 +371,9 @@ mod tests {
         let mut unknown = entry(6);
         topology.insert(unknown).unwrap();
 
+        let all_online = [2, 4, 6];
         let preferred = select_cpu(&topology, CpuPlacementHint {
+            online_apic_ids: &all_online,
             allowed_apic_ids: None,
             preferred_class: Some(CpuClass::Performance),
             preferred_cache_domain: None,
@@ -370,6 +381,7 @@ mod tests {
         assert_eq!(preferred.apic_id, 4);
 
         let local = select_cpu(&topology, CpuPlacementHint {
+            online_apic_ids: &all_online,
             allowed_apic_ids: None,
             preferred_class: Some(CpuClass::Performance),
             preferred_cache_domain: Some(1),
@@ -377,6 +389,7 @@ mod tests {
         assert_eq!(local.apic_id, 2, "cache locality is ranked before class");
 
         let strict = select_cpu(&topology, CpuPlacementHint {
+            online_apic_ids: &all_online,
             allowed_apic_ids: Some(&[6]),
             preferred_class: Some(CpuClass::Performance),
             preferred_cache_domain: Some(2),
@@ -384,7 +397,22 @@ mod tests {
         assert_eq!(strict.apic_id, 6, "unknown metadata remains eligible under affinity");
 
         assert!(select_cpu(&topology, CpuPlacementHint {
+            online_apic_ids: &all_online,
             allowed_apic_ids: Some(&[99]),
+            preferred_class: None,
+            preferred_cache_domain: None,
+        }).is_none());
+
+        // Online-capable firmware entries must not be treated as active CPUs.
+        assert_eq!(select_cpu(&topology, CpuPlacementHint {
+            online_apic_ids: &[2],
+            allowed_apic_ids: None,
+            preferred_class: Some(CpuClass::Performance),
+            preferred_cache_domain: None,
+        }).unwrap().apic_id, 2);
+        assert!(select_cpu(&topology, CpuPlacementHint {
+            online_apic_ids: &[],
+            allowed_apic_ids: None,
             preferred_class: None,
             preferred_cache_domain: None,
         }).is_none());
