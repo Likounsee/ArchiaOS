@@ -1,3 +1,5 @@
+use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+
 //! Allocation-free cooperative scheduler and x86-64 context integration (P2).
 //!
 //! The state model remains independently testable. A bounded boot-time runtime
