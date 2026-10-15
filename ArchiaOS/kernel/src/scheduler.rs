@@ -1078,6 +1078,60 @@ mod tests {
     }
 
     #[test]
+    fn deterministic_lifecycle_stress_preserves_invariants_after_every_transition() {
+        let mut scheduler = Scheduler::new();
+        let mut ids = [None; MAX_TASKS];
+        let mut created = 0usize;
+        let mut random = 0xA5A5_1234u32;
+
+        for step in 0..10_000usize {
+            // Small deterministic PRNG: reproducible transition coverage with
+            // no dependency and no flaky host randomness.
+            random = random.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            let current = scheduler.current();
+
+            if current.is_none() {
+                let runnable_exists = (0..created).any(|i| {
+                    ids[i].and_then(|id| scheduler.state(id).ok()) == Some(TaskState::Runnable)
+                });
+                if runnable_exists {
+                    let _ = scheduler.schedule();
+                } else {
+                    let blocked = (0..created).find_map(|i| {
+                        let id = ids[i]?;
+                        (scheduler.state(id).ok() == Some(TaskState::Blocked)).then_some(id)
+                    });
+                    if let Some(id) = blocked {
+                        scheduler.wake(id).unwrap();
+                    } else if created < MAX_TASKS {
+                        ids[created] = Some(scheduler.create_task().unwrap());
+                        created += 1;
+                    } else {
+                        // The table can be terminal when every task exited.
+                        // There is intentionally no implicit slot reuse.
+                        assert!(scheduler.task_counts().blocked == 0);
+                        assert!(scheduler.task_counts().runnable == 0);
+                    }
+                }
+            } else {
+                match random % 3 {
+                    0 => { let _ = scheduler.yield_current(); }
+                    1 => { let _ = scheduler.block_current_or_idle(); }
+                    _ => { let _ = scheduler.exit_current_or_idle(); }
+                }
+            }
+
+            scheduler.check_invariants().unwrap_or_else(|error| {
+                panic!("scheduler invariant failed at deterministic step {step}: {error:?}")
+            });
+            let counts = scheduler.task_counts();
+            assert_eq!(counts.empty + counts.runnable + counts.running + counts.blocked + counts.exited, MAX_TASKS);
+            assert!(counts.running <= 1);
+            assert_eq!(counts.running, usize::from(scheduler.current().is_some()));
+        }
+    }
+
+    #[test]
     fn round_robin_wraps_across_full_task_capacity() {
         let mut scheduler = Scheduler::new();
         let mut ids = [TaskId(0); MAX_TASKS];
