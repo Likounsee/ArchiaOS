@@ -6,7 +6,7 @@
 
 | Priorité | Domaine | Avancement estimé | État / prochaine preuve attendue |
 |---|---|---:|---|
-| **GLOBAL** | Ensemble des objectifs P0–P10 | **28 %** | Score pondéré recalculé après P1 clôturée et P2 à 33,5 % : 27,98 %, arrondi à l’entier le plus proche. Maturité de validation suivie séparément ; les pistes B/A ne sont pas additionnées. |
+| **GLOBAL** | Ensemble des objectifs P0–P10 | **28 %** | Score pondéré recalculé après P1 clôturée, P2 à 33,5 % et P8 à 37 % : 28,18 %, arrondi à l’entier le plus proche. Maturité de validation suivie séparément ; les pistes B/A ne sont pas additionnées. |
 | **P0** | Démarrage UEFI maison x86-64 par défaut | **100 % (jalon physique atteint)** | Démarrage depuis la clé USB et premier affichage framebuffer confirmés par l’utilisateur sur le PC physique. Le motif bleu prouve l’écriture dans le framebuffer après le handoff ; il ne constitue pas encore un bureau ni une pile graphique. L’utilisateur rapporte 5/5 démarrages à froid et 5/5 redémarrages à chaud, tous avec la même barre blanche finale (compte rendu dans [la campagne physique P1](P1-PHYSICAL-VALIDATION.md)); le retour au firmware et le démarrage du système habituel sont confirmés par l’utilisateur ; le SHA du paquet USB testé est confirmé pour `cb5c676a9adbd0a9cf0e7a4ef69224b4a8729ecc` par `BUILD-INFO.txt` et les SHA-256 des deux binaires ; la photo de preuve existante est désormais archivée dans `docs/preuves/` ; le modèle, CPU et RAM sont consignés ; l'utilisateur confirme que la photo est acceptable et que le BIOS/UEFI est à jour selon Lenovo pour ce modèle (numéro exact non relevé). |
 | **P1** | Fiabilité du chargeur, BootInfo et mémoire | **100 % (campagne physique documentée)** | Les contrôles ELF, mappings/protections, BootInfo/ExitBootServices, audit firmware et PMM ont leurs tests automatisés documentés. Le dernier commit de code noyau audité reste `e18b1901e262f21838ab0484459d207ccf004442`. La révision documentaire immédiatement précédente est `7bb1b9d1dd553e5fda68ea206ba3f035197f5751`. Sur ce SHA, [UEFI local, run 38428246398](https://github.com/Likounsee/ArchiaOS/actions/runs/38428246398) et [BootInfo négatif, run 38428246551](https://github.com/Likounsee/ArchiaOS/actions/runs/38428246551) ont réussi ; la [CI principale, run 38428246486](https://github.com/Likounsee/ArchiaOS/actions/runs/38428246486) est encore en cours au dernier contrôle. Les succès automatisés ne prouvent pas une validation matérielle reproductible. La procédure de campagne physique est documentée dans [P1-PHYSICAL-VALIDATION.md](P1-PHYSICAL-VALIDATION.md). Le paquet USB effectivement testé sur matériel correspond au commit `cb5c676a9adbd0a9cf0e7a4ef69224b4a8729ecc` ([workflow](https://github.com/Likounsee/ArchiaOS/actions/runs/38432842691)) : `BUILD-INFO.txt` et les SHA-256 de `kernel.elf` et `BOOTX64.EFI` correspondent exactement à la clé USB. La campagne matérielle est considérée comme acceptée sur la base des confirmations de l’utilisateur : 5/5 démarrages à froid et 5/5 redémarrages à chaud avec barre blanche finale, ainsi que le retour au BIOS/UEFI puis au système habituel sans problème. La provenance du paquet est maintenant confirmée. La photo existante est archivée dans `docs/preuves/` et validée par l'utilisateur. L'utilisateur confirme également utiliser la dernière version BIOS/UEFI publiée par Lenovo pour ce modèle ; le numéro exact n'est pas relevé. La sortie série reste facultative si elle n'est pas matériellement accessible. Les observations physiques restent déclaratives. |
 | **P2** | Exceptions, ordonnanceur et synchronisation | **34 %** | Le modèle d'états et le runtime x86-64 à trois tâches existent, avec blocage/réveil et commutations de contexte réelles ; un test déterministe de 10 000 transitions a été ajouté pour vérifier les invariants du scheduler après chaque opération. Un test de #BP contrôlé remplace temporairement la gate du vecteur 3, vérifie le frame normalisé et le retour IRETQ, puis restaure la gate fatale ; ce chemin a été validé par QEMU/CI. Le timer APIC possède déjà un self-test one-shot de livraison/EOI/retour, mais la préemption de l’ordonnanceur n’est pas intégrée. La primitive `EventSequence` et six tests ont été ajoutés pour couvrir les notifications concurrentes, le débordement et l’observation par plusieurs waiters ; le parking atomique/réveil de tâches n’est pas encore intégré et ne rapporte donc aucun point. GDT/TSS/IST, topologie CPU, placement multi-cœur et SMP restent à faire. |
@@ -15,7 +15,7 @@
 | **P5** | Affichage et pile graphique | **0 %** | Pas de pile graphique de production. |
 | **P6** | Réseau et mesures de performances | **0 %** | Pas de pile réseau complète ni de bancs de performance stabilisés. |
 | **P7** | Distribution, installation et sécurité | **0 %** | Pas de version distribuable validée. |
-| **P8** | Fondations noyau pour le contrôle matériel | **32 %** | CPUID est intégré au démarrage ; les décodeurs purs sont testés en hôte, un noyau SSE4.1 vectorisé avec repli scalaire est raccordé, et la CI ajoute des boots QEMU sans SSE4.1, pré-AVX et AVX. Ces nouvelles vérifications ne comptent pas avant réussite sur le commit exact. ECAM/ACPI, capteurs et pilotes contrôlés restent absents. Contrat détaillé dans [CPU-FEATURE-POLICY.md](CPU-FEATURE-POLICY.md). |
+| **P8** | Fondations noyau pour le contrôle matériel | **37 %** | CPUID est intégré au démarrage ; les décodeurs de fonctionnalités CPU sont testés en hôte, le noyau SSE4.1 vectorisé possède un repli scalaire, et la CI sur `033df1d` passe les boots QEMU sans SSE4.1 (refus attendu), pré-AVX et AVX. La couverture matérielle physique et le décodage CPU typé restent à compléter ; ECAM/ACPI, capteurs et pilotes contrôlés sont absents. Contrat détaillé dans [CPU-FEATURE-POLICY.md](CPU-FEATURE-POLICY.md). |
 | **P9** | Service privilégié de télémétrie/contrôle | **0 %** | Pas de service fonctionnel ; dépend d'interfaces noyau et de pilotes sûrs. |
 | **P10** | Archia Control Center (interface tout-en-un) | **0 %** | Vision documentée mais aucune application fonctionnelle ; la documentation seule ne compte pas dans le score. |
 | **B0–B9** | Chargeur UEFI maison | Voir jalons ci-dessous | Vue de progression du chargeur ; les preuves doivent être lues avec le SHA du workflow, et la validation sur matériel physique reste ouverte. |
@@ -62,12 +62,12 @@ Cet audit porte sur les sources présentes et leurs raccordements visibles, pas 
 | P5 | 8 | 0 | 0,00 |
 | P6 | 8 | 0 | 0,00 |
 | P7 | 7 | 0 | 0,00 |
-| P8 | 4 | 32 | 1,28 |
+| P8 | 4 | 37 | 1,48 |
 | P9 | 3 | 0 | 0,00 |
 | P10 | 3 | 0 | 0,00 |
 | **Total** | **100** | — | **27,98** |
 
-La somme des contributions est **27,98 %** (5 + 15 + 6,70 + 1,28 = 27,98), affichée **28 %** après arrondi. La pondération privilégie les fondations noyau et les livrables qui débloquent plusieurs phases ; les objectifs produit restent dans le dénominateur et ne sont pas supprimés.
+La somme des contributions est **28,18 %** (5 + 15 + 6,70 + 1,48 = 28,18), affichée **28 %** après arrondi. La pondération privilégie les fondations noyau et les livrables qui débloquent plusieurs phases ; les objectifs produit restent dans le dénominateur et ne sont pas supprimés.
 
 **Preuves CI exactes du HEAD documentaire de référence `4c0bfa4f4c752c5f0385d3a0913eec4159e31757` :**
 - CI principale : [run 38422476186](https://github.com/Likounsee/ArchiaOS/actions/runs/38422476186) — succès.
@@ -113,15 +113,15 @@ Le 100 % P0 porte sur le jalon limité « démarrage maison par défaut et premi
 | Découverte ACPI/SMBIOS/capteurs | 15 | 0 |
 | Interfaces pilotes et permissions | 10 | 0 |
 | Contrôle sûr des actionneurs / état de repli | 10 | 0 |
-| Tests QEMU et matériel par modèle | 10 | 0 |
-| **Total** | **100** | **32 %** |
+| Tests QEMU et matériel par modèle | 10 | 50 |
+| **Total** | **100** | **37 %** |
 
 Scores P8 calculés par critères élémentaires explicites. Les tests sont évalués séparément par la ligne « Tests QEMU et matériel par modèle » de la grille P8, afin de ne pas les compter deux fois.
 
 - **CPUID : 4/4 critères fonctionnels = 100 %** (`kernel/src/cpu.rs`, raccordé et journalisé par `kernel/src/main.rs`) : (1) vérification des feuilles maximales avant interrogation — démontrée ; (2) décodage fabricant et marque CPU — démontré ; (3) décodage famille/modèle/stepping — démontré ; (4) extraction des indicateurs de fonctionnalités avec vérification des feuilles — démontrée. Cela mesure la fonctionnalité implémentée, pas une couverture de tests dédiée.
 - **PCI legacy : 6/10 critères fonctionnels = 60 %** (`kernel/src/pci.rs`, appelé par `kernel/src/main.rs`) : (1) accès de configuration legacy en lecture des périphériques — démontré ; (2) parcours des 32 numéros de périphérique du bus 0 — démontré ; (3) prise en compte du bit multifonction et parcours jusqu'à 8 fonctions — démontré ; (4) décodage vendeur/périphérique — démontré ; (5) décodage classe/sous-classe/interface et type d'en-tête — démontré ; (6) sortie de diagnostic bornée à 64 entrées — démontrée ; (7) découverte des autres bus — absente ; (8) backend PCIe ECAM/ACPI — absent ; (9) inventaire typé réutilisable — absent ; (10) parcours des capacités et validation fonctionnelle étendue — absents.
 
-La ligne de tests P8 reste à **0/10 tant que la CI n'a pas passé** : les tests synthétiques CPUID et profils QEMU viennent d'être ajoutés, mais un test seulement écrit ne satisfait pas le critère d'acceptation. La formule P8 est donc `20 × 100 % + 20 × 60 % = 32` points sur 100. Ces scores mesurent uniquement les critères listés, pas une validation matérielle. Aucun point n'est attribué aux capteurs, à ECAM ou au contrôle matériel.
+La ligne « Tests QEMU et matériel par modèle » vaut **50 % (5/10)** : les tests hôte et les profils QEMU sans SSE4.1, pré-AVX et AVX passent dans le run CI 38696224133 sur `033df1d`, mais la campagne sur matériel physique reste à faire. La formule P8 est donc `20 × 100 % + 20 × 60 % + 10 × 50 % = 37` points sur 100. Ces scores mesurent uniquement les critères listés. Aucun point n'est attribué aux capteurs, à ECAM ou au contrôle matériel.
 
 **P9 — service privilégié (0 %) :** API télémétrie et autorisations (25), IPC/authentification et séparation lecture/écriture (20), collecte/normalisation des sources (15), validation des commandes et journalisation (15), simulation/erreurs et arrêt sûr (15), tests intégration/fuzzing (10). Aucun livrable opérationnel raccordé : 0/100.
 
@@ -375,8 +375,8 @@ Le code actuel de la branche `ArchiaOS` est `29644ef8bd95faf8f9b992cdc254523dcf4
 
 ### P8.1 — Identification et inventaire en lecture seule
 - [x] Ajouter un module x86-64 CPUID sans allocation dynamique : fabricant, famille/modèle/stepping, marque CPU si disponible et fonctionnalités pertinentes (commit `bb157c7`).
-- [x] Définir et appliquer SSE4.1 comme minimum x86-64 du noyau ; détecter SSE4.2, AES-NI, FMA, BMI1/BMI2 et AVX/AVX2/AVX-512F avec séparation entre support matériel et état OS utilisable (validation CI en attente).
-- [x] Ajouter des tests unitaires synthétiques pour les profils sans SSE4.1, SSE4.1 seul, AVX, OSXSAVE/XCR0 incomplets et AVX-512, plus le repli scalaire et la somme vectorisée SSE4.1 ; l'exécution CI reste à confirmer.\n- [x] Ajouter des boots QEMU du noyau de production sans SSE4.1 (refus attendu), SSE4.1 seul/pré-AVX et AVX ; réussite du workflow en attente.
+- [x] Définir et appliquer SSE4.1 comme minimum x86-64 du noyau ; détecter SSE4.2, AES-NI, FMA, BMI1/BMI2 et AVX/AVX2/AVX-512F avec séparation entre support matériel et état OS utilisable (boots QEMU de validation réussis sur `033df1d`, run CI 38696224133).
+- [x] Ajouter des tests unitaires synthétiques pour les profils sans SSE4.1, SSE4.1 seul, AVX, OSXSAVE/XCR0 incomplets et AVX-512, plus le repli scalaire et la somme vectorisée SSE4.1 ; les tests hôte et les profils QEMU correspondants passent dans la CI 38696224133 ; la validation physique reste ouverte.\n- [x] Ajouter des boots QEMU du noyau de production sans SSE4.1 (refus attendu), SSE4.1 seul/pré-AVX et AVX ; workflow CI 38696224133 réussi pour les profils QEMU ; la validation matérielle reste ouverte.
 - [x] Vérifier les feuilles CPUID maximales avant chaque interrogation et gérer proprement les champs indisponibles.
 - [ ] Ajouter des tests unitaires pour le décodage des champs CPU.
 - [x] Première découverte PCI lecture seule via mécanisme de configuration legacy, limitée au bus 0 et à 32 périphériques / 8 fonctions ; implémentation `kernel/src/pci.rs`, sans test dédié ni couverture de tous les bus.

@@ -370,6 +370,16 @@ mod tests {
             Err(ContextSwitchError::TargetStackCorrupted),
         );
         assert_eq!(old.rsp, 0, "canary rejection must happen before assembly");
+
+        // The lower canary protects against stack underflow as well. Reject
+        // it through the same checked-switch boundary before touching old.
+        stack.upper_guard[STACK_GUARD_WORDS - 1] ^= 1;
+        stack.lower_guard[0] ^= 1;
+        assert_eq!(
+            unsafe { switch_checked(&mut old, &context, &stack) },
+            Err(ContextSwitchError::TargetStackCorrupted),
+        );
+        assert_eq!(old.rsp, 0, "lower-canary rejection must happen before assembly");
     }
 
     #[test]

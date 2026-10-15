@@ -1046,6 +1046,34 @@ mod tests {
     }
 
     #[test]
+    fn invariant_check_rejects_multiple_running_tasks_without_mutation() {
+        let mut scheduler = Scheduler::new();
+        let first = scheduler.create_task().unwrap();
+        let second = scheduler.create_task().unwrap();
+        assert_eq!(scheduler.schedule(), Ok(first));
+
+        // Simulate state corruption that production callers cannot create
+        // through the public API: a second slot claims to be Running.
+        scheduler.tasks[second.0].state = TaskState::Running;
+        let cursor_before = scheduler.cursor;
+        let current_before = scheduler.current;
+        let states_before = scheduler.tasks.map(|task| task.state);
+
+        assert_eq!(scheduler.check_invariants(), Err(SchedulerError::InvariantViolation));
+        assert_eq!(scheduler.schedule(), Err(SchedulerError::InvariantViolation));
+        assert_eq!(scheduler.dispatch_or_idle(), Err(SchedulerError::InvariantViolation));
+        assert_eq!(scheduler.yield_current(), Err(SchedulerError::InvariantViolation));
+        assert_eq!(scheduler.block_current_or_idle(), Err(SchedulerError::InvariantViolation));
+        assert_eq!(scheduler.exit_current_or_idle(), Err(SchedulerError::InvariantViolation));
+        assert_eq!(scheduler.wake(first), Err(SchedulerError::InvariantViolation));
+        assert_eq!(scheduler.create_task(), Err(SchedulerError::InvariantViolation));
+
+        assert_eq!(scheduler.tasks.map(|task| task.state), states_before);
+        assert_eq!(scheduler.current, current_before);
+        assert_eq!(scheduler.cursor, cursor_before);
+    }
+
+    #[test]
     fn invalid_wake_and_dispatch_while_running_do_not_mutate_scheduler() {
         let mut scheduler = Scheduler::new();
         let task = scheduler.create_task().unwrap();
