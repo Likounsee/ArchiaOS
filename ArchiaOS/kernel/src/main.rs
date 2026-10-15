@@ -230,6 +230,11 @@ struct FramebufferConsole {
     line_len: usize,
 }
 static mut FRAMEBUFFER_CONSOLE: Option<FramebufferConsole> = None;
+// Preserve the very first serial diagnostics until validated GOP geometry lets us
+// render them. This is fixed-size and allocation-free for early kernel startup.
+const EARLY_LOG_CAPACITY: usize = 4096;
+static mut EARLY_LOG_BUFFER: [u8; EARLY_LOG_CAPACITY] = [0; EARLY_LOG_CAPACITY];
+static mut EARLY_LOG_LEN: usize = 0;
 
 impl FramebufferConsole {
     fn initialize(info: &archiaos_bootloader::bootinfo::BootInfo) -> bool {
@@ -267,6 +272,7 @@ impl FramebufferConsole {
         for byte in b"ARCHIAOS KERNEL STARTING...\n" {
             framebuffer_console_write_byte(*byte);
         }
+        replay_early_console_log();
         true
     }
 
@@ -436,12 +442,27 @@ fn glyph5x7(byte: u8) -> [u8; 5] {
     }
 }
 
-fn framebuffer_console_write_byte(byte: u8) {
+fn framebuffer_console_write_byte(byte: u8) -> bool {
     // SAFETY: the console is installed only after BootInfo and GOP geometry validation.
     unsafe {
         if let Some(console) = FRAMEBUFFER_CONSOLE.as_mut() {
             console.write_byte(byte);
+            return true;
         }
+    }
+    false
+}
+
+fn replay_early_console_log() {
+    // Interrupts are disabled during this single-threaded bootstrap; the buffer is
+    // consumed only after the framebuffer has been validated and the renderer installed.
+    unsafe {
+        let len = EARLY_LOG_LEN;
+        for index in 0..len {
+            let byte = EARLY_LOG_BUFFER[index];
+            let _ = framebuffer_console_write_byte(byte);
+        }
+        EARLY_LOG_LEN = 0;
     }
 }
 
@@ -460,7 +481,16 @@ impl Serial {
         }
     }
     fn write_byte(&mut self, byte: u8) {
-        framebuffer_console_write_byte(byte);
+        if !framebuffer_console_write_byte(byte) {
+            // Keep serial output working even when GOP is missing, but replay its
+            // earliest diagnostics if a valid framebuffer becomes available later.
+            unsafe {
+                if EARLY_LOG_LEN < EARLY_LOG_CAPACITY {
+                    EARLY_LOG_BUFFER[EARLY_LOG_LEN] = byte;
+                    EARLY_LOG_LEN += 1;
+                }
+            }
+        }
         for _ in 0..100_000 {
             if unsafe { port_in(COM1 + 5) } & 0x20 != 0 {
                 unsafe { port_out(COM1, byte) };
