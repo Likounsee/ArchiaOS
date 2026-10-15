@@ -57,3 +57,7 @@ Les décisions de placement devront être testées avec des topologies synthéti
 5. Intégrer temporisateur/préemption, synchronisation et SMP par étapes, sans activer le SMP avant validation.
 
 La détection CPU déjà présente dans `kernel/src/cpu.rs` relève surtout l'identité et quelques fonctionnalités ISA CPUID ; **elle ne constitue pas encore la découverte de topologie nécessaire au scheduler**.
+
+## Découverte initiale de topologie CPU (P2)
+
+La fonction `cpu::detect_current_topology_entry()` interroge le CPU courant via CPUID `0x1F`, avec repli sur `0x0B`. Le décodeur pur construit les identifiants package/core à partir des niveaux SMT/core et rejette les niveaux incohérents. Cache, NUMA, classe performance/efficacité et capacité restent inconnus plutôt que d'être devinés. Cette API n'énumère pas les autres processeurs et n'active pas SMP ; l'étape suivante est le rapprochement prudent avec ACPI MADT et l'énumération AP.

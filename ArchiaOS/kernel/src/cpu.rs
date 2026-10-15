@@ -193,3 +193,24 @@ pub fn printable_field(field: &[u8]) -> &str {
     // CPUID vendor and brand strings are defined as ASCII bytes.
     core::str::from_utf8(&field[..end]).unwrap_or("unknown")
 }
+
+/// Discover topology for the logical CPU currently executing this function.
+/// This is descriptive only: it does not enumerate or start other CPUs.
+pub fn detect_current_topology_entry() -> Option<super::scheduler_topology::CpuTopologyEntry> {
+    use super::scheduler_topology::{entry_from_cpuid_levels, CpuidTopologyLevel};
+    // SAFETY: CPUID leaf zero is the architectural basic-leaf discovery query.
+    let max_leaf = unsafe { __cpuid_count(0, 0) }.eax;
+    let leaf = if max_leaf >= 0x1f { 0x1f } else if max_leaf >= 0x0b { 0x0b } else { return None; };
+    let mut levels = [CpuidTopologyLevel { shift: 0, logical_count: 0, level_type: 0, x2apic_id: 0 }; 8];
+    let mut count = 0usize;
+    for subleaf in 0..8u32 {
+        // SAFETY: the selected topology leaf is advertised; zero count/type terminates enumeration.
+        let regs = unsafe { __cpuid_count(leaf, subleaf) };
+        let logical_count = (regs.ebx & 0xffff) as u16;
+        let level_type = ((regs.ecx >> 8) & 0xff) as u8;
+        if logical_count == 0 || level_type == 0 { break; }
+        levels[count] = CpuidTopologyLevel { shift: (regs.eax & 0x1f) as u8, logical_count, level_type, x2apic_id: regs.edx };
+        count += 1;
+    }
+    entry_from_cpuid_levels(&levels[..count])
+}
