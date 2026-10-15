@@ -741,6 +741,43 @@ mod tests {
     }
 
     #[test]
+    fn periodic_timer_programming_validates_before_writing_registers() {
+        let mut page = MockApicPage([0; 1024]);
+        // SAFETY: this aligned writable test page models the xAPIC register window.
+        let apic = unsafe {
+            LocalApic::from_mapped_base(page.0.as_mut_ptr()).expect("aligned mock page")
+        };
+
+        // SAFETY: only ordinary memory is touched by this mock-register test.
+        assert_eq!(
+            unsafe { apic.start_timer_periodic(0x41, 16, 0) },
+            Err(ApicError::InvalidTimerCount)
+        );
+        assert_eq!(
+            unsafe { apic.start_timer_periodic(0x20, 16, 1000) },
+            Err(ApicError::InvalidVector)
+        );
+        assert_eq!(
+            unsafe { apic.start_timer_periodic(0x41, 3, 1000) },
+            Err(ApicError::InvalidDivide)
+        );
+        assert_eq!(page.0[(APIC_LVT_TIMER_REGISTER / 4) as usize], 0);
+        assert_eq!(page.0[(APIC_INITIAL_COUNT_REGISTER / 4) as usize], 0);
+
+        // SAFETY: this only writes the in-memory mock APIC page, not hardware.
+        unsafe { apic.start_timer_periodic(0x41, 16, 1000).unwrap() };
+        assert_eq!(
+            page.0[(APIC_LVT_TIMER_REGISTER / 4) as usize],
+            0x41 | APIC_LVT_PERIODIC
+        );
+        assert_eq!(
+            page.0[(APIC_DIVIDE_CONFIGURATION_REGISTER / 4) as usize],
+            0b0011
+        );
+        assert_eq!(page.0[(APIC_INITIAL_COUNT_REGISTER / 4) as usize], 1000);
+    }
+
+    #[test]
     fn ioapic_gsi_mapping_checks_ranges_and_register_overflow() {
         assert_eq!(ioapic_redirection_registers(0, 0, 24), Ok((0x10, 0x11)));
         assert_eq!(ioapic_redirection_registers(23, 0, 24), Ok((0x3e, 0x3f)));
