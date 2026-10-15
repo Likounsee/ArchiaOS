@@ -226,6 +226,8 @@ struct FramebufferConsole {
     pixel_format: u32,
     x: usize,
     y: usize,
+    line: [u8; 192],
+    line_len: usize,
 }
 static mut FRAMEBUFFER_CONSOLE: Option<FramebufferConsole> = None;
 
@@ -255,6 +257,8 @@ impl FramebufferConsole {
             pixel_format: info.framebuffer_pixel_format,
             x: 8,
             y: 8,
+            line: [0; 192],
+            line_len: 0,
         };
         console.clear();
         // Publish the initialized renderer before sending the banner through the common
@@ -323,8 +327,59 @@ impl FramebufferConsole {
     }
 
     fn write_byte(&mut self, byte: u8) {
-        if byte == b'\r' { return; }
-        if byte == b'\n' { self.newline(); return; }
+        match byte {
+            b'\r' => {}
+            b'\n' => self.flush_line(),
+            b => {
+                if self.line_len == self.line.len() {
+                    self.flush_line();
+                }
+                self.line[self.line_len] = b;
+                self.line_len += 1;
+            }
+        }
+    }
+
+    fn line_contains(&self, needle: &[u8]) -> bool {
+        !needle.is_empty()
+            && self.line[..self.line_len]
+                .windows(needle.len())
+                .any(|window| window == needle)
+    }
+
+    fn flush_line(&mut self) {
+        let (prefix, color): (&[u8], u32) =
+            if self.line_contains(b"FAILED")
+                || self.line_contains(b"failed")
+                || self.line_contains(b"invalid")
+                || self.line_contains(b"unavailable")
+                || self.line_contains(b"unsupported")
+                || self.line_contains(b"ERROR")
+            {
+                (b"[FAIL] ", 0x00ff7777)
+            } else if self.line_contains(b"passed")
+                || self.line_contains(b"validated")
+                || self.line_contains(b"initialized")
+                || self.line_contains(b"installed")
+                || self.line_contains(b"complete")
+                || self.line_contains(b"written")
+                || self.line_contains(b"entered")
+            {
+                (b"[ OK ] ", 0x007cf2a0)
+            } else {
+                (b"[ .. ] ", 0x00c0c8d0)
+            };
+        for byte in prefix {
+            self.render_byte(*byte, color);
+        }
+        for index in 0..self.line_len {
+            self.render_byte(self.line[index], color);
+        }
+        self.line_len = 0;
+        self.newline();
+    }
+
+    fn render_byte(&mut self, byte: u8, color: u32) {
         if byte == b'\t' {
             self.x = self.x.saturating_add(24);
             if self.x.saturating_add(5) >= self.width { self.newline(); }
@@ -332,7 +387,6 @@ impl FramebufferConsole {
         }
         if self.x.saturating_add(5) >= self.width { self.newline(); }
         let glyph = glyph5x7(byte);
-        let color = if byte == b'!' || byte == b'?' { 0x00ffcc55 } else { 0x00b7f7c2 };
         for (gx, column) in glyph.iter().enumerate() {
             for gy in 0..7 {
                 if (column >> gy) & 1 != 0 {
