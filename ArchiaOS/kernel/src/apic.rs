@@ -738,6 +738,37 @@ mod tests {
     }
 
     #[test]
+    fn timer_divisor_encoding_covers_every_architectural_divisor() {
+        // Intel xAPIC timer divisor encodings are not a linear integer mapping.
+        // Cover every legal divisor and reject representative gaps and extremes.
+        let legal = [
+            (1, 0b1011),
+            (2, 0b0000),
+            (4, 0b0001),
+            (8, 0b0010),
+            (16, 0b0011),
+            (32, 0b1000),
+            (64, 0b1001),
+            (128, 0b1010),
+        ];
+        for (divisor, encoding) in legal {
+            assert_eq!(
+                timer_divide_encoding(divisor),
+                Ok(encoding),
+                "divisor {divisor} must use the architectural encoding"
+            );
+        }
+
+        for divisor in [0, 3, 5, 6, 7, 9, 15, 17, 31, 33, 127, 129, 255, 256, u16::MAX] {
+            assert_eq!(
+                timer_divide_encoding(divisor),
+                Err(ApicError::InvalidDivide),
+                "unsupported divisor {divisor} must be rejected"
+            );
+        }
+    }
+
+    #[test]
     fn periodic_timer_lvt_is_validated_and_selects_periodic_mode() {
         assert_eq!(periodic_timer_lvt(0x41), Ok(0x41 | APIC_LVT_PERIODIC));
         for vector in [0, 31, 0x20, 0x2f, APIC_TEST_RETURN_VECTOR, APIC_SPURIOUS_VECTOR] {
