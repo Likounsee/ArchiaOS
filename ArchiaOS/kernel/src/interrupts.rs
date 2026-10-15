@@ -396,6 +396,7 @@ pub fn breakpoint_exception_self_test() -> bool {
     BREAKPOINT_TEST_LAST_CS.store(0, Ordering::SeqCst);
     BREAKPOINT_TEST_LAST_RFLAGS.store(u64::MAX, Ordering::SeqCst);
     let flags: u64;
+    let after_flags: u64;
     unsafe {
         asm!("pushfq", "pop {flags}", "cli", flags = out(reg) flags);
         let original = idt.add(3).read();
@@ -403,7 +404,7 @@ pub fn breakpoint_exception_self_test() -> bool {
             isr_breakpoint_test_stub as usize as u64,
             original.selector,
         ));
-        asm!("int3");
+        asm!("int3", "pushfq", "pop {after_flags}", after_flags = out(reg) after_flags);
         idt.add(3).write(original);
         if saved_interrupts_enabled(flags) {
             asm!("sti", options(nostack));
@@ -415,6 +416,7 @@ pub fn breakpoint_exception_self_test() -> bool {
         && BREAKPOINT_TEST_LAST_CS.load(Ordering::SeqCst) != 0
         // IF was cleared before INT3; IRETQ must preserve that controlled state.
         && BREAKPOINT_TEST_LAST_RFLAGS.load(Ordering::SeqCst) & (1 << 9) == 0
+        && after_flags & (1 << 9) == 0
 }
 
 #[no_mangle]
