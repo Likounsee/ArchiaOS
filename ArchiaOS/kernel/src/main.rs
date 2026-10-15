@@ -899,6 +899,11 @@ pub extern "C" fn rust_kernel_main(
         halt_forever();
     }
     let _ = writeln!(serial, "ArchiaOS: ring-0 software interrupt save/IRETQ self-test passed");
+    if !interrupts::breakpoint_exception_self_test() {
+        let _ = writeln!(serial, "ArchiaOS: controlled #BP exception/IRETQ self-test FAILED");
+        halt_forever();
+    }
+    let _ = writeln!(serial, "ArchiaOS: controlled #BP exception frame and IRETQ self-test passed");
     if !interrupts::register_preservation_self_test() {
         let _ = writeln!(serial, "ArchiaOS: general-purpose register preservation self-test FAILED");
         halt_forever();
