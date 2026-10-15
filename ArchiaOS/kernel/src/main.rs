@@ -354,7 +354,10 @@ impl FramebufferConsole {
                 || self.line_contains(b"invalid")
                 || self.line_contains(b"unavailable")
                 || self.line_contains(b"unsupported")
+                || self.line_contains(b"rejected")
+                || self.line_contains(b"refusing")
                 || self.line_contains(b"ERROR")
+                || self.line_contains(b"Error")
             {
                 (b"[FAIL] ", 0x00ff7777)
             } else if self.line_contains(b"passed")
