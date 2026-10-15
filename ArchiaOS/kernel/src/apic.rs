@@ -41,6 +41,7 @@ pub enum ApicError {
     InvalidVector,
     HandlerAlreadyRegistered,
     InvalidDivide,
+    InvalidTimerCount,
     InvalidPolarity,
     InvalidTriggerMode,
     InvalidDestination,
@@ -308,6 +309,40 @@ impl LocalApic {
         Ok(())
     }
 
+    /// Start the local APIC timer in periodic mode.
+    ///
+    /// The initial count must be calibrated by the caller against a known time
+    /// source; this API does not promise a duration in microseconds or
+    /// milliseconds. The handler must be registered and the interrupt path
+    /// must issue EOI before this source is enabled.
+    ///
+    /// # Safety
+    /// The mapping must be valid and xAPIC mode active. The IDT gate and
+    /// returning handler must already be installed, the caller must have
+    /// configured safe dispatch/EOI, and CPU interrupt state must be managed.
+    /// Do not use for scheduler preemption until switching from interrupt
+    /// context and lock ownership rules are explicitly implemented.
+    pub unsafe fn start_timer_periodic(
+        &self,
+        vector: u8,
+        divisor: u16,
+        initial_count: u32,
+    ) -> Result<(), ApicError> {
+        if initial_count == 0 {
+            return Err(ApicError::InvalidTimerCount);
+        }
+        let masked = masked_timer_lvt(vector)?;
+        let periodic = periodic_timer_lvt(vector)?;
+        let divide = timer_divide_encoding(divisor)?;
+        // Program while masked; unmask only after the count and divisor are set.
+        unsafe {
+            self.write_register(APIC_LVT_TIMER_REGISTER, masked | APIC_LVT_PERIODIC);
+            self.write_register(APIC_DIVIDE_CONFIGURATION_REGISTER, divide);
+            self.write_register(APIC_INITIAL_COUNT_REGISTER, initial_count);
+            self.write_register(APIC_LVT_TIMER_REGISTER, periodic);
+        }
+        Ok(())
+    }
     /// Stop the local APIC timer and clear its pending countdown.
     ///
     /// # Safety
