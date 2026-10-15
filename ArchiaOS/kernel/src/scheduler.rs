@@ -34,6 +34,30 @@ pub fn register_scheduler_timer_vector(vector: u8) -> Result<(), crate::apic::Ap
     Ok(())
 }
 
+/// Register the scheduler callback and arm the local APIC periodic timer.
+///
+/// The caller must calibrate `initial_count` for the desired tick rate and call
+/// this before enabling CPU interrupt delivery. This helper wires timer delivery
+/// to deferred scheduler requests; it does not itself perform preemption.
+#[cfg(target_os = "none")]
+pub unsafe fn start_scheduler_periodic_timer(
+    apic: &crate::apic::LocalApic,
+    vector: u8,
+    divisor: u16,
+    initial_count: u32,
+) -> Result<(), crate::apic::ApicError> {
+    // Validate every caller-controlled parameter before reserving the vector.
+    crate::apic::periodic_timer_lvt(vector)?;
+    crate::apic::timer_divide_encoding(divisor)?;
+    if initial_count == 0 {
+        return Err(crate::apic::ApicError::InvalidTimerCount);
+    }
+    register_scheduler_timer_vector(vector)?;
+    // SAFETY: the caller promises a valid initialized local APIC mapping and
+    // calibration of the requested count; all API parameters were prevalidated.
+    unsafe { apic.start_timer_periodic(vector, divisor, initial_count) }
+}
+
 /// Hard-IRQ callback: acknowledge work at the dispatcher level, count the tick,
 /// and request deferred scheduling. It deliberately does not call Scheduler or
 /// context::switch from the interrupt stack.
