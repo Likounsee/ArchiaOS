@@ -9,7 +9,7 @@
 | **GLOBAL** | Ensemble des objectifs P0–P10 | **28 %** | Score pondéré recalculé après P1 clôturée et P2 à 35 % : 28,28 %, arrondi à l’entier le plus proche. Maturité de validation suivie séparément ; les pistes B/A ne sont pas additionnées. |
 | **P0** | Démarrage UEFI maison x86-64 par défaut | **100 % (jalon physique atteint)** | Démarrage depuis la clé USB et premier affichage framebuffer confirmés par l’utilisateur sur le PC physique. Le motif bleu prouve l’écriture dans le framebuffer après le handoff ; il ne constitue pas encore un bureau ni une pile graphique. L’utilisateur rapporte 5/5 démarrages à froid et 5/5 redémarrages à chaud, tous avec la même barre blanche finale (compte rendu dans [la campagne physique P1](P1-PHYSICAL-VALIDATION.md)); le retour au firmware et le démarrage du système habituel sont confirmés par l’utilisateur ; le SHA du paquet USB testé est confirmé pour `cb5c676a9adbd0a9cf0e7a4ef69224b4a8729ecc` par `BUILD-INFO.txt` et les SHA-256 des deux binaires ; la photo de preuve existante est désormais archivée dans `docs/preuves/` ; le modèle, CPU et RAM sont consignés ; l'utilisateur confirme que la photo est acceptable et que le BIOS/UEFI est à jour selon Lenovo pour ce modèle (numéro exact non relevé). |
 | **P1** | Fiabilité du chargeur, BootInfo et mémoire | **100 % (campagne physique documentée)** | Les contrôles ELF, mappings/protections, BootInfo/ExitBootServices, audit firmware et PMM ont leurs tests automatisés documentés. Le dernier commit de code noyau audité reste `e18b1901e262f21838ab0484459d207ccf004442`. La révision documentaire immédiatement précédente est `7bb1b9d1dd553e5fda68ea206ba3f035197f5751`. Sur ce SHA, [UEFI local, run 38428246398](https://github.com/Likounsee/ArchiaOS/actions/runs/38428246398) et [BootInfo négatif, run 38428246551](https://github.com/Likounsee/ArchiaOS/actions/runs/38428246551) ont réussi ; la [CI principale, run 38428246486](https://github.com/Likounsee/ArchiaOS/actions/runs/38428246486) est encore en cours au dernier contrôle. Les succès automatisés ne prouvent pas une validation matérielle reproductible. La procédure de campagne physique est documentée dans [P1-PHYSICAL-VALIDATION.md](P1-PHYSICAL-VALIDATION.md). Le paquet USB effectivement testé sur matériel correspond au commit `cb5c676a9adbd0a9cf0e7a4ef69224b4a8729ecc` ([workflow](https://github.com/Likounsee/ArchiaOS/actions/runs/38432842691)) : `BUILD-INFO.txt` et les SHA-256 de `kernel.elf` et `BOOTX64.EFI` correspondent exactement à la clé USB. La campagne matérielle est considérée comme acceptée sur la base des confirmations de l’utilisateur : 5/5 démarrages à froid et 5/5 redémarrages à chaud avec barre blanche finale, ainsi que le retour au BIOS/UEFI puis au système habituel sans problème. La provenance du paquet est maintenant confirmée. La photo existante est archivée dans `docs/preuves/` et validée par l'utilisateur. L'utilisateur confirme également utiliser la dernière version BIOS/UEFI publiée par Lenovo pour ce modèle ; le numéro exact n'est pas relevé. La sortie série reste facultative si elle n'est pas matériellement accessible. Les observations physiques restent déclaratives. |
-| **P2** | Exceptions, ordonnanceur et synchronisation | **35 %** | Le modèle d'états et le runtime x86-64 à deux tâches sont raccordés. Le test runtime vient d'être étendu au blocage/réveil réel avec commutations de contexte ; la CI sur ce changement reste à confirmer, donc aucun point supplémentaire n'est encore compté. Le round-robin actuel n'est pas conscient de la topologie CPU. Exigence documentée : découverte fiable des cœurs/caches/CCD/NUMA et politique portable adaptée aux CPU homogènes et hétérogènes (Intel P/E, AMD avec 3D V-Cache asymétrique). Timer/préemption, synchronisation, tests contrôlés d'IDT, placement multi-cœur et SMP restent à faire. |
+| **P2** | Exceptions, ordonnanceur et synchronisation | **34 %** | Le modèle d'états et le runtime x86-64 à deux tâches sont raccordés. Le test runtime vient d'être étendu au blocage/réveil réel avec commutations de contexte ; la CI sur ce changement reste à confirmer, donc aucun point supplémentaire n'est encore compté. Le round-robin actuel n'est pas conscient de la topologie CPU. Exigence documentée : découverte fiable des cœurs/caches/CCD/NUMA et politique portable adaptée aux CPU homogènes et hétérogènes (Intel P/E, AMD avec 3D V-Cache asymétrique). Timer/préemption, synchronisation, tests contrôlés d'IDT, placement multi-cœur et SMP restent à faire. |
 | **P3** | Espace utilisateur et ABI système | **0 %** | Non commencé ; dépend notamment des exceptions, syscalls et mécanismes mémoire isolés. |
 | **P4** | Stockage, VFS et préparation OpenFS | **0 %** | Pas de pilote bloc/VFS fonctionnel ; spécifier d'abord les interfaces. |
 | **P5** | Affichage et pile graphique | **0 %** | Pas de pile graphique de production. |
@@ -56,7 +56,7 @@ Cet audit porte sur les sources présentes et leurs raccordements visibles, pas 
 |---|---:|---:|---:|
 | P0 | 5 | 100 | 5,00 |
 | P1 | 15 | 100 | 15,00 |
-| P2 | 20 | 35 | 7,00 |
+| P2 | 20 | 33,5 | 6,70 |
 | P3 | 15 | 0 | 0,00 |
 | P4 | 12 | 0 | 0,00 |
 | P5 | 8 | 0 | 0,00 |
@@ -65,9 +65,9 @@ Cet audit porte sur les sources présentes et leurs raccordements visibles, pas 
 | P8 | 4 | 32 | 1,28 |
 | P9 | 3 | 0 | 0,00 |
 | P10 | 3 | 0 | 0,00 |
-| **Total** | **100** | — | **28,28** |
+| **Total** | **100** | — | **27,98** |
 
-La somme des contributions est **28,28 %** (5 + 15 + 7 + 1,28 = 28,28), affichée **28 %** après arrondi. La pondération privilégie les fondations noyau et les livrables qui débloquent plusieurs phases ; les objectifs produit restent dans le dénominateur et ne sont pas supprimés.
+La somme des contributions est **27,98 %** (5 + 15 + 6,70 + 1,28 = 27,98), affichée **28 %** après arrondi. La pondération privilégie les fondations noyau et les livrables qui débloquent plusieurs phases ; les objectifs produit restent dans le dénominateur et ne sont pas supprimés.
 
 **Preuves CI exactes du HEAD documentaire de référence `4c0bfa4f4c752c5f0385d3a0913eec4159e31757` :**
 - CI principale : [run 38422476186](https://github.com/Likounsee/ArchiaOS/actions/runs/38422476186) — succès.
@@ -91,18 +91,18 @@ La somme des contributions est **28,28 %** (5 + 15 + 7 + 1,28 = 28,28), affiché
 
 Le 100 % P0 porte sur le jalon limité « démarrage maison par défaut et premier affichage ». Les démarrages à froid répétés et le retour firmware sont des critères P1, pas implicitement validés par P0.
 
-**P2 — exceptions, scheduler et synchronisation (21 %)**
+**P2 — exceptions, scheduler et synchronisation (33,5 %, affiché 34 %)**
 | Livrable | Poids | Score courant | Preuve / manque |
 |---|---:|---:|---|
 | Modèle d'états scheduler et tests de transitions/erreurs | 10 | 100 | Tests hôte dans CI ; pas de dispatch réel entre tâches. |
 | Primitive CPU context + pile initiale | 8 | 100 | Test hôte de transfert/retour réel sur pile dédiée x86-64. |
 | IDT/stubs/diagnostic fatal | 12 | 25 | Base présente ; installation et déclenchement contrôlé non prouvés par test d'exception dédié. |
-| API tâche, piles/contextes possédés et switch intégré | 25 | 0 | Absent. |
+| API tâche, piles/contextes possédés et switch intégré | 25 | 50 | Runtime x86-64 à trois tâches avec piles/contextes statiques, blocage/réveil/sortie et changements de contexte réels dans `scheduler.rs`. Couverture limitée au banc de test et à trois tâches ; politique générale de durée de vie/allocation absente. |
 | Timer, acquittement et préemption | 15 | 0 | Absent. |
 | Synchronisation, réveils sans perte et données par CPU | 12 | 0 | Absent. |
 | GDT/TSS/IST et piles d'exception critiques | 8 | 0 | Absent/non validé. |
 | Tests multi-tâches, QEMU et SMP | 10 | 0 | Absents. |
-| **Total** | **100** | **21 %** | 10 + 8 + (12 × 25 %) = 21. |
+| **Total** | **100** | **33,5 %** | 10 + 8 + (12 × 25 %) + (25 × 50 %) = 33,5. Arrondi d’affichage : 34 %. |
 
 **P8 — contrôle matériel (32 %)**
 | Livrable | Poids | Score courant |
