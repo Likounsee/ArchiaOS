@@ -271,7 +271,8 @@ def main() -> None:
         "BREAKPOINT_TEST_LAST_RIP.load(Ordering::SeqCst) != 0",
         "BREAKPOINT_TEST_LAST_CS.load(Ordering::SeqCst) != 0",
         "BREAKPOINT_TEST_LAST_RFLAGS.load(Ordering::SeqCst) & (1 << 9) == 0",
-        'asm!("int3");',
+        "after_flags & (1 << 9) == 0",
+        'asm!("int3",',
     ):
         if assertion not in source:
             fail(f"controlled #BP self-test is missing frame assertion: {assertion}")
