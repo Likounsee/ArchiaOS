@@ -445,6 +445,67 @@ mod tests {
     }
 
     #[test]
+    fn ticket_lock_preserves_fifo_order_for_reserved_tickets() {
+        use core::hint::spin_loop;
+        use std::sync::Mutex;
+
+        let lock = Arc::new(TicketLock::new(()));
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let first_guard = lock.lock(); // Keep ticket 0 at the head of the queue.
+
+        let first_lock = Arc::clone(&lock);
+        let first_order = Arc::clone(&order);
+        let first = thread::spawn(move || {
+            let _guard = first_lock.lock(); // Reserves ticket 1.
+            first_order.lock().unwrap().push(1);
+        });
+        // Do not launch the second contender until ticket 1 is definitely reserved.
+        let mut spins = 0usize;
+        while lock.next_ticket.load(Ordering::Acquire) != 2 {
+            spin_loop();
+            spins += 1;
+            assert!(spins < 10_000_000, "first contender did not reserve a ticket");
+        }
+
+        let second_lock = Arc::clone(&lock);
+        let second_order = Arc::clone(&order);
+        let second = thread::spawn(move || {
+            let _guard = second_lock.lock(); // Reserves ticket 2.
+            second_order.lock().unwrap().push(2);
+        });
+        spins = 0;
+        while lock.next_ticket.load(Ordering::Acquire) != 3 {
+            spin_loop();
+            spins += 1;
+            assert!(spins < 10_000_000, "second contender did not reserve a ticket");
+        }
+
+        drop(first_guard);
+        first.join().expect("first ticket-lock worker panicked");
+        second.join().expect("second ticket-lock worker panicked");
+        assert_eq!(*order.lock().unwrap(), vec![1, 2]);
+        assert!(!lock.is_locked());
+    }
+
+    #[test]
+    fn ticket_lock_counter_wraparound_preserves_exclusive_progress() {
+        let lock = TicketLock::new(0usize);
+        lock.next_ticket.store(usize::MAX - 1, Ordering::Relaxed);
+        lock.serving.store(usize::MAX - 1, Ordering::Relaxed);
+
+        *lock.lock() += 1; // usize::MAX - 1 -> usize::MAX
+        assert_eq!(lock.serving.load(Ordering::Acquire), usize::MAX);
+        *lock.lock() += 1; // usize::MAX -> 0
+        assert_eq!(lock.serving.load(Ordering::Acquire), 0);
+        *lock.lock() += 1; // 0 -> 1
+        assert_eq!(lock.serving.load(Ordering::Acquire), 1);
+
+        assert_eq!(*lock.lock(), 3);
+        assert!(!lock.is_locked());
+        assert_eq!(lock.next_ticket.load(Ordering::Relaxed), 4);
+    }
+
+    #[test]
     fn ticket_lock_serializes_concurrent_updates_under_contention() {
         const THREADS: usize = 8;
         const ITERATIONS: usize = 10_000;
