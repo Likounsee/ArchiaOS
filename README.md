@@ -4,7 +4,7 @@
 
 ArchiaOS est un projet d’OS bare-metal en développement. Le dépôt contient un noyau sans environnement standard (`no_std`), un chargeur UEFI maintenu dans le projet et les tests qui accompagnent ces fondations. L’objectif actuel est de rendre le transfert firmware → chargeur → noyau prévisible et sûr avant d’ajouter les services d’un système d’exploitation complet.
 
-> **État actuel :** le démarrage UEFI x86-64 a été essayé sur un PC physique et le noyau a produit un premier affichage framebuffer (fond bleu foncé avec une bande bleu clair). C’est une preuve de démarrage et d’écriture vidéo bas niveau, **pas encore un bureau ni une pile graphique complète**. La CI du commit `a5f2e574` est verte pour la compilation, les démarrages virtuels, le test négatif BootInfo et le paquet USB ; les tests de couverture mémoire supplémentaires sont en cours de validation.
+> **État actuel (3 novembre 2026) :** le jalon P0 et la campagne physique P1 sont documentés comme atteints. Sur le matériel testé, l’utilisateur rapporte 5/5 démarrages à froid et 5/5 redémarrages à chaud, avec retour au firmware et au système habituel ; voir [les preuves physiques](ArchiaOS/docs/preuves/README.md). Le dernier commit de référence est `67d5240`. Sur ce commit, les workflows de compilation, de démarrage local UEFI, de test négatif BootInfo et de paquet USB ont été lancés ; les trois workflows dédiés sont réussis et la CI principale est encore en cours au dernier contrôle. Le noyau reste expérimental : **pas encore de bureau ni de pile graphique complète**.
 
 ## Ce qui existe aujourd’hui
 
@@ -99,7 +99,7 @@ Pour produire les fichiers EFI autonomes, préfère `make uefi-files`. Pour le s
 
 ## Roadmap
 
-Le travail suit les priorités de [la roadmap P0–P10](ArchiaOS/docs/ROADMAP.md). Le jalon P0 de premier démarrage physique et d’écriture framebuffer est considéré atteint. **P1 reste en cours** : l’audit des plages mémoire réservées et la validation CI des derniers contrôles doivent être achevés avant de le clôturer.
+Le travail suit les priorités de [la roadmap P0–P10](ArchiaOS/docs/ROADMAP.md). Le jalon P0 et P1 sont considérés atteints selon les preuves et confirmations rapportées et archivées. P2 est le chantier noyau actif ; ses progrès doivent être évalués sur le code et les tests réellement intégrés.
 
 Priorités suivantes : fiabiliser les fondations mémoire, puis implémenter les exceptions et l’ordonnanceur, l’espace utilisateur, le stockage/VFS, l’affichage, le réseau et les outils système. Les pourcentages de la roadmap sont des estimations et non des mesures automatiques.
 
