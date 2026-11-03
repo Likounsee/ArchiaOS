@@ -8,8 +8,9 @@ ArchiaOS est un système d’exploitation expérimental en Rust sans environneme
 - Le noyau valide BootInfo et la carte mémoire UEFI, puis initialise le gestionnaire de mémoire physique (PMM).
 - Le chemin x86-64 high-half utilise des tables de pages dédiées et les protections W^X/NX sur les segments du noyau.
 - Le noyau a démarré sur un PC physique et a écrit un motif dans le framebuffer UEFI : fond bleu foncé avec une bande bleu clair.
-- Le P0 de premier démarrage physique est considéré atteint. Le système n’a pas encore de bureau ni de pile graphique complète.
-- P1 reste en cours : l’audit de toutes les plages mémoire réservées et la validation CI des contrôles ajoutés doivent encore être terminés.
+- Les jalons P0 et P1 sont considérés atteints selon les preuves et confirmations physiques archivées dans [docs/preuves/](docs/preuves/README.md) : 5/5 démarrages à froid et 5/5 redémarrages à chaud rapportés, avec retour au firmware puis au système habituel.
+- P2 est le chantier actif : le scheduler coopératif, les réveils ciblés/collectifs et la topologie CPU sont en cours de consolidation. Le commit `67d5240` ajoute une régression ciblée au test de réveil transactionnel.
+- Le système n’a pas encore de bureau ni de pile graphique complète.
 
 Les succès QEMU/OVMF et AAVMF/QEMU démontrent uniquement les configurations virtuelles couvertes. Ils ne prouvent pas la compatibilité avec toutes les machines ou tous les firmwares.
 
@@ -63,7 +64,7 @@ cargo build --manifest-path bootloader/Cargo.toml --release --target aarch64-unk
 cargo test --manifest-path bootloader/Cargo.toml --lib --target x86_64-unknown-linux-gnu
 ~~~
 
-Le workflow de CI courant doit être vérifié sur le commit ciblé avant de considérer les changements P1 validés.
+Pour le commit `67d5240`, les workflows dédiés au démarrage local UEFI, au test négatif BootInfo et au paquet USB sont réussis. La CI principale comporte plusieurs jobs réussis ; le job de démarrage x86-64 OVMF était encore en cours lors du dernier contrôle. Vérifier le statut du commit ciblé avant toute validation ultérieure.
 
 ## Documentation technique
 
