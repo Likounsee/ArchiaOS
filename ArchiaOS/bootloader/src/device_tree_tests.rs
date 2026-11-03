@@ -1,6 +1,5 @@
-// Bootloader parser tests for the device_tree module.
-mod device_tree_tests {
-    use std::vec;
+// Unit tests for the device_tree parser.
+use std::vec;
     use std::vec::Vec;
 
     use super::device_tree::{parse_header, validate_tree, FdtError, FDT_MAGIC};
@@ -243,4 +242,4 @@ mod device_tree_tests {
         put_be32(&mut image, 32, 0);
         assert!(parse_header(&image).is_ok());
     }
-}
+
