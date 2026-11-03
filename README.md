@@ -4,7 +4,7 @@
 
 ArchiaOS est un projet d’OS bare-metal en développement. Le dépôt contient un noyau sans environnement standard (`no_std`), un chargeur UEFI maintenu dans le projet et les tests qui accompagnent ces fondations. L’objectif actuel est de rendre le transfert firmware → chargeur → noyau prévisible et sûr avant d’ajouter les services d’un système d’exploitation complet.
 
-> **État actuel (3 novembre 2026) :** le jalon P0 et la campagne physique P1 sont documentés comme atteints. Sur le matériel testé, l’utilisateur rapporte 5/5 démarrages à froid et 5/5 redémarrages à chaud, avec retour au firmware et au système habituel ; voir [les preuves physiques](ArchiaOS/docs/preuves/README.md). Le dernier commit de code noyau de référence est `67d5240` ; le HEAD actuel `70593b1` contient les commits de nettoyage documentaire et des règles Git. Sur ce commit, les workflows de compilation, de démarrage local UEFI, de test négatif BootInfo et de paquet USB ont été lancés ; les trois workflows dédiés sont réussis et la CI principale est encore en cours au dernier contrôle. Le noyau reste expérimental : **pas encore de bureau ni de pile graphique complète**.
+> **État actuel (3 novembre 2026) :** le jalon P0 et la campagne physique P1 sont documentés comme atteints. Sur le matériel testé, l’utilisateur rapporte 5/5 démarrages à froid et 5/5 redémarrages à chaud ; voir [les preuves physiques](ArchiaOS/docs/preuves/README.md). Le dépôt a récemment fait l’objet d’un rangement structurel (noyau et chargeur regroupés par sous-systèmes). Sur le commit de rangement `c9f6e1c`, les workflows dédiés au paquet USB, au démarrage UEFI/QEMU et au rejet d’un BootInfo invalide sont réussis ; la CI principale est encore en cours au dernier contrôle. Le noyau reste expérimental : **pas encore de bureau ni de pile graphique complète**.
 
 ## Ce qui existe aujourd’hui
 
@@ -95,7 +95,7 @@ Pour produire les fichiers EFI autonomes, préfère `make uefi-files`. Pour le s
 | `ArchiaOS/bootloader/` | Chargeur UEFI ArchiaOS et validation des données de transfert |
 | `ArchiaOS/kernel/boot-test-*/` | Noyaux minimaux destinés aux tests de démarrage |
 | `ArchiaOS/scripts/` | Scripts de packaging EFI et de démarrage local |
-| `ArchiaOS/docs/` | Architecture, mémoire, sécurité, tests et roadmap |
+| `ArchiaOS/docs/` | Documentation technique organisée par domaine, preuves et roadmap |
 
 ## Roadmap
 
