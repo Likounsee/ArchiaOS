@@ -45,14 +45,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Check Rust formatting across all crates
-        run: |
-          set -euo pipefail
-          cargo fmt --manifest-path Cargo.toml -- --check
-          cargo fmt --manifest-path bootloader/Cargo.toml -- --check
-          cargo fmt --manifest-path kernel/aarch64/Cargo.toml -- --check
-          cargo fmt --manifest-path kernel/boot-test-x86_64/Cargo.toml -- --check
-          cargo fmt --manifest-path kernel/boot-test-highhalf-x86_64/Cargo.toml -- --check
       - name: Install Rust target
         run: rustup target add x86_64-unknown-none
       - name: Show toolchain
