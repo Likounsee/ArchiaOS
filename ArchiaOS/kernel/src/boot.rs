@@ -8,17 +8,6 @@ use super::{
     pci, scheduler, scheduler_topology, simd, vmm,
 };
 
-// Early boot now uses a text console; the old status-band API remains as a no-op
-// during this transition so legacy call sites cannot paint over diagnostic text.
-const FB_BACKGROUND: u32 = 0x0010_1828;
-const FB_ACTIVE: u32 = 0x0050_D8_F0;
-const FB_BOOTINFO_OK: u32 = 0x0000_C050;
-const FB_MEMORY_OK: u32 = 0x00D0_A020;
-const FB_PMM_OK: u32 = 0x0000_80E0;
-const FB_CONTEXT_OK: u32 = 0x00D0_40C0;
-const FB_SCHEDULER_OK: u32 = 0x00E0_E0_E0;
-const FB_FAIL: u32 = 0x0000_3030;
-const FB_PIXELS_PER_STATUS_LINE: usize = 32_768;
 
 fn framebuffer_pixels(info: &archiaos_bootloader::bootinfo::BootInfo) -> Option<(*mut u32, usize)> {
     const MAX_LOW_CANONICAL_ADDRESS: u64 = 1u64 << 39;
@@ -32,11 +21,6 @@ fn framebuffer_pixels(info: &archiaos_bootloader::bootinfo::BootInfo) -> Option<
     let pixels = usize::try_from(info.framebuffer_size / 4).ok()?;
     if pixels == 0 { return None; }
     Some((info.framebuffer_base as *mut u32, pixels))
-}
-
-fn paint_status_line(_info: &archiaos_bootloader::bootinfo::BootInfo, _line: usize, _color: u32) {
-    // Kept temporarily to avoid churn in existing failure paths; text logs now
-    // provide the visible status instead of painting opaque colored bands.
 }
 
 fn show_framebuffer_boot_status(info: &archiaos_bootloader::bootinfo::BootInfo) -> u8 {
@@ -121,14 +105,12 @@ pub extern "C" fn rust_kernel_main(
         6 => { let _ = writeln!(serial, "ArchiaOS: framebuffer text console unavailable (unsupported GOP geometry or pixel format)"); }
         _ => { let _ = writeln!(serial, "ArchiaOS: framebuffer probe=rejected (size conversion failed)"); }
     }
-    paint_status_line(info, 1, FB_BOOTINFO_OK);
     let _ = writeln!(serial, "ArchiaOS: boot-stage=early-framebuffer-probe-complete");
 
     // Read-only CPU inventory is the first hardware-telemetry primitive. Keep
     // it allocation-free and independent of sensor or device-driver support.
     let cpu_info = cpu::detect();
     if !cpu_info.has_sse41 {
-        paint_status_line(info, 1, FB_FAIL);
         let _ = writeln!(serial, "ArchiaOS: unsupported CPU: SSE4.1 is required; refusing to continue");
         halt_forever();
     }
@@ -138,7 +120,6 @@ pub extern "C" fn rust_kernel_main(
     unsafe { context::initialize_simd() };
     let _ = writeln!(serial, "ArchiaOS: x87/SSE context state initialized (FXSAVE64/FXRSTOR64)");
     if simd::sum_u32(&[1, 2, 3, 4, 5], cpu_info.has_sse41) != 15 {
-        paint_status_line(info, 1, FB_FAIL);
         let _ = writeln!(serial, "ArchiaOS: SSE4.1 optimized integer self-test failed");
         halt_forever();
     }
@@ -208,12 +189,10 @@ pub extern "C" fn rust_kernel_main(
     let stats = match unsafe { memory::initialize_from_bootinfo(&mut serial, boot_info) } {
         Ok(stats) => stats,
         Err(error) => {
-            paint_status_line(info, 2, FB_FAIL);
             let _ = writeln!(serial, "ArchiaOS: UEFI memory initialization failed: {:?}", error);
             halt_forever();
         }
     };
-    paint_status_line(info, 2, FB_MEMORY_OK);
     let _ = writeln!(serial, "ArchiaOS: UEFI BootInfo validated");
     let info = unsafe { &*boot_info };
     if info.framebuffer_size == 0 {
@@ -231,15 +210,12 @@ pub extern "C" fn rust_kernel_main(
     let _ = writeln!(serial, "ArchiaOS: free physical pages in PMM window (up to 512 GiB): {}", stats.free_pages);
 
     if let Err(error) = memory::self_test(&mut serial) {
-        paint_status_line(info, 3, FB_FAIL);
         let _ = writeln!(serial, "ArchiaOS: UEFI PMM self-test failed: {:?}", error);
         halt_forever();
     }
-    paint_status_line(info, 3, FB_PMM_OK);
     let _ = writeln!(serial, "ArchiaOS: UEFI PMM allocation/free self-test passed");
 
     if let Err(error) = vmm::self_test(&mut serial) {
-        paint_status_line(info, 3, FB_FAIL);
         let _ = writeln!(serial, "ArchiaOS: VMM self-test failed: {:?}", error);
         halt_forever();
     }
@@ -348,24 +324,20 @@ pub extern "C" fn rust_kernel_main(
     }
 
     if let Err(error) = heap::initialize(&mut serial) {
-        paint_status_line(info, 3, FB_FAIL);
         let _ = writeln!(serial, "ArchiaOS: kernel heap initialization failed: {:?}", error);
         halt_forever();
     }
     if let Err(error) = heap::self_test(&mut serial) {
-        paint_status_line(info, 3, FB_FAIL);
         let _ = writeln!(serial, "ArchiaOS: kernel heap self-test failed: {:?}", error);
         halt_forever();
     }
     let _ = writeln!(serial, "ArchiaOS: kernel heap self-test passed");
 
     if let Err(error) = address_space::initialize(&mut serial) {
-        paint_status_line(info, 3, FB_FAIL);
         let _ = writeln!(serial, "ArchiaOS: address-space initialization failed: {:?}", error);
         halt_forever();
     }
     if let Err(error) = address_space::self_test(&mut serial) {
-        paint_status_line(info, 3, FB_FAIL);
         let _ = writeln!(serial, "ArchiaOS: address-space self-test failed: {:?}", error);
         halt_forever();
     }
@@ -373,11 +345,9 @@ pub extern "C" fn rust_kernel_main(
 
     match context::self_test() {
         Ok(()) => {
-            paint_status_line(info, 4, FB_CONTEXT_OK);
             let _ = writeln!(serial, "ArchiaOS: x86-64 task context and initial stack self-test passed");
         }
         Err(()) => {
-            paint_status_line(info, 4, FB_FAIL);
             let _ = writeln!(serial, "ArchiaOS: x86-64 task context self-test failed");
             halt_forever();
         }
@@ -391,18 +361,15 @@ pub extern "C" fn rust_kernel_main(
             let _ = writeln!(serial, "ArchiaOS: cooperative scheduler state self-test passed");
         }
         Err(error) => {
-            paint_status_line(info, 5, FB_FAIL);
             let _ = writeln!(serial, "ArchiaOS: scheduler state self-test failed: {:?}", error);
             halt_forever();
         }
     }
     match scheduler::runtime_self_test() {
         Ok(()) => {
-            paint_status_line(info, 5, FB_SCHEDULER_OK);
             let _ = writeln!(serial, "ArchiaOS: three-task block/wake/yield/exit context-switch self-test passed");
         }
         Err(error) => {
-            paint_status_line(info, 5, FB_FAIL);
             let _ = writeln!(serial, "ArchiaOS: three-task scheduler runtime self-test failed: {:?}", error);
             halt_forever();
         }
@@ -412,7 +379,6 @@ pub extern "C" fn rust_kernel_main(
             let _ = writeln!(serial, "ArchiaOS: block-to-idle, wakeup and task-resume self-test passed");
         }
         Err(error) => {
-            paint_status_line(info, 5, FB_FAIL);
             let _ = writeln!(serial, "ArchiaOS: idle/wakeup runtime self-test failed: {:?}", error);
             halt_forever();
         }
