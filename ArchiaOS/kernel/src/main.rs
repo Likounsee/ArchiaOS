@@ -26,7 +26,7 @@ mod sync;
 mod pic;
 
 use core::arch::{asm, global_asm};
-use core::fmt::{self, Write};
+use core::fmt::Write;
 use core::panic::PanicInfo;
 
 // Keep the first load segment non-empty with an ArchiaOS-owned marker.

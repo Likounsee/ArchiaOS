@@ -5,7 +5,7 @@ use core::fmt::Write;
 use super::console::{FramebufferConsole, Serial};
 use super::{
     acpi_madt, address_space, apic_bringup, context, cpu, halt_forever, heap, interrupts, memory,
-    pci, scheduler, scheduler_topology, simd, vmm,
+    pci, pic, scheduler, scheduler_topology, simd, vmm,
 };
 
 
