@@ -8,8 +8,19 @@
 *.elf
 *.log
 
+# Python tooling and test caches
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+
 # Local editor / operating-system files
 .DS_Store
 Thumbs.db
+.idea/
 *.swp
+*.swo
 *.tmp
+*.bak
+*.orig
+*.rej
+*~
