@@ -33,7 +33,18 @@ The production kernel's custom-loader build is:
 cargo build --release --features uefi-boot --target x86_64-unknown-none
 ```
 
-A reproducible local disk/ISO packaging command for the first-party UEFI loader is not yet documented; CI currently assembles FAT/OVMF test images. The default kernel entry uses the ArchiaOS UEFI handoff, not Limine.
+A local USB-file package is available from the repository root:
+
+```sh
+make uefi-files
+```
+
+The command builds the production x86-64 kernel and UEFI loader, then writes the standalone files to `build/uefi-files/`:
+
+- `EFI/BOOT/BOOTX64.EFI` — firmware fallback loader.
+- `EFI/ArchiaOS/kernel.elf` — kernel image loaded by the loader.
+
+Copy the generated `EFI/` directory to the root of a FAT32 USB partition. This command creates a file package, not a disk image or ISO; `make boot-local` is the separate OVMF/QEMU image-and-boot test. The default kernel entry uses the ArchiaOS UEFI handoff, not Limine.
 
 ## Next
 
