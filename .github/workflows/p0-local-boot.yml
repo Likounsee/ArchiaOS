@@ -4,7 +4,15 @@ on:
   push:
     branches: [ArchiaOS]
     paths:
-      - "ArchiaOS/**"
+      - "ArchiaOS/Cargo.toml"
+      - "ArchiaOS/Cargo.lock"
+      - "ArchiaOS/rust-toolchain.toml"
+      - "ArchiaOS/.cargo/**"
+      - "ArchiaOS/kernel/src/**"
+      - "ArchiaOS/bootloader/Cargo.toml"
+      - "ArchiaOS/bootloader/src/**"
+      - "ArchiaOS/linker.ld"
+      - "ArchiaOS/scripts/boot-local-uefi.sh"
       - ".github/workflows/p0-local-boot.yml"
   pull_request:
     branches: [ArchiaOS]
