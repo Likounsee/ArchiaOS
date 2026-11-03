@@ -234,23 +234,29 @@ fn selected_wakeup_is_transactional_and_does_not_wake_unrelated_tasks() {
     let second = scheduler.create_task().expect("second task");
     let third = scheduler.create_task().expect("third task");
     let fourth = scheduler.create_task().expect("fourth task");
+    let fifth = scheduler.create_task().expect("fifth task");
 
     assert_eq!(scheduler.schedule(), Ok(first));
     assert_eq!(scheduler.block_current(), Ok(second));
     assert_eq!(scheduler.block_current(), Ok(third));
     assert_eq!(scheduler.block_current(), Ok(fourth));
-    assert_eq!(scheduler.block_current(), Err(SchedulerError::NoRunnableTask));
+    assert_eq!(scheduler.block_current(), Ok(fifth));
 
-    assert_eq!(scheduler.wake_many_blocked(&[first, second]), Err(SchedulerError::TaskNotBlocked));
+    // The batch contains one blocked task and the currently running task.
+    // It must reject the whole operation without partially waking the blocked one.
+    assert_eq!(scheduler.wake_many_blocked(&[first, fifth]), Err(SchedulerError::TaskNotBlocked));
     assert_eq!(scheduler.state(first), Ok(TaskState::Blocked));
     assert_eq!(scheduler.state(second), Ok(TaskState::Blocked));
     assert_eq!(scheduler.state(third), Ok(TaskState::Blocked));
     assert_eq!(scheduler.state(fourth), Ok(TaskState::Blocked));
+    assert_eq!(scheduler.state(fifth), Ok(TaskState::Running));
 
     assert_eq!(scheduler.wake_many_blocked(&[second, fourth, second]), Ok(2));
     assert_eq!(scheduler.state(second), Ok(TaskState::Runnable));
     assert_eq!(scheduler.state(fourth), Ok(TaskState::Runnable));
     assert_eq!(scheduler.state(third), Ok(TaskState::Blocked));
     assert_eq!(scheduler.state(first), Ok(TaskState::Blocked));
+    assert_eq!(scheduler.state(fifth), Ok(TaskState::Running));
+    assert_eq!(scheduler.current(), Some(fifth));
     assert_eq!(scheduler.check_invariants(), Ok(()));
 }
