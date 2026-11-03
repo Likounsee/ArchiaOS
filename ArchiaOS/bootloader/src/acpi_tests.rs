@@ -1,6 +1,5 @@
-// Bootloader parser tests for the acpi module.
-mod acpi_tests {
-    use std::vec;
+// Unit tests for the acpi parser.
+use std::vec;
     use std::vec::Vec;
 
     use super::acpi::{parse_rsdp, RsdpError};
@@ -158,4 +157,4 @@ mod acpi_tests {
             Err(super::acpi::SdtError::UnsupportedAddressSpace)
         );
     }
-}
+
