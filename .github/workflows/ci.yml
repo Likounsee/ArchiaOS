@@ -3,8 +3,30 @@ name: ArchiaOS CI
 on:
   push:
     branches: [ArchiaOS]
+    paths:
+      - "ArchiaOS/Cargo.toml"
+      - "ArchiaOS/Cargo.lock"
+      - "ArchiaOS/rust-toolchain.toml"
+      - "ArchiaOS/.cargo/**"
+      - "ArchiaOS/kernel/**"
+      - "ArchiaOS/bootloader/**"
+      - "ArchiaOS/linker.ld"
+      - "ArchiaOS/Makefile"
+      - "ArchiaOS/scripts/**"
+      - ".github/workflows/**"
   pull_request:
     branches: [ArchiaOS]
+    paths:
+      - "ArchiaOS/Cargo.toml"
+      - "ArchiaOS/Cargo.lock"
+      - "ArchiaOS/rust-toolchain.toml"
+      - "ArchiaOS/.cargo/**"
+      - "ArchiaOS/kernel/**"
+      - "ArchiaOS/bootloader/**"
+      - "ArchiaOS/linker.ld"
+      - "ArchiaOS/Makefile"
+      - "ArchiaOS/scripts/**"
+      - ".github/workflows/**"
 
 concurrency:
   group: archiaos-ci-${{ github.ref }}
@@ -23,6 +45,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Check Rust formatting across all crates
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path Cargo.toml -- --check
+          cargo fmt --manifest-path bootloader/Cargo.toml -- --check
+          cargo fmt --manifest-path kernel/aarch64/Cargo.toml -- --check
+          cargo fmt --manifest-path kernel/boot-test-x86_64/Cargo.toml -- --check
+          cargo fmt --manifest-path kernel/boot-test-highhalf-x86_64/Cargo.toml -- --check
       - name: Install Rust target
         run: rustup target add x86_64-unknown-none
       - name: Show toolchain
