@@ -7,12 +7,14 @@ on:
     paths:
       - "ArchiaOS/Cargo.toml"
       - "ArchiaOS/Cargo.lock"
-      - "ArchiaOS/kernel/**"
-      - "ArchiaOS/bootloader/**"
+      - "ArchiaOS/rust-toolchain.toml"
+      - "ArchiaOS/.cargo/**"
+      - "ArchiaOS/kernel/src/**"
+      - "ArchiaOS/bootloader/Cargo.toml"
+      - "ArchiaOS/bootloader/src/**"
       - "ArchiaOS/linker.ld"
+      - "ArchiaOS/scripts/build-uefi-files.sh"
       - "ArchiaOS/scripts/verify-uefi-artifacts.py"
-      - "ArchiaOS/docs/P1-PHYSICAL-VALIDATION.md"
-      - ".cargo/config.toml"
       - ".github/workflows/hardware-p0-usb.yml"
 
 permissions:
