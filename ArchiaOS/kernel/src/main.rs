@@ -1,28 +1,48 @@
 #![no_std]
 #![no_main]
 
+#[path = "memory/memory_ranges.rs"]
 mod memory_ranges;
+#[path = "boot/boot_status.rs"]
 mod boot_status;
+#[path = "drivers/framebuffer.rs"]
 mod framebuffer;
+#[path = "memory/memory.rs"]
 mod memory;
+#[path = "memory/vmm.rs"]
 mod vmm;
+#[path = "memory/heap.rs"]
 mod heap;
+#[path = "memory/address_space.rs"]
 mod address_space;
+#[path = "arch/x86_64/cpu.rs"]
 mod cpu;
+#[path = "arch/x86_64/cpu_features.rs"]
 mod cpu_features;
+#[path = "arch/x86_64/simd.rs"]
 mod simd;
+#[path = "drivers/pci.rs"]
 mod pci;
+#[path = "scheduler/scheduler.rs"]
 mod scheduler;
+#[path = "scheduler/scheduler_topology.rs"]
 mod scheduler_topology;
+#[path = "scheduler/context.rs"]
 mod context;
+#[path = "arch/x86_64/interrupts.rs"]
 mod interrupts;
+#[path = "arch/x86_64/interrupt_vectors.rs"]
 mod interrupt_vectors;
+#[path = "arch/x86_64/acpi_madt.rs"]
 mod acpi_madt;
+#[path = "arch/x86_64/apic.rs"]
 mod apic;
+#[path = "sync/sync.rs"]
 mod sync;
 
 /// Legacy dual 8259 PIC setup. All lines stay masked until matching IDT
 /// handlers and an interrupt-safe wakeup path are implemented.
+#[path = "arch/x86_64/pic.rs"]
 mod pic;
 
 use core::arch::{asm, global_asm};
