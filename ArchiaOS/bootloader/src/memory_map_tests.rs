@@ -1,6 +1,5 @@
-// Bootloader parser tests for the memory_map module.
-mod memory_map_tests {
-    use std::vec;
+// Unit tests for the memory_map parser.
+use std::vec;
     use std::vec::Vec;
 
     use super::memory_map::{MemoryMapError, UefiMemoryMap, EFI_CONVENTIONAL_MEMORY};
@@ -362,4 +361,4 @@ mod memory_map_tests {
             Some(MemoryMapError::UnsupportedOrdering)
         );
     }
-}
+
