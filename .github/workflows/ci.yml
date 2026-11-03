@@ -52,34 +52,34 @@ jobs:
       - name: Test pure CPU feature decoding and OS-state gates
         run: |
           set -euo pipefail
-          rustc --edition=2021 --test kernel/src/interrupt_vectors.rs -o "$RUNNER_TEMP/archiaos-interrupt-vector-tests"
+          rustc --edition=2021 --test kernel/src/arch/x86_64/interrupt_vectors.rs -o "$RUNNER_TEMP/archiaos-interrupt-vector-tests"
           "$RUNNER_TEMP/archiaos-interrupt-vector-tests"
-          rustc --edition=2021 --test kernel/src/cpu_features.rs -o "$RUNNER_TEMP/archiaos-cpu-feature-tests"
+          rustc --edition=2021 --test kernel/src/arch/x86_64/cpu_features.rs -o "$RUNNER_TEMP/archiaos-cpu-feature-tests"
           "$RUNNER_TEMP/archiaos-cpu-feature-tests"
-          rustc --edition=2021 --test kernel/src/simd.rs -o "$RUNNER_TEMP/archiaos-simd-tests"
+          rustc --edition=2021 --test kernel/src/arch/x86_64/simd.rs -o "$RUNNER_TEMP/archiaos-simd-tests"
           "$RUNNER_TEMP/archiaos-simd-tests"
-          rustc --edition=2021 --test kernel/src/memory_ranges.rs -o "$RUNNER_TEMP/archiaos-memory-range-tests"
+          rustc --edition=2021 --test kernel/src/memory/memory_ranges.rs -o "$RUNNER_TEMP/archiaos-memory-range-tests"
           "$RUNNER_TEMP/archiaos-memory-range-tests"
-          rustc --edition=2021 --test kernel/src/boot_status.rs -o "$RUNNER_TEMP/archiaos-boot-status-tests"
+          rustc --edition=2021 --test kernel/src/boot/boot_status.rs -o "$RUNNER_TEMP/archiaos-boot-status-tests"
           "$RUNNER_TEMP/archiaos-boot-status-tests"
-          rustc --edition=2021 --test kernel/src/framebuffer.rs -o "$RUNNER_TEMP/archiaos-framebuffer-tests"
+          rustc --edition=2021 --test kernel/src/drivers/framebuffer.rs -o "$RUNNER_TEMP/archiaos-framebuffer-tests"
           "$RUNNER_TEMP/archiaos-framebuffer-tests"
       - name: Test defensive ACPI MADT parser on host
         run: |
           set -euo pipefail
-          rustc --edition=2021 --test kernel/src/acpi_madt.rs -o "$RUNNER_TEMP/archiaos-madt-tests"
+          rustc --edition=2021 --test kernel/src/arch/x86_64/acpi_madt.rs -o "$RUNNER_TEMP/archiaos-madt-tests"
           "$RUNNER_TEMP/archiaos-madt-tests"
       - name: Test xAPIC register planning on host
         run: |
           set -euo pipefail
-          rustc --edition=2021 --test kernel/src/apic.rs -o "$RUNNER_TEMP/archiaos-apic-tests"
+          rustc --edition=2021 --test kernel/src/arch/x86_64/apic.rs -o "$RUNNER_TEMP/archiaos-apic-tests"
           "$RUNNER_TEMP/archiaos-apic-tests"
       - name: Audit x86-64 ISR stub normalization and coverage
         run: python3 scripts/verify-isr-stubs.py
       - name: Test kernel synchronization primitives on host
         run: |
           set -euo pipefail
-          rustc --edition=2021 --test kernel/src/sync.rs -o "$RUNNER_TEMP/archiaos-sync-tests"
+          rustc --edition=2021 --test kernel/src/sync/sync.rs -o "$RUNNER_TEMP/archiaos-sync-tests"
           "$RUNNER_TEMP/archiaos-sync-tests"
       - name: Test scheduler state machine on host
         shell: bash
@@ -87,8 +87,8 @@ jobs:
           set -euo pipefail
           harness="$RUNNER_TEMP/archiaos-scheduler-tests"
           mkdir -p "$harness/src" "$harness/tests"
-          cp kernel/src/scheduler.rs "$harness/src/scheduler.rs"
-          cp kernel/src/context.rs "$harness/src/context.rs"
+          cp kernel/src/scheduler/scheduler.rs "$harness/src/scheduler.rs"
+          cp kernel/src/scheduler/context.rs "$harness/src/context.rs"
           cp kernel/tests/scheduler.rs "$harness/tests/scheduler.rs"
           cat > "$harness/Cargo.toml" <<'EOF'
           [package]

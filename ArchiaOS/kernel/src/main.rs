@@ -123,6 +123,7 @@ global_asm!(
     "__boot_stack_top:",
 );
 
+#[path = "console/console.rs"]
 mod console;
 use console::Serial;
 
@@ -137,12 +138,14 @@ unsafe fn port_in(port: u16) -> u8 {
     value
 }
 
+#[path = "arch/x86_64/apic_bringup.rs"]
 mod apic_bringup;
 
 fn halt_forever() -> ! {
     loop { unsafe { asm!("cli; hlt", options(nomem, nostack)) }; }
 }
 
+#[path = "boot/boot.rs"]
 mod boot;
 
 /// Fatal early-kernel exception dispatcher called by the assembly stubs.

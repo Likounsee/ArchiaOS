@@ -11,8 +11,8 @@ import re
 import sys
 from pathlib import Path
 
-SOURCE = Path(__file__).resolve().parents[1] / "kernel/src/interrupts.rs"
-VECTOR_SOURCE = Path(__file__).resolve().parents[1] / "kernel/src/interrupt_vectors.rs"
+SOURCE = Path(__file__).resolve().parents[1] / "kernel/src/arch/x86_64/interrupts.rs"
+VECTOR_SOURCE = Path(__file__).resolve().parents[1] / "kernel/src/arch/x86_64/interrupt_vectors.rs"
 MAIN_SOURCE = Path(__file__).resolve().parents[1] / "kernel/src/main.rs"
 ERROR_CODE_VECTORS = {8, 10, 11, 12, 13, 14, 17, 21, 29, 30}
 
