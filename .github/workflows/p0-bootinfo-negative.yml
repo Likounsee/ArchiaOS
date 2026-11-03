@@ -3,8 +3,20 @@ name: ArchiaOS P0 BootInfo negative boot
 on:
   push:
     branches: [ArchiaOS]
+    paths:
+      - "ArchiaOS/rust-toolchain.toml"
+      - "ArchiaOS/bootloader/Cargo.toml"
+      - "ArchiaOS/bootloader/src/**"
+      - "ArchiaOS/kernel/boot-test-x86_64/**"
+      - ".github/workflows/p0-bootinfo-negative.yml"
   pull_request:
     branches: [ArchiaOS]
+    paths:
+      - "ArchiaOS/rust-toolchain.toml"
+      - "ArchiaOS/bootloader/Cargo.toml"
+      - "ArchiaOS/bootloader/src/**"
+      - "ArchiaOS/kernel/boot-test-x86_64/**"
+      - ".github/workflows/p0-bootinfo-negative.yml"
 
 permissions:
   contents: read
