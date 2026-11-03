@@ -11,11 +11,20 @@ use archiaos_bootloader::memory_map::UefiMemoryMap;
 // fields and function-pointer aliases remain inaccessible outside the loader.
 include!("uefi/firmware.rs");
 
+// Firmware file access and the bounded kernel-image owner.
 include!("uefi/image.rs");
 
-include!("uefi/kernel_loading.rs");
+// ELF segment reservation/copying and architecture-specific page-table setup.
+include!("uefi/kernel_segments.rs");
 
-include!("uefi/platform_validation.rs");
+include!("uefi/x86_64_paging.rs");
+
+// GOP, ACPI, and FDT discovery plus physical-range validation for handoff.
+include!("uefi/firmware_discovery.rs");
+
+include!("uefi/platform_memory_audit.rs");
+
+include!("uefi/platform_tables.rs");
 
 include!("uefi/handoff.rs");
 
