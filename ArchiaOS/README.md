@@ -64,7 +64,7 @@ cargo build --manifest-path bootloader/Cargo.toml --release --target aarch64-unk
 cargo test --manifest-path bootloader/Cargo.toml --lib --target x86_64-unknown-linux-gnu
 ~~~
 
-Pour le commit `67d5240`, les workflows dédiés au démarrage local UEFI, au test négatif BootInfo et au paquet USB sont réussis. La CI principale comporte plusieurs jobs réussis ; le job de démarrage x86-64 OVMF était encore en cours lors du dernier contrôle. Vérifier le statut du commit ciblé avant toute validation ultérieure.
+Les résultats CI sont propres à chaque commit : un succès historique ne valide pas automatiquement le HEAD courant. Vérifier les [exécutions de la branche ArchiaOS](https://github.com/Likounsee/ArchiaOS/actions?query=branch%3AArchiaOS) avant toute validation. Au dernier contrôle de ce nettoyage, la CI du commit `4025353` était encore en attente ; aucun succès n'est donc revendiqué pour ce HEAD.
 
 ## Documentation technique
 
