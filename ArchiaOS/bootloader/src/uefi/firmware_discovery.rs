@@ -150,4 +150,3 @@ fn range_is_identity_mapped_ram(
     Ok(true)
 }
 
-/// Validate the ACPI signature before interpreting firmware-controlled RSDP fields.

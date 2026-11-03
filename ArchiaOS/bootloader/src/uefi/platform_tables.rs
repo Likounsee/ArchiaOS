@@ -67,5 +67,3 @@ fn platform_tables(
     Ok((rsdp, dtb, Some((address, bytes))))
 }
 
-/// Capture platform metadata, validate the final firmware memory map, terminate
-/// boot services, and transfer control using the versioned BootInfo contract.

@@ -1,3 +1,4 @@
+/// Validate the ACPI signature before interpreting firmware-controlled RSDP fields.
 fn rsdp_signature_is_valid(signature: &[u8]) -> bool {
     signature == archiaos_bootloader::acpi::RSDP_SIGNATURE
 }

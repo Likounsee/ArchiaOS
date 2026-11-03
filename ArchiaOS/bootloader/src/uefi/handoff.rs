@@ -1,3 +1,5 @@
+/// Capture platform metadata, validate the final firmware memory map, terminate
+/// boot services, and transfer control using the versioned BootInfo contract.
 pub unsafe fn transfer_to_kernel(
     image_handle: Handle,
     system_table: *mut SystemTable,
